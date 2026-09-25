@@ -11,7 +11,6 @@ export const TOKEN = 'cf-test-token-0123456789abcdefghij';
 export const OTHER_ACCOUNT_TOKEN = 'cf-other-account-token-0123456789ab';
 export const SUBDOMAIN = 'scouts';
 export const PUBLIC_URL = `https://arcanum-bff.${SUBDOMAIN}.workers.dev`;
-export const RELEASE_BASE = 'https://releases.test/download/v0.1.1';
 
 const enc = new TextEncoder();
 
@@ -104,12 +103,12 @@ export class FakeCloudflare {
       if (!db) return fail(404, 'Database not found', 7404);
       const sql = ((await request.json()) as { sql: string }).sql;
       db.queries.push(sql);
-      // Enough SQL to answer the installer's check: which migrations schema.sql recorded.
-      if (/SELECT COUNT\(\*\) AS n FROM d1_migrations/i.test(sql)) {
-        const names = new Set(db.queries.flatMap((q) => [...q.matchAll(/INSERT OR IGNORE INTO d1_migrations \(name\) VALUES \('([^']+)'\)/g)].map((m) => m[1])));
-        return names.size || db.queries.some((q) => /CREATE TABLE IF NOT EXISTS d1_migrations/i.test(q))
-          ? ok([{ success: true, results: [{ n: names.size }], meta: {} }])
-          : fail(400, 'D1_ERROR: no such table: d1_migrations: SQLITE_ERROR', 7500);
+      // Enough SQL to answer the installer's questions: which migrations are recorded.
+      const count = /SELECT COUNT\(\*\) AS n FROM d1_migrations/i.test(sql);
+      if (count || /^SELECT name FROM d1_migrations$/i.test(sql)) {
+        const names = [...new Set(db.queries.flatMap((q) => [...q.matchAll(/INSERT OR IGNORE INTO d1_migrations \(name\) VALUES \('([^']+)'\)/g)].map((m) => m[1])))];
+        if (!names.length && !db.queries.some((q) => /CREATE TABLE IF NOT EXISTS d1_migrations/i.test(q))) return fail(400, 'D1_ERROR: no such table: d1_migrations: SQLITE_ERROR', 7500);
+        return ok([{ success: true, results: count ? [{ n: names.length }] : names.map((name) => ({ name })), meta: {} }]);
       }
       return ok([{ success: true, results: [], meta: {} }]);
     }
@@ -241,20 +240,35 @@ export class FakeCloudflare {
   }
 }
 
-// A published release, byte-for-byte what the installer verifies.
-export class FakeReleases {
-  files = new Map<string, Uint8Array>();
+// A published release, byte-for-byte what the installer verifies: 0.1.1
+// (the real descriptors of test/fixtures) and, once `offerUpdate` is set,
+// 0.1.3 — the same plus what an update has to handle: a bff that can
+// forward /installer/*, and one new backend migration.
+export const NEXT_VERSION = '0.1.3';
+export const NEXT_MIGRATION = { name: '0018_update_test.sql', sql: 'ALTER TABLE tabs ADD COLUMN update_test TEXT' };
+const releaseBase = (version: string) => `https://releases.test/download/v${version}`;
+
+interface Published {
+  files: Map<string, Uint8Array>;
   manifest: any;
+}
+
+export class FakeReleases {
+  versions = new Map<string, Published>();
   tampered = new Set<string>();
+  offerUpdate = false;
   assetFiles: Record<string, { hash: string; size: number; contentType: string; chunk: string }> = {};
+
+  get files() {
+    return this.versions.get('0.1.1')!.files;
+  }
+  get manifest() {
+    return this.versions.get('0.1.1')!.manifest;
+  }
 
   static async create() {
     const r = new FakeReleases();
-    const put = (name: string, value: unknown) => r.files.set(name, enc.encode(typeof value === 'string' ? value : JSON.stringify(value)));
-    for (const [name, descriptor] of Object.entries(fixture.workers)) put(`${name}.json`, descriptor);
-    put('database.json', fixture.database);
     // Three small assets in two chunks.
-    const b64 = (s: string) => btoa(s);
     r.assetFiles = {
       '/admin.html': { hash: 'a'.repeat(32), size: 20, contentType: 'text/html', chunk: 'arcanum-frontends-assets-01.json' },
       '/assets/app.js': { hash: 'b'.repeat(32), size: 30, contentType: 'text/javascript', chunk: 'arcanum-frontends-assets-01.json' },
@@ -262,22 +276,41 @@ export class FakeReleases {
       // The real build's hashed logo — what the setup page loads to see the installation is live.
       [fixture.asset_paths_sample[0]]: { hash: 'd'.repeat(32), size: 30111, contentType: 'image/png', chunk: 'arcanum-frontends-assets-02.json' },
     };
-    put('arcanum-frontends-assets.json', { config: fixture.assets_config, files: r.assetFiles });
-    put('arcanum-frontends-assets-01.json', { ['a'.repeat(32)]: b64('<html>admin</html>'), ['b'.repeat(32)]: b64('console.log(1)') });
-    put('arcanum-frontends-assets-02.json', { ['c'.repeat(32)]: b64('<html>kassa</html>'), ['d'.repeat(32)]: b64('PNG') });
-    put('LICENSE', 'AGPL-3.0-or-later');
-    const files: Record<string, { size: number; sha256: string }> = {};
-    for (const [name, bytes] of [...r.files].sort()) files[name] = { size: bytes.length, sha256: await sha256(bytes) };
-    r.manifest = { format: 'arcanum-release', format_version: 1, version: '0.1.1', released_at: '2026-09-25T12:00:00.000Z', license: 'AGPL-3.0-or-later', components: fixture.components, files };
+    r.versions.set('0.1.1', await r.publish('0.1.1', fixture.workers, fixture.database));
+    const workers = structuredClone(fixture.workers) as any;
+    workers['arcanum-bff'].env.INSTALLER_INTERNAL_KEY = { kind: 'secret', source: 'optional' };
+    const database = structuredClone(fixture.database) as any;
+    const backend = database.databases.find((d: any) => d.name === 'arcanum-backend');
+    backend.migrations.push(NEXT_MIGRATION);
+    backend.schema += `\nINSERT OR IGNORE INTO d1_migrations (name) VALUES ('${NEXT_MIGRATION.name}');\n`;
+    r.versions.set(NEXT_VERSION, await r.publish(NEXT_VERSION, workers, database));
     return r;
   }
 
+  private async publish(version: string, workers: Record<string, unknown>, database: unknown): Promise<Published> {
+    const files = new Map<string, Uint8Array>();
+    const put = (name: string, value: unknown) => files.set(name, enc.encode(typeof value === 'string' ? value : JSON.stringify(value)));
+    for (const [name, descriptor] of Object.entries(workers)) put(`${name}.json`, descriptor);
+    put('database.json', database);
+    const b64 = (s: string) => btoa(s);
+    put('arcanum-frontends-assets.json', { config: fixture.assets_config, files: this.assetFiles });
+    put('arcanum-frontends-assets-01.json', { ['a'.repeat(32)]: b64('<html>admin</html>'), ['b'.repeat(32)]: b64('console.log(1)') });
+    put('arcanum-frontends-assets-02.json', { ['c'.repeat(32)]: b64('<html>kassa</html>'), ['d'.repeat(32)]: b64('PNG') });
+    put('LICENSE', 'AGPL-3.0-or-later');
+    const sums: Record<string, { size: number; sha256: string }> = {};
+    for (const [name, bytes] of [...files].sort()) sums[name] = { size: bytes.length, sha256: await sha256(bytes) };
+    const manifest = { format: 'arcanum-release', format_version: 1, version, released_at: '2026-09-25T12:00:00.000Z', license: 'AGPL-3.0-or-later', components: fixture.components, files: sums };
+    return { files, manifest };
+  }
+
   index() {
+    const entry = (version: string) => ({ version, tag: `v${version}`, prerelease: true, released_at: '2026-09-25T12:00:00.000Z', format_version: 1, manifest_url: `${releaseBase(version)}/manifest.json`, notes_url: `https://releases.test/tag/v${version}` });
     return {
       format: 'arcanum-releases-index',
       latest: null,
       releases: [
-        { version: '0.1.1', tag: 'v0.1.1', prerelease: true, released_at: this.manifest.released_at, format_version: 1, manifest_url: `${RELEASE_BASE}/manifest.json`, notes_url: 'https://releases.test/tag/v0.1.1' },
+        ...(this.offerUpdate ? [entry(NEXT_VERSION)] : []),
+        entry('0.1.1'),
         // An older layout the installer must not offer.
         { version: '0.1.0', tag: 'v0.1.0', prerelease: true, released_at: '2026-09-25T10:00:00.000Z', manifest_url: 'https://releases.test/download/v0.1.0/manifest.json', notes_url: '' },
       ],
@@ -286,13 +319,16 @@ export class FakeReleases {
 
   handle(url: URL): Response {
     if (url.href === 'https://releases.test/releases.json') return Response.json(this.index());
-    if (url.href === `${RELEASE_BASE}/manifest.json`) return Response.json(this.manifest);
-    if (url.href.startsWith(`${RELEASE_BASE}/`)) {
-      const name = decodeURIComponent(url.pathname.split('/').pop()!);
-      const bytes = this.files.get(name);
-      if (!bytes) return new Response('Not found', { status: 404 });
-      if (this.tampered.has(name)) return new Response(enc.encode(new TextDecoder().decode(bytes).replace(/.$/, ' ')));
-      return new Response(bytes);
+    for (const [version, published] of this.versions) {
+      const base = releaseBase(version);
+      if (url.href === `${base}/manifest.json`) return Response.json(published.manifest);
+      if (url.href.startsWith(`${base}/`)) {
+        const name = decodeURIComponent(url.pathname.split('/').pop()!);
+        const bytes = published.files.get(name);
+        if (!bytes) return new Response('Not found', { status: 404 });
+        if (this.tampered.has(name)) return new Response(enc.encode(new TextDecoder().decode(bytes).replace(/.$/, ' ')));
+        return new Response(bytes);
+      }
     }
     return new Response('Not found', { status: 404 });
   }

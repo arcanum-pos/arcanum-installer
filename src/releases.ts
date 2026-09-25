@@ -45,6 +45,14 @@ export async function fetchIndex(indexUrl: string): Promise<ReleaseIndex> {
   return index;
 }
 
+// -1 / 0 / 1 for "0.1.2" vs "0.1.10" (numeric parts; a pre-release suffix is ignored).
+export function compareVersions(a: string, b: string): number {
+  const parts = (v: string) => v.split('-')[0].split('.').map((n) => Number(n) || 0);
+  const [x, y] = [parts(a), parts(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0) ? -1 : 1;
+  return 0;
+}
+
 // Only releases this installer can install.
 export function installable(index: ReleaseIndex): ReleaseIndexEntry[] {
   return index.releases.filter((r) => r.format_version === SUPPORTED_FORMAT_VERSION);

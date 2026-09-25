@@ -8,7 +8,7 @@ import { Cloudflare, CloudflareError } from './cloudflare';
 import { generateSecret, randomBytes } from './crypto';
 import { secretsNeeded, uploadMetadata, type InstallContext, type WorkerDescriptor } from './contract';
 import { fetchReleaseJson, type Manifest } from './releases';
-import { publicUrl, sealValue, unsealValue, type Blueprint, type InstallerState } from './state';
+import { INSTALLER_KEY_SECRET, publicUrl, sealValue, unsealValue, type Blueprint, type InstallerState } from './state';
 
 export interface StepDef {
   id: string;
@@ -54,6 +54,21 @@ export function blueprintFrom(manifest: Manifest, descriptors: WorkerDescriptor[
   const assetChunks = assetWorker ? Object.keys(manifest.files).filter((f) => f.startsWith(`${assetWorker.name}-assets-`)).sort() : [];
   return { workers, databases: database.databases.map((d) => ({ name: d.name, tracked: d.tracked })), kv, assetManifest, assetChunks };
 }
+
+// The migrations a database records as applied, or null when it has no
+// d1_migrations table yet (a fresh database).
+async function appliedMigrations(cf: Cloudflare, accountId: string, dbId: string): Promise<Set<string> | null> {
+  try {
+    const result = (await cf.queryD1(accountId, dbId, 'SELECT name FROM d1_migrations')) as { results?: { name: string }[] }[];
+    return new Set((result?.[0]?.results ?? []).map((r) => r.name));
+  } catch (err) {
+    if (err instanceof CloudflareError && /no such table/i.test(err.message)) return null;
+    throw err;
+  }
+}
+
+// Whether a release's bff can forward /installer/* (declares the shared key).
+export const bffSupportsInstaller = (descriptor: WorkerDescriptor) => 'INSTALLER_INTERNAL_KEY' in descriptor.env;
 
 export interface StepContext {
   env: Env;
@@ -120,15 +135,26 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
   }
 
   if (id.startsWith('schema:')) {
-    // schema.sql is idempotent (IF NOT EXISTS / INSERT OR IGNORE) and marks
-    // every tracked migration as applied for a fresh database.
     const name = id.slice(7);
     const dbId = state.resources.d1[name];
     if (!dbId) throw new Error(`Database ${name} bestaat nog niet`);
-    const database = await fetchReleaseJson<{ databases: { name: string; schema: string }[] }>(release.manifestUrl, release.manifest, 'database.json');
-    const schema = database.databases.find((d) => d.name === name)?.schema;
-    if (!schema) throw new Error(`Geen schema voor ${name} in de release`);
-    await cf.queryD1(accountId, dbId, schema);
+    const database = await fetchReleaseJson<{ databases: { name: string; schema: string; tracked: boolean; migrations: { name: string; sql: string }[] }[] }>(release.manifestUrl, release.manifest, 'database.json');
+    const db = database.databases.find((d) => d.name === name);
+    if (!db?.schema) throw new Error(`Geen schema voor ${name} in de release`);
+    // A database that already records migrations (an update, or a re-run):
+    // apply only the ones it doesn't have yet, each with its record — never
+    // schema.sql, which would mark new migrations applied without running them.
+    const applied = db.tracked ? await appliedMigrations(cf, accountId, dbId) : null;
+    if (applied && applied.size > 0) {
+      const pending = db.migrations.filter((m) => !applied.has(m.name));
+      for (const m of pending) {
+        await cf.queryD1(accountId, dbId, `${m.sql.trim().replace(/;?$/, ';')}\nINSERT OR IGNORE INTO d1_migrations (name) VALUES ('${m.name.replace(/'/g, "''")}');`);
+      }
+      return { status: 'done', detail: pending.length ? `${pending.length} migratie(s) toegepast: ${pending.map((m) => m.name).join(', ')}` : 'al bijgewerkt' };
+    }
+    // A fresh database: schema.sql is idempotent (IF NOT EXISTS / INSERT OR
+    // IGNORE) and marks every tracked migration as applied.
+    await cf.queryD1(accountId, dbId, db.schema);
     return { status: 'done' };
   }
 
@@ -174,6 +200,9 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     if (!worker) throw new Error(`${name} hoort niet bij deze release`);
     const descriptor = await fetchReleaseJson<WorkerDescriptor>(release.manifestUrl, release.manifest, worker.file);
     const url = publicUrl(state)!;
+    const secrets = await secretsOf(ctx);
+    // Behind Arcanum: the bff forwards /installer/* to this installer.
+    const linkInstaller = worker.public_entry && !!state.behindArcanum && bffSupportsInstaller(descriptor);
     const context: InstallContext = {
       publicUrl: url,
       issuerUrl: state.login!.issuer,
@@ -190,14 +219,17 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
               DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET: await unsealValue(ctx.env, state, state.login.authCodeClientSecret),
             }
           : {}),
+        ...(linkInstaller ? { [INSTALLER_KEY_SECRET]: secrets[INSTALLER_KEY_SECRET] } : {}),
       },
-      secrets: await secretsOf(ctx),
+      secrets,
       resources: { d1: state.resources.d1, kv: state.resources.kv, ratelimitNamespaceId: state.resources.ratelimitNamespaceId! },
       currentMigrationTag: descriptor.durable_object_migrations.length ? await cf.getMigrationTag(accountId, name) : null,
       assetsJwt: worker.assets ? state.assets?.completionJwt : undefined,
     };
     if (worker.assets && !context.assetsJwt) throw new Error('De schermen zijn nog niet volledig geüpload');
-    await cf.uploadScript(accountId, name, uploadMetadata(descriptor, context), descriptor.modules ?? []);
+    const metadata = uploadMetadata(descriptor, context);
+    if (linkInstaller) (metadata.bindings as unknown[]).push({ type: 'service', name: 'ARCANUM_INSTALLER_SERVICE', service: state.behindArcanum!.script });
+    await cf.uploadScript(accountId, name, metadata, descriptor.modules ?? []);
     // Only the public entry gets a workers.dev address; everything else is
     // reachable solely through service bindings.
     await cf.setWorkersDev(accountId, name, worker.public_entry);

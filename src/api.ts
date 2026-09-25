@@ -5,9 +5,10 @@ import type { Env } from './env';
 import { checkLoginAllowed, clearedCookie, newSessionCookie, passwordMatches, recordLoginFailure, sessionFrom } from './auth';
 import { Cloudflare, CloudflareError } from './cloudflare';
 import type { WorkerDescriptor } from './contract';
-import { fetchIndex, fetchManifest, fetchReleaseJson, installable, ReleaseError } from './releases';
-import { installationStarted, loadState, publicUrl, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
-import { blueprintFrom, planSteps, runStep } from './steps';
+import { compareVersions, fetchIndex, fetchManifest, fetchReleaseJson, installable, ReleaseError } from './releases';
+import { INSTALLER_KEY_SECRET, installationStarted, isAdmin, loadState, publicUrl, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
+import { bffSupportsInstaller, blueprintFrom, planSteps, runStep } from './steps';
+import { generateSecret, safeEqual } from './crypto';
 import { checkClients } from './idp-check';
 
 const TOKEN_PERMISSIONS = [
@@ -56,7 +57,34 @@ function cloudflareFor(env: Env, token: string) {
   return new Cloudflare(token, env.CLOUDFLARE_API_BASE);
 }
 
-export async function status(env: Env, state: InstallerState, sessionId: string) {
+// How this request was let in: the password session on the installer's own
+// address, or forwarded by Arcanum's bff for a logged-in admin.
+export type Access = { via: 'password'; sessionId: string } | { via: 'arcanum'; sessionId: string; email: string };
+
+// Arcanum's bff forwards /installer/* with the shared key and the user's
+// identity (it strips both from what the browser sends). A wrong key is
+// refused outright; the password session isn't looked at then.
+async function arcanumAccess(env: Env, state: InstallerState, request: Request): Promise<Access | Response | null> {
+  const key = request.headers.get('X-Installer-Key');
+  if (key === null) return null;
+  const expected = state.behindArcanum && state.secrets ? (JSON.parse(await unsealValue(env, state, state.secrets)) as Record<string, string>)[INSTALLER_KEY_SECRET] : undefined;
+  if (!expected || !safeEqual(key, expected)) return json({ error: 'Ongeldige sleutel van Arcanum' }, 401);
+  const email = (request.headers.get('X-User-Email') ?? '').trim().toLowerCase();
+  if (!email || !isAdmin(state, email)) return json({ error: `${email || 'Dit account'} staat niet in de lijst met beheerders van deze installatie`, forbidden: true }, 403);
+  return { via: 'arcanum', sessionId: `arcanum:${email}`, email };
+}
+
+// The installer's own Worker name, from its workers.dev address
+// (<script>.<subdomain>.workers.dev) — the bff's service binding needs it.
+function installerScript(state: InstallerState, request: Request): string {
+  const host = new URL(request.url).hostname;
+  const suffix = `.${state.cloudflare?.subdomain}.workers.dev`;
+  const label = host.endsWith(suffix) ? host.slice(0, -suffix.length) : '';
+  if (/^[a-z0-9-]+$/.test(label)) return label;
+  return state.behindArcanum?.script ?? 'arcanum-installer';
+}
+
+export async function status(env: Env, state: InstallerState, sessionId: string, access?: Access) {
   const url = publicUrl(state);
   const steps = state.release ? planSteps(state.release.blueprint).map((s) => ({ ...s, ...(state.steps[s.id] ?? { status: 'todo' }) })) : [];
   return {
@@ -82,11 +110,20 @@ export async function status(env: Env, state: InstallerState, sessionId: string)
     steps,
     installed: state.installed ?? null,
     probeUrl: url && state.probePath ? `${url}${state.probePath}` : null,
+    access: access ? { via: access.via, email: access.via === 'arcanum' ? access.email : null } : null,
+    behindArcanum: state.behindArcanum ? { installerUrl: url ? `${url}/installer/` : null, publicAccessRemoved: !!state.behindArcanum.publicAccessRemoved } : null,
   };
 }
 
 export async function handleApi(request: Request, env: Env, path: string): Promise<Response> {
   if (!env.INSTALLER_PASSWORD) return json({ error: 'INSTALLER_PASSWORD is niet ingesteld op deze Worker' }, 500);
+
+  // No cross-site requests, and JSON bodies only: Arcanum's session cookie is
+  // SameSite=None, so this is what keeps another site from driving the API.
+  if (request.method !== 'GET') {
+    if (request.headers.get('Sec-Fetch-Site') === 'cross-site') return json({ error: 'Niet toegestaan vanaf een andere site' }, 403);
+    if (!(request.headers.get('Content-Type') ?? '').includes('application/json')) return json({ error: 'Verwacht JSON' }, 415);
+  }
 
   if (path === '/api/login' && request.method === 'POST') {
     const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
@@ -100,17 +137,23 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
     return json({ ok: true }, 200, { 'Set-Cookie': session.cookie });
   }
 
-  const sessionId = await sessionFrom(env, request);
-  if (!sessionId) return json({ error: 'Niet aangemeld' }, 401);
+  const state = await loadState(env);
+  const viaArcanum = await arcanumAccess(env, state, request);
+  if (viaArcanum instanceof Response) return viaArcanum;
+  let access: Access | null = viaArcanum;
+  if (!access) {
+    const id = await sessionFrom(env, request);
+    if (!id) return json({ error: 'Niet aangemeld' }, 401);
+    access = { via: 'password', sessionId: id };
+  }
+  const sessionId = access.sessionId;
 
   if (path === '/api/logout' && request.method === 'POST') {
     await env.INSTALLER_STATE.delete(`session-token:${sessionId}`);
-    return json({ ok: true }, 200, { 'Set-Cookie': clearedCookie });
+    return json({ ok: true }, 200, access.via === 'password' ? { 'Set-Cookie': clearedCookie } : {});
   }
 
-  const state = await loadState(env);
-
-  if (path === '/api/status' && request.method === 'GET') return json(await status(env, state, sessionId));
+  if (path === '/api/status' && request.method === 'GET') return json(await status(env, state, sessionId, access));
 
   try {
     if (path === '/api/cloudflare' && request.method === 'POST') {
@@ -155,7 +198,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       if (!keep) await env.INSTALLER_STATE.put(`session-token:${sessionId}`, JSON.stringify(await sealValue(env, state, token.trim())), { expirationTtl: SESSION_TOKEN_TTL_S });
       else await env.INSTALLER_STATE.delete(`session-token:${sessionId}`);
       await saveState(env, state);
-      return json(await status(env, state, sessionId));
+      return json(await status(env, state, sessionId, access));
     }
 
     if (path === '/api/login-provider' && request.method === 'POST') {
@@ -217,7 +260,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       // let it re-seed the login provider ("Verder installeren" applies it).
       for (const step of ['worker:arcanum-backend', 'login:reset', 'verify']) delete state.steps[step];
       await saveState(env, state);
-      return json({ ...(await status(env, state, sessionId)), checks });
+      return json({ ...(await status(env, state, sessionId, access)), checks });
     }
 
     if (path === '/api/address' && request.method === 'POST') {
@@ -233,7 +276,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
         for (const step of ['worker:arcanum-backend', 'worker:arcanum-bff', 'verify']) delete state.steps[step];
       }
       await saveState(env, state);
-      return json(await status(env, state, sessionId));
+      return json(await status(env, state, sessionId, access));
     }
 
     if (path === '/api/admins' && request.method === 'POST') {
@@ -247,17 +290,20 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       if (bad.length) return json({ error: `Geen geldig adres: ${bad.join(', ')}` }, 400);
       state.admins = list.join(', ');
       await saveState(env, state);
-      return json(await status(env, state, sessionId));
+      return json(await status(env, state, sessionId, access));
     }
 
     if (path === '/api/releases' && request.method === 'GET') {
       const index = await fetchIndex(env.RELEASES_INDEX_URL);
-      return json({ latest: index.latest, releases: installable(index).map((r) => ({ version: r.version, prerelease: r.prerelease, releasedAt: r.released_at, notesUrl: r.notes_url })) });
+      return json({ latest: index.latest, installed: state.installed?.version ?? null, releases: installable(index).map((r) => ({ version: r.version, prerelease: r.prerelease, releasedAt: r.released_at, notesUrl: r.notes_url })) });
     }
 
     if (path === '/api/release' && request.method === 'POST') {
       const { version } = await body(request);
-      if (state.installed) return json({ error: 'Arcanum is al geïnstalleerd — bijwerken komt in een volgende versie van de installer' }, 409);
+      // Installed: only a newer version (an update — every step runs again).
+      if (state.installed && compareVersions(String(version), state.installed.version) <= 0) {
+        return json({ error: `Arcanum ${state.installed.version} is geïnstalleerd — kies een nieuwere versie om bij te werken` }, 409);
+      }
       const index = await fetchIndex(env.RELEASES_INDEX_URL);
       const entry = installable(index).find((r) => r.version === version);
       if (!entry) return json({ error: `Release ${String(version)} bestaat niet of kan niet door deze installer geïnstalleerd worden` }, 400);
@@ -274,7 +320,66 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       }
       state.release = { version: manifest.version, manifestUrl: entry.manifest_url, manifest, blueprint: blueprintFrom(manifest, descriptors, database) };
       await saveState(env, state);
-      return json(await status(env, state, sessionId));
+      return json(await status(env, state, sessionId, access));
+    }
+
+    if (path.startsWith('/api/public-access')) {
+      if (!state.installed || !state.cloudflare) return json({ error: 'Installeer Arcanum eerst volledig' }, 409);
+      const token = await tokenFor(env, state, sessionId);
+      const cf = token ? cloudflareFor(env, token) : null;
+      const script = state.behindArcanum?.script ?? installerScript(state, request);
+      const directUrl = `https://${script}.${state.cloudflare.subdomain}.workers.dev`;
+
+      if (path === '/api/public-access' && request.method === 'GET') {
+        const bff = state.release!.blueprint.workers.find((w) => w.public_entry)!;
+        const descriptor = await fetchReleaseJson<WorkerDescriptor>(state.release!.manifestUrl, state.release!.manifest, bff.file);
+        return json({
+          supported: bffSupportsInstaller(descriptor),
+          linked: !!state.behindArcanum,
+          installerUrl: `${publicUrl(state)}/installer/`,
+          directUrl,
+          // Live from Cloudflare: re-deploying the installer turns it back on.
+          directEnabled: cf ? await cf.isOnWorkersDev(state.cloudflare.accountId, script).catch(() => null) : null,
+          via: access.via,
+        });
+      }
+      if (!cf) return json({ error: 'Plak het Cloudflare-token opnieuw (het werd niet onthouden)', needsToken: true }, 409);
+
+      if (path === '/api/public-access/link' && request.method === 'POST') {
+        const bff = state.release!.blueprint.workers.find((w) => w.public_entry)!;
+        const descriptor = await fetchReleaseJson<WorkerDescriptor>(state.release!.manifestUrl, state.release!.manifest, bff.file);
+        if (!bffSupportsInstaller(descriptor)) return json({ error: `Arcanum ${state.release!.version} kan de installer nog niet doorgeven — werk eerst bij naar een nieuwere versie (stap 4)` }, 409);
+        const target = installerScript(state, request);
+        if (!(await cf.scriptExists(state.cloudflare.accountId, target))) return json({ error: `Geen Worker ${target} gevonden op dit account — open de installer via zijn eigen workers.dev-adres en probeer opnieuw` }, 409);
+        const secrets = state.secrets ? (JSON.parse(await unsealValue(env, state, state.secrets)) as Record<string, string>) : {};
+        secrets[INSTALLER_KEY_SECRET] ??= generateSecret('hex32');
+        state.secrets = await sealValue(env, state, JSON.stringify(secrets));
+        state.behindArcanum = { script: target };
+        // Re-deploy the bff with the binding and the key, right away.
+        const outcome = await runStep(`worker:${bff.name}`, { env, state, cf });
+        state.steps[`worker:${bff.name}`] = { status: 'done', at: new Date().toISOString(), detail: outcome.detail };
+        await saveState(env, state);
+        return json(await status(env, state, sessionId, access));
+      }
+
+      if (path === '/api/public-access/remove' && request.method === 'POST') {
+        // Only from a request that came through Arcanum: that's the proof
+        // the installer stays reachable once its own address is gone.
+        if (!state.behindArcanum) return json({ error: 'Maak de installer eerst bereikbaar via Arcanum' }, 409);
+        if (access.via !== 'arcanum') return json({ error: `Open de installer via ${publicUrl(state)}/installer/ en schakel het openbare adres daar uit — zo weet je zeker dat hij bereikbaar blijft` }, 409);
+        await cf.setWorkersDev(state.cloudflare.accountId, state.behindArcanum.script, false);
+        state.behindArcanum.publicAccessRemoved = true;
+        await saveState(env, state);
+        return json(await status(env, state, sessionId, access));
+      }
+
+      if (path === '/api/public-access/restore' && request.method === 'POST') {
+        if (!state.behindArcanum) return json({ error: 'Het openbare adres is niet uitgeschakeld' }, 409);
+        await cf.setWorkersDev(state.cloudflare.accountId, state.behindArcanum.script, true);
+        state.behindArcanum.publicAccessRemoved = false;
+        await saveState(env, state);
+        return json(await status(env, state, sessionId, access));
+      }
     }
 
     const stepMatch = path.match(/^\/api\/steps\/(.+)$/);

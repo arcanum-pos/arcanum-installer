@@ -52,9 +52,18 @@ export interface InstallerState {
   // loads it to see the installation is live end to end.
   probePath?: string;
   installed?: { version: string; at: string };
+  // After install, the installer can move behind Arcanum: the bff gets a
+  // service binding to this Worker (`script`) and forwards /installer/* for
+  // logged-in admins, with a shared key (INSTALLER_INTERNAL_KEY in
+  // `secrets`). `publicAccessRemoved`: its own workers.dev address was
+  // switched off from there.
+  behindArcanum?: { script: string; publicAccessRemoved?: boolean };
 }
 
 const KEY = 'state';
+
+// The shared key the bff sends with every forwarded /installer/* request.
+export const INSTALLER_KEY_SECRET = 'INSTALLER_INTERNAL_KEY';
 
 export async function loadState(env: Env): Promise<InstallerState> {
   const stored = await env.INSTALLER_STATE.get<InstallerState>(KEY, 'json');
@@ -83,4 +92,16 @@ export function publicUrl(state: InstallerState): string | null {
 // changing them would orphan what's there.
 export function installationStarted(state: InstallerState): boolean {
   return Object.keys(state.resources.d1).length > 0 || Object.keys(state.steps).some((s) => s.startsWith('worker:'));
+}
+
+// "Bert@X.be" against "bert@x.be, *@leiding.be" — the same allowlist the
+// platform uses for INSTANCE_ADMIN_EMAILS.
+export function isAdmin(state: InstallerState, email: string): boolean {
+  const address = email.trim().toLowerCase();
+  const domain = address.split('@')[1];
+  if (!domain) return false;
+  return (state.admins ?? '')
+    .split(/[,;\s]+/)
+    .filter(Boolean)
+    .some((entry) => entry === address || entry === `*@${domain}`);
 }

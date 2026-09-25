@@ -1,5 +1,7 @@
 // The setup page: one self-contained HTML document (no build step, no
-// external assets), talking to /api/*. Dutch, like the rest of Arcanum.
+// external assets), talking to api/*. Dutch, like the rest of Arcanum. Every
+// path is relative: the same page works on the installer's own address
+// (at /) and behind Arcanum (at /installer/, forwarded by the bff).
 export const PAGE = /* html */ `<!doctype html>
 <html lang="nl">
 <head>
@@ -7,13 +9,13 @@ export const PAGE = /* html */ `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>arcanum · installeren</title>
-<link rel="icon" type="image/png" href="/assets/kabouter.png">
+<link rel="icon" type="image/png" href="assets/kabouter.png">
 <style>
   /* The platform's own look (arcanum-frontends src/shared/globals.css +
      shadcn components): neutral oklch tokens, Geist, radius 0.625rem, and
      the "arcanum" wordmark in Montserrat Bold next to the kabouter logo. */
-  @font-face { font-family: "Geist Variable"; font-style: normal; font-display: swap; font-weight: 100 900; src: url(/assets/geist.woff2) format("woff2-variations"); }
-  @font-face { font-family: "Montserrat"; font-style: normal; font-display: swap; font-weight: 700; src: url(/assets/montserrat-700.woff2) format("woff2"); }
+  @font-face { font-family: "Geist Variable"; font-style: normal; font-display: swap; font-weight: 100 900; src: url(assets/geist.woff2) format("woff2-variations"); }
+  @font-face { font-family: "Montserrat"; font-style: normal; font-display: swap; font-weight: 700; src: url(assets/montserrat-700.woff2) format("woff2"); }
   :root {
     --background: oklch(1 0 0); --foreground: oklch(0.145 0 0); --card: oklch(1 0 0); --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.97 0 0); --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0); --destructive: oklch(0.577 0.245 27.325);
@@ -88,7 +90,7 @@ export const PAGE = /* html */ `<!doctype html>
 <body>
 <main>
   <header>
-    <div class="brand"><img src="/assets/kabouter.png" alt=""><span>arcanum</span></div>
+    <div class="brand"><img src="assets/kabouter.png" alt=""><span>arcanum</span></div>
     <h1>Installeren</h1>
     <p class="soft">Installeert Arcanum op je eigen Cloudflare-account. Je gegevens blijven daar.</p>
   </header>
@@ -99,7 +101,14 @@ export const PAGE = /* html */ `<!doctype html>
     <form data-form="login"><label for="password">Wachtwoord</label><input id="password" name="password" type="password" autocomplete="current-password" required><button>Aanmelden</button><p class="error" data-error></p></form>
   </section>
 
+  <section id="denied" class="card hidden">
+    <h2>Geen toegang</h2>
+    <p data-denied></p>
+    <p class="soft">Alleen de beheerders van deze installatie (stap 3) kunnen de installer openen.</p>
+  </section>
+
   <div id="app" class="hidden" style="display:grid;gap:16px">
+    <p data-access class="soft hidden" style="text-align:center;margin:0"></p>
     <section id="s-cloudflare" class="card">
       <h2>1. Cloudflare</h2>
       <p>Maak een API-token met precies de nodige rechten: <a id="token-link" target="_blank" rel="noopener">token aanmaken bij Cloudflare</a> (opent met de rechten al ingevuld), kopieer het en plak het hier.</p>
@@ -166,11 +175,29 @@ export const PAGE = /* html */ `<!doctype html>
       <p>Meld je daar aan met een beheerdersadres en maak je organisatie aan — of importeer ze via <em>Instellingen → Gegevens</em> uit een export van je vorige installatie.</p>
     </section>
 
+    <section id="s-public" class="card hidden">
+      <h2>Openbare toegang verwijderen</h2>
+      <p class="soft">Nu Arcanum draait, kan de installer achter Arcanum: bereikbaar via <code data-installer-url>—</code> voor wie als beheerder aangemeld is, zonder wachtwoord. Daarna kan zijn eigen openbare adres uit.</p>
+      <ol class="steps" data-public-steps>
+        <li data-public="link"><span class="icon"></span><span><span class="title">Bereikbaar via Arcanum</span> <span class="detail"></span></span></li>
+        <li data-public="open"><span class="icon"></span><span><span class="title">Geopend via Arcanum</span> <span class="detail"></span></span></li>
+        <li data-public="direct"><span class="icon"></span><span><span class="title">Eigen openbaar adres uitgeschakeld</span> <span class="detail"></span></span></li>
+      </ol>
+      <div class="row">
+        <button data-public-link>Bereikbaar maken via Arcanum</button>
+        <a data-public-open class="hidden" href="#">Open de installer via Arcanum →</a>
+        <button data-public-remove class="hidden">Openbaar adres uitschakelen</button>
+        <button data-public-restore class="secondary hidden">Openbaar adres weer inschakelen</button>
+      </div>
+      <p class="soft" data-public-note></p>
+      <p class="error" data-error></p>
+    </section>
+
     <p class="row"><button class="secondary" data-logout-button>Afmelden</button></p>
   </div>
 </main>
 <footer>
-  <img src="/assets/kabouter.png" alt="">
+  <img src="assets/kabouter.png" alt="">
   <a href="https://kaboutersoft.be" target="_blank" rel="noopener noreferrer">Voor u geserveerd door kaboutersoft.be</a>
   <span aria-hidden="true">·</span>
   <a href="https://github.com/arcanum-pos/arcanum-installer" target="_blank" rel="noopener noreferrer" title="Arcanum is vrije software (AGPL-3.0)">Broncode</a>
@@ -182,11 +209,13 @@ let status = null;
 async function api(path, body) {
   const res = await fetch(path, body === undefined ? { credentials: 'same-origin' } : { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && path !== '/api/login') { show(false); throw new Error('Niet aangemeld'); }
+  if (res.status === 401 && path !== 'api/login') { show(false); throw new Error('Niet aangemeld'); }
+  if (res.status === 403 && data.forbidden) { denied(data.error); throw new Error(data.error); }
   if (!res.ok) throw Object.assign(new Error(data.error || ('HTTP ' + res.status)), { data });
   return data;
 }
 
+function denied(message) { $('#denied').classList.remove('hidden'); $('[data-denied]').textContent = message; $('#login').classList.add('hidden'); $('#app').classList.add('hidden'); }
 function show(loggedIn) { $('#login').classList.toggle('hidden', loggedIn); $('#app').classList.toggle('hidden', !loggedIn); }
 
 function render() {
@@ -208,7 +237,8 @@ function render() {
   googleHint();
   set('#s-admins', s.admins, s.admins ? s.admins : '');
   if (s.admins) $('#emails').value ||= s.admins;
-  set('#s-release', s.release, s.release ? 'Arcanum ' + s.release.version : '');
+  set('#s-release', s.release, s.release ? 'Arcanum ' + s.release.version + (s.installed && s.installed.version !== s.release.version ? ' (bijwerken van ' + s.installed.version + ')' : '') : '');
+  $('#s-release button').textContent = s.installed ? 'Bijwerken naar deze versie' : 'Kiezen';
   const list = $('[data-steps]'); list.innerHTML = '';
   for (const step of s.steps) {
     const li = document.createElement('li'); li.className = step.status; li.dataset.id = step.id;
@@ -217,11 +247,51 @@ function render() {
     list.append(li);
   }
   const ready = s.cloudflare && s.login && s.admins && s.release;
-  $('[data-run]').disabled = !ready || running; $('[data-run]').textContent = s.steps.some(x => x.status === 'done') ? 'Verder installeren' : 'Installeren';
+  $('[data-run]').disabled = !ready || running;
+  $('[data-run]').textContent = s.installed && s.release && s.installed.version !== s.release.version ? 'Bijwerken' : s.steps.some(x => x.status === 'done') ? 'Verder installeren' : 'Installeren';
   set('#s-install', s.installed, '');
   $('#s-done').classList.toggle('hidden', !s.installed);
   if (s.installed) { $('[data-url]').href = s.address.publicUrl; $('[data-url]').textContent = s.address.publicUrl; probe(); }
+  const viaArcanum = s.access && s.access.via === 'arcanum';
+  $('[data-access]').classList.toggle('hidden', !viaArcanum);
+  if (viaArcanum) $('[data-access]').textContent = 'Aangemeld via Arcanum als ' + s.access.email;
+  $('[data-logout-button]').classList.toggle('hidden', !!viaArcanum);
+  $('#s-public').classList.toggle('hidden', !s.installed);
+  if (s.installed) loadPublicAccess();
 }
+
+// "Openbare toegang verwijderen": link the installer to Arcanum, prove it
+// works by opening it there, and only then switch its own address off.
+let publicLoading = false;
+async function loadPublicAccess() {
+  if (publicLoading) return; publicLoading = true;
+  const box = $('#s-public'); const err = $('[data-error]', box);
+  try {
+    const p = await api('api/public-access');
+    const via = p.via === 'arcanum';
+    const mark = (id, state, detail) => { const li = $('[data-public="' + id + '"]', box); li.className = state; $('.detail', li).textContent = detail ? '— ' + detail : ''; };
+    $('[data-installer-url]').textContent = p.installerUrl;
+    mark('link', p.linked ? 'done' : 'todo', p.linked ? '' : (p.supported ? '' : 'deze versie van Arcanum kan dat nog niet — werk eerst bij (stap 4)'));
+    mark('open', via ? 'done' : 'todo', via ? '' : (p.linked ? 'open ' + p.installerUrl + ' en ga daar verder' : ''));
+    mark('direct', p.directEnabled === false ? 'done' : 'todo', p.directEnabled === null ? 'onbekend (Cloudflare-token nodig)' : p.directEnabled ? p.directUrl + ' is nog openbaar' : '');
+    $('[data-public-link]').classList.toggle('hidden', p.linked);
+    $('[data-public-link]').disabled = !p.supported;
+    const open = $('[data-public-open]'); open.href = p.installerUrl; open.classList.toggle('hidden', !p.linked || via);
+    $('[data-public-remove]').classList.toggle('hidden', !(via && p.directEnabled !== false));
+    $('[data-public-restore]').classList.toggle('hidden', !(via && p.directEnabled === false));
+    box.classList.toggle('done', p.linked && p.directEnabled === false);
+    $('[data-public-note]').textContent = p.directEnabled === false
+      ? 'De installer is alleen nog bereikbaar via Arcanum. Werk je de installer zelf bij (een nieuwe versie van je kopie), dan zet Cloudflare zijn openbare adres weer aan — schakel het dan hier opnieuw uit. Het wachtwoord (INSTALLER_PASSWORD) blijft als noodtoegang op de Worker staan.'
+      : '';
+  } catch (e) { err.textContent = e.message; } finally { publicLoading = false; }
+}
+async function publicAction(path) {
+  const err = $('#s-public [data-error]'); err.textContent = '';
+  try { status = await api(path, {}); render(); } catch (e) { err.textContent = e.message; }
+}
+$('[data-public-link]').addEventListener('click', () => publicAction('api/public-access/link'));
+$('[data-public-remove]').addEventListener('click', () => publicAction('api/public-access/remove'));
+$('[data-public-restore]').addEventListener('click', () => publicAction('api/public-access/restore'));
 
 // Live check from the browser: load one real asset of the installation
 // (bff → frontends). The installer itself can't fetch its own account's
@@ -254,14 +324,25 @@ function googleHint() {
 }
 document.addEventListener('input', (ev) => { if (ev.target.id === 'issuer') googleHint(); });
 
-async function refresh() { status = await api('/api/status'); render(); }
+async function refresh() { status = await api('api/status'); render(); }
+
+function newerThan(a, b) {
+  const x = a.split('-')[0].split('.').map(Number), y = b.split('-')[0].split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+}
 
 async function loadReleases() {
   try {
-    const r = await api('/api/releases');
+    const r = await api('api/releases');
     const sel = $('#version'); sel.innerHTML = '';
     for (const rel of r.releases) { const o = document.createElement('option'); o.value = rel.version; o.textContent = 'Arcanum ' + rel.version + (rel.prerelease ? ' (voorlopige versie)' : '') + (rel.version === r.latest ? ' — nieuwste' : ''); sel.append(o); }
     if (status && status.release) sel.value = status.release.version;
+    // Installed: preselect the newest version above it, if there is one.
+    if (r.installed && status && status.release && status.release.version === r.installed) {
+      const newer = r.releases.map((x) => x.version).filter((v) => newerThan(v, r.installed)).sort((a, b) => (newerThan(a, b) ? -1 : 1))[0];
+      if (newer) sel.value = newer;
+    }
   } catch (e) { $('#s-release [data-error]').textContent = e.message; }
 }
 
@@ -273,7 +354,7 @@ document.addEventListener('submit', async (ev) => {
   if (form.dataset.form === 'cloudflare') data.remember = form.remember.checked;
   const button = $('button', form); button.disabled = true;
   try {
-    const result = await api('/api/' + form.dataset.form, data);
+    const result = await api('api/' + form.dataset.form, data);
     if (form.dataset.form === 'login') { show(true); await refresh(); await loadReleases(); return; }
     if (result.needsSubdomain) {
       const box = $('[data-subdomain]', form); box.classList.remove('hidden');
@@ -301,7 +382,7 @@ async function runAll() {
       if (step.status === 'done') continue;
       for (let attempt = 0; ; attempt++) {
         const li = $('[data-id="' + CSS.escape(step.id) + '"]'); if (li) li.className = 'running';
-        const r = await api('/api/steps/' + encodeURIComponent(step.id), {});
+        const r = await api('api/steps/' + encodeURIComponent(step.id), {});
         if (r.status === 'done') break;
         if (r.status === 'retry' && attempt < 20) { if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + ' (opnieuw over 6 s)'; } await new Promise(res => setTimeout(res, 6000)); continue; }
         await refresh(); throw new Error(step.title + ': ' + r.detail);
@@ -312,7 +393,7 @@ async function runAll() {
   finally { running = false; await refresh().catch(() => {}); }
 }
 $('[data-run]').addEventListener('click', runAll);
-$('[data-logout-button]').addEventListener('click', async () => { await api('/api/logout', {}); show(false); });
+$('[data-logout-button]').addEventListener('click', async () => { await api('api/logout', {}); show(false); });
 
 (async () => { try { await refresh(); show(true); await loadReleases(); } catch { show(false); } })();
 </script>

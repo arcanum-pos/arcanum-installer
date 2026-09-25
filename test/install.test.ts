@@ -4,7 +4,7 @@
 // idempotency, resuming, and that secrets never leak.
 import { env, SELF } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { installFakes, OTHER_ACCOUNT_TOKEN, PUBLIC_URL, TOKEN, type Fakes } from './fakes';
+import { installFakes, NEXT_MIGRATION, NEXT_VERSION, OTHER_ACCOUNT_TOKEN, PUBLIC_URL, SUBDOMAIN, TOKEN, type Fakes } from './fakes';
 
 const PASSWORD = 'test-installer-password';
 const CLIENT_SECRET = 'idp-client-secret-value-xyz';
@@ -22,10 +22,10 @@ beforeEach(async () => {
 
 afterEach(() => vi.restoreAllMocks());
 
-async function call(method: string, path: string, body?: unknown, withCookie = true) {
-  const res = await SELF.fetch(`https://installer.test${path}`, {
+async function call(method: string, path: string, body?: unknown, withCookie = true, opts: { origin?: string; headers?: Record<string, string> } = {}) {
+  const res = await SELF.fetch(`${opts.origin ?? 'https://installer.test'}${path}`, {
     method,
-    headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(withCookie && cookie ? { Cookie: cookie } : {}) },
+    headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(withCookie && cookie ? { Cookie: cookie } : {}), ...opts.headers },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const setCookie = res.headers.get('Set-Cookie');
@@ -99,7 +99,9 @@ describe('setup page access', () => {
     }
     const page = await SELF.fetch('https://installer.test/');
     const html = await page.text();
-    expect(html).toContain('/assets/kabouter.png');
+    expect(html).toContain('src="assets/kabouter.png"');
+    // Relative paths only: the same page is served at / and, behind Arcanum, at /installer/.
+    expect(html).not.toMatch(/["'(]\/(api|assets)\//);
     expect(html).toContain('<span>arcanum</span>');
     expect(page.headers.get('Content-Security-Policy')).toContain("font-src 'self'");
     expect(html).not.toMatch(/https?:\/\/(fonts\.|cdn|unpkg)/);
@@ -593,5 +595,139 @@ describe('secrets', () => {
     const r = await call('POST', '/api/steps/d1%3Aarcanum-backend', {});
     expect(r.status).toBe(409);
     expect(r.body.needsToken).toBe(true);
+  });
+});
+
+describe('updates', () => {
+  it('updates an installation to a newer version: only the new migration runs, secrets and data stay', async () => {
+    await configure();
+    expect((await runAll()).failed).toBeNull();
+    const key = binding('arcanum-backend', 'ENCRYPTION_KEY').text;
+    const backendDb = [...fakes.cf.d1.values()].find((d) => d.name === 'arcanum-backend')!;
+    const schemaRuns = () => backendDb.queries.filter((q) => q.includes('CREATE TABLE IF NOT EXISTS d1_migrations')).length;
+    expect(schemaRuns()).toBe(1);
+
+    expect((await call('POST', '/api/release', { version: '0.1.1' })).status).toBe(409); // not newer
+    fakes.releases.offerUpdate = true;
+    expect((await call('GET', '/api/releases')).body.installed).toBe('0.1.1');
+    const chosen = await call('POST', '/api/release', { version: NEXT_VERSION });
+    expect(chosen.status, JSON.stringify(chosen.body)).toBe(200);
+    expect(chosen.body.steps.every((s: any) => s.status === 'todo')).toBe(true);
+    expect(chosen.body.installed.version).toBe('0.1.1'); // until the update completes
+
+    const run = await runAll();
+    expect(run.failed, run.detail).toBeNull();
+    expect((await call('GET', '/api/status')).body.installed.version).toBe(NEXT_VERSION);
+    // The new migration ran exactly once, with its record; schema.sql never ran again
+    // (it would have marked the migration applied without running it).
+    expect(backendDb.queries.filter((q) => q.includes(NEXT_MIGRATION.sql))).toHaveLength(1);
+    expect(backendDb.queries.find((q) => q.includes(NEXT_MIGRATION.sql))).toContain(`INSERT OR IGNORE INTO d1_migrations (name) VALUES ('${NEXT_MIGRATION.name}')`);
+    expect(schemaRuns()).toBe(1);
+    expect(binding('arcanum-backend', 'ENCRYPTION_KEY').text).toBe(key);
+    expect(fakes.cf.d1.size).toBe(2);
+    // Durable Objects are at the latest tag already: nothing re-sent.
+    expect(fakes.cf.scripts.get('arcanum-devicehub')!.metadata.migrations).toBeUndefined();
+    // Running the schema step again applies nothing.
+    const again = await call('POST', `/api/steps/${encodeURIComponent('schema:arcanum-backend')}`, {});
+    expect(again.body.detail).toBe('al bijgewerkt');
+  });
+});
+
+describe('behind Arcanum ("Openbare toegang verwijderen")', () => {
+  const DIRECT = `https://my-installer.${SUBDOMAIN}.workers.dev`;
+  // What the bff sends: the path without /installer, the shared key, the identity.
+  const viaArcanum = (key: string, email = 'bert@scouts.test') => ({ headers: { 'X-Installer-Key': key, 'X-User-Email': email } });
+  const installerKey = () => binding('arcanum-bff', 'INSTALLER_INTERNAL_KEY')?.text as string;
+
+  async function installAndUpdate() {
+    await configure();
+    expect((await runAll()).failed).toBeNull();
+    fakes.releases.offerUpdate = true;
+    await call('POST', '/api/release', { version: NEXT_VERSION });
+    expect((await runAll()).failed).toBeNull();
+    // The installer itself, as the Deploy button created it (under a name of the admin's choice).
+    fakes.cf.scripts.set('my-installer', { metadata: { bindings: [] }, modules: {}, order: 0 });
+    fakes.cf.workersDev.set('my-installer', true);
+  }
+
+  it("needs a release whose bff can forward the installer", async () => {
+    await configure();
+    await runAll();
+    const p = await call('GET', '/api/public-access', undefined, true, { origin: DIRECT });
+    expect(p.body.supported).toBe(false);
+    const r = await call('POST', '/api/public-access/link', {}, true, { origin: DIRECT });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/werk eerst bij/);
+  });
+
+  it('links: the bff gets a service binding to this installer (named from its own address) and the shared key', async () => {
+    await installAndUpdate();
+    expect(binding('arcanum-bff', 'ARCANUM_INSTALLER_SERVICE')).toBeUndefined();
+    const r = await call('POST', '/api/public-access/link', {}, true, { origin: DIRECT });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.behindArcanum).toEqual({ installerUrl: `${PUBLIC_URL}/installer/`, publicAccessRemoved: false });
+    expect(binding('arcanum-bff', 'ARCANUM_INSTALLER_SERVICE')).toEqual({ type: 'service', name: 'ARCANUM_INSTALLER_SERVICE', service: 'my-installer' });
+    expect(installerKey()).toMatch(/^[0-9a-f]{64}$/);
+    expect(binding('arcanum-bff', 'INSTALLER_INTERNAL_KEY').type).toBe('secret_text');
+    // The key is never shown, and later bff deploys (e.g. a new address) keep the link.
+    expect(bodies.join('\n')).not.toContain(installerKey());
+    const key = installerKey();
+    await call('POST', '/api/address', { customDomain: 'arcanum.scouts-elewijt.be' });
+    expect((await runAll()).failed).toBeNull();
+    expect(binding('arcanum-bff', 'ARCANUM_INSTALLER_SERVICE').service).toBe('my-installer');
+    expect(installerKey()).toBe(key);
+  });
+
+  it('lets admins in through Arcanum without the password — and nobody else', async () => {
+    await installAndUpdate();
+    await call('POST', '/api/public-access/link', {}, true, { origin: DIRECT });
+    const key = installerKey();
+    const ok = await call('GET', '/api/status', undefined, false, viaArcanum(key));
+    expect(ok.status).toBe(200);
+    expect(ok.body.access).toEqual({ via: 'arcanum', email: 'bert@scouts.test' });
+    expect((await call('GET', '/api/status', undefined, false, viaArcanum(key, 'Iemand@Leiding.test'))).status).toBe(200); // *@leiding.test
+    const stranger = await call('GET', '/api/status', undefined, false, viaArcanum(key, 'stranger@elders.test'));
+    expect(stranger.status).toBe(403);
+    expect(stranger.body.forbidden).toBe(true);
+    expect((await call('GET', '/api/status', undefined, false, viaArcanum('0'.repeat(64)))).status).toBe(401);
+    // A key header is never a fallback to the password session.
+    expect((await call('GET', '/api/status', undefined, true, viaArcanum('wrong'))).status).toBe(401);
+  });
+
+  it('refuses a key before the installer is linked', async () => {
+    await installAndUpdate();
+    expect((await call('GET', '/api/status', undefined, false, viaArcanum('anything'))).status).toBe(401);
+  });
+
+  it('switches its own address off only from a request that came through Arcanum, and back on', async () => {
+    await installAndUpdate();
+    await call('POST', '/api/public-access/link', {}, true, { origin: DIRECT });
+    const direct = await call('POST', '/api/public-access/remove', {}, true, { origin: DIRECT });
+    expect(direct.status).toBe(409);
+    expect(direct.body.error).toContain(`${PUBLIC_URL}/installer/`);
+    expect(fakes.cf.workersDev.get('my-installer')).toBe(true);
+
+    const key = installerKey();
+    const before = await call('GET', '/api/public-access', undefined, false, viaArcanum(key));
+    expect(before.body).toMatchObject({ supported: true, linked: true, directUrl: DIRECT, directEnabled: true, via: 'arcanum' });
+    const removed = await call('POST', '/api/public-access/remove', {}, false, viaArcanum(key));
+    expect(removed.status, JSON.stringify(removed.body)).toBe(200);
+    expect(removed.body.behindArcanum.publicAccessRemoved).toBe(true);
+    expect(fakes.cf.workersDev.get('my-installer')).toBe(false);
+    expect((await call('GET', '/api/public-access', undefined, false, viaArcanum(key))).body.directEnabled).toBe(false);
+
+    await call('POST', '/api/public-access/restore', {}, false, viaArcanum(key));
+    expect(fakes.cf.workersDev.get('my-installer')).toBe(true);
+  });
+});
+
+describe('cross-site requests', () => {
+  it('refuses POSTs that are not JSON or come from another site (the Arcanum session cookie is SameSite=None)', async () => {
+    await configure();
+    const form = await SELF.fetch('https://installer.test/api/steps/secrets', { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'a=1' });
+    expect(form.status).toBe(415);
+    const cross = await call('POST', '/api/steps/secrets', {}, true, { headers: { 'Sec-Fetch-Site': 'cross-site' } });
+    expect(cross.status).toBe(403);
+    expect((await call('POST', '/api/steps/secrets', {}, true, { headers: { 'Sec-Fetch-Site': 'same-origin' } })).body.status).toBe('done');
   });
 });
