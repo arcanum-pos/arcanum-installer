@@ -257,6 +257,8 @@ export class FakeReleases {
   versions = new Map<string, Published>();
   tampered = new Set<string>();
   offerUpdate = false;
+  // The fetch cache mode of every releases.json request.
+  indexCacheModes: (RequestCache | undefined)[] = [];
   assetFiles: Record<string, { hash: string; size: number; contentType: string; chunk: string }> = {};
 
   get files() {
@@ -388,7 +390,10 @@ export async function installFakes(): Promise<Fakes> {
     if (url.hostname === 'installer.test') return realFetch(input as RequestInfo, init); // SELF
     calls++;
     if (url.hostname === 'cf.test') return cf.handle(request);
-    if (url.hostname === 'releases.test') return releases.handle(url);
+    if (url.hostname === 'releases.test') {
+      if (url.pathname === '/releases.json') releases.indexCacheModes.push(request.cache);
+      return releases.handle(url);
+    }
     if ((url.hostname === 'login.test' && (url.pathname === '/device' || url.pathname === '/token')) || (url.hostname === 'oauth2.googleapis.com' && (url.pathname === '/device/code' || url.pathname === '/token'))) {
       const host = url.hostname === 'oauth2.googleapis.com' ? 'accounts.google.com' : url.hostname;
       return providerEndpoint(host, url.pathname.includes('device') ? 'device' : 'token', request, providerBroken);

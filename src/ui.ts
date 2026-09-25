@@ -158,6 +158,7 @@ export const PAGE = /* html */ `<!doctype html>
     <section id="s-release" class="card">
       <h2>4. Versie</h2>
       <p data-summary class="soft"></p>
+      <p data-update></p>
       <form data-form="release"><label for="version">Versie</label><select id="version" name="version"></select><button>Kiezen</button><p class="error" data-error></p></form>
     </section>
 
@@ -336,13 +337,16 @@ async function loadReleases() {
   try {
     const r = await api('api/releases');
     const sel = $('#version'); sel.innerHTML = '';
-    for (const rel of r.releases) { const o = document.createElement('option'); o.value = rel.version; o.textContent = 'Arcanum ' + rel.version + (rel.prerelease ? ' (voorlopige versie)' : '') + (rel.version === r.latest ? ' — nieuwste' : ''); sel.append(o); }
-    if (status && status.release) sel.value = status.release.version;
-    // Installed: preselect the newest version above it, if there is one.
-    if (r.installed && status && status.release && status.release.version === r.installed) {
-      const newer = r.releases.map((x) => x.version).filter((v) => newerThan(v, r.installed)).sort((a, b) => (newerThan(a, b) ? -1 : 1))[0];
-      if (newer) sel.value = newer;
+    const newer = r.installed ? r.releases.map((x) => x.version).filter((v) => newerThan(v, r.installed)).sort((a, b) => (newerThan(a, b) ? -1 : 1)) : [];
+    for (const rel of r.releases) {
+      const o = document.createElement('option'); o.value = rel.version;
+      const tag = rel.version === r.installed ? ' — geïnstalleerd' : newer.includes(rel.version) ? ' — nieuwer' : rel.version === r.latest ? ' — nieuwste' : '';
+      o.textContent = 'Arcanum ' + rel.version + (rel.prerelease ? ' (voorlopige versie)' : '') + tag; sel.append(o);
     }
+    // Installed: preselect the newest version above it; otherwise the chosen one.
+    if (newer.length) sel.value = newer[0];
+    else if (status && status.release) sel.value = status.release.version;
+    $('[data-update]').textContent = newer.length ? 'Nieuwere versie beschikbaar: Arcanum ' + newer[0] + ' — kies ze en klik op "Bijwerken naar deze versie".' : '';
   } catch (e) { $('#s-release [data-error]').textContent = e.message; }
 }
 

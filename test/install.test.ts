@@ -609,7 +609,12 @@ describe('updates', () => {
 
     expect((await call('POST', '/api/release', { version: '0.1.1' })).status).toBe(409); // not newer
     fakes.releases.offerUpdate = true;
-    expect((await call('GET', '/api/releases')).body.installed).toBe('0.1.1');
+    const list = (await call('GET', '/api/releases')).body;
+    expect(list.installed).toBe('0.1.1');
+    expect(list.releases.map((r: any) => r.version)).toEqual([NEXT_VERSION, '0.1.1']);
+    // Fresh from the index, never Cloudflare's cache: a release published minutes ago shows.
+    expect(fakes.releases.indexCacheModes.length).toBeGreaterThan(0);
+    expect(fakes.releases.indexCacheModes.every((m) => m === 'no-store')).toBe(true);
     const chosen = await call('POST', '/api/release', { version: NEXT_VERSION });
     expect(chosen.status, JSON.stringify(chosen.body)).toBe(200);
     expect(chosen.body.steps.every((s: any) => s.status === 'todo')).toBe(true);

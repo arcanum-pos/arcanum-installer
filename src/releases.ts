@@ -33,14 +33,15 @@ export interface Manifest {
 
 export class ReleaseError extends Error {}
 
-async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
   if (!res.ok) throw new ReleaseError(`Kon ${url} niet ophalen (HTTP ${res.status})`);
   return (await res.json()) as T;
 }
 
 export async function fetchIndex(indexUrl: string): Promise<ReleaseIndex> {
-  const index = await getJson<ReleaseIndex>(indexUrl);
+  // Not from Cloudflare's cache: a release published minutes ago must show.
+  const index = await getJson<ReleaseIndex>(indexUrl, { cache: 'no-store' });
   if (index?.format !== 'arcanum-releases-index' || !Array.isArray(index.releases)) throw new ReleaseError('releases.json heeft een onbekend formaat');
   return index;
 }
