@@ -8,6 +8,7 @@ import type { WorkerDescriptor } from './contract';
 import { fetchIndex, fetchManifest, fetchReleaseJson, installable, ReleaseError } from './releases';
 import { installationStarted, loadState, publicUrl, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
 import { blueprintFrom, planSteps, runStep } from './steps';
+import { checkClients } from './idp-check';
 
 const TOKEN_PERMISSIONS = [
   { key: 'workers_scripts', type: 'edit' },
@@ -184,6 +185,24 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       if (typeof discovery.device_authorization_endpoint !== 'string') {
         return json({ error: 'Deze login-provider ondersteunt geen apparaat-aanmelding (device authorization) — die is nodig voor de kassa' }, 400);
       }
+      // Test the clients with the provider before saving anything.
+      const kassaSecret = clientSecret || (state.login ? await unsealValue(env, state, state.login.clientSecret) : '');
+      const browserSecret = authCodeClientSecret || (keepAuthCodeSecret ? await unsealValue(env, state, keepAuthCodeSecret) : '');
+      const checks =
+        typeof discovery.token_endpoint === 'string'
+          ? await checkClients({
+              deviceEndpoint: discovery.device_authorization_endpoint,
+              tokenEndpoint: discovery.token_endpoint,
+              isGoogle,
+              clientId,
+              clientSecret: kassaSecret,
+              scopes: scopes ?? 'openid profile email offline_access',
+              authCode: authCodeClientId ? { clientId: authCodeClientId, clientSecret: browserSecret, redirectUri: `${publicUrl(state) ?? issuer}/callback` } : undefined,
+            })
+          : [];
+      const refused = checks.filter((c) => c.blocking);
+      if (refused.length) return json({ error: refused.map((c) => c.message).join(' '), checks }, 400);
+
       state.login = {
         issuer,
         clientId,
@@ -198,7 +217,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       // let it re-seed the login provider ("Verder installeren" applies it).
       for (const step of ['worker:arcanum-backend', 'login:reset', 'verify']) delete state.steps[step];
       await saveState(env, state);
-      return json(await status(env, state, sessionId));
+      return json({ ...(await status(env, state, sessionId)), checks });
     }
 
     if (path === '/api/address' && request.method === 'POST') {

@@ -145,6 +145,67 @@ describe('configuration', () => {
     expect(status.cloudflare).toMatchObject({ accountName: 'Scouts Elewijt', subdomain: 'scouts', tokenAvailable: true });
   });
 
+  it('tests the clients with the provider before saving, and explains a refusal', async () => {
+    await call('POST', '/api/login', { password: PASSWORD });
+    await call('POST', '/api/cloudflare', { token: TOKEN });
+    const save = (body: Record<string, unknown>) => call('POST', '/api/login-provider', body);
+
+    const unknown = await save({ issuer: 'https://login.test', clientId: 'bestaat-niet', clientSecret: 'x' });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.error).toMatch(/client.*kassa/i);
+
+    const webAsDevice = await save({ issuer: 'https://accounts.google.com', clientId: 'web-client.apps.googleusercontent.com', clientSecret: 'web-secret-value-456' });
+    expect(webAsDevice.status).toBe(400);
+    expect(webAsDevice.body.error).toMatch(/TVs and Limited Input/);
+
+    const wrongSecret = await save({ issuer: 'https://login.test', clientId: 'arcanum-client', clientSecret: 'fout-secret' });
+    expect(wrongSecret.status).toBe(400);
+    expect(wrongSecret.body.error).toMatch(/secret/i);
+
+    const badScope = await save({ issuer: 'https://accounts.google.com', clientId: 'tv-client.apps.googleusercontent.com', clientSecret: 'tv-secret-value-123', scopes: 'openid profile email offline_access' });
+    expect(badScope.status).toBe(400);
+    expect(badScope.body.error).toMatch(/scopes/i);
+
+    const wrongWebSecret = await save({
+      issuer: 'https://accounts.google.com',
+      clientId: 'tv-client.apps.googleusercontent.com',
+      clientSecret: 'tv-secret-value-123',
+      authCodeClientId: 'web-client.apps.googleusercontent.com',
+      authCodeClientSecret: 'fout',
+    });
+    expect(wrongWebSecret.status).toBe(400);
+    expect(wrongWebSecret.body.error).toMatch(/browser/i);
+
+    // Nothing was saved by any refused attempt.
+    expect((await call('GET', '/api/status')).body.login).toBeNull();
+
+    const good = await save({
+      issuer: 'https://accounts.google.com',
+      clientId: 'tv-client.apps.googleusercontent.com',
+      clientSecret: 'tv-secret-value-123',
+      authCodeClientId: 'web-client.apps.googleusercontent.com',
+      authCodeClientSecret: 'web-secret-value-456',
+    });
+    expect(good.status, JSON.stringify(good.body)).toBe(200);
+    expect(good.body.checks.map((c: any) => c.ok)).toEqual([true, true, true]);
+  });
+
+  it("saves anyway (with a note) when the provider can't be reached for the test", async () => {
+    await call('POST', '/api/login', { password: PASSWORD });
+    await call('POST', '/api/cloudflare', { token: TOKEN });
+    fakes.providerBroken.value = true;
+    const r = await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'arcanum-client', clientSecret: CLIENT_SECRET });
+    expect(r.status).toBe(200);
+    expect(r.body.checks.some((c: any) => !c.ok && /niet controleren/.test(c.message))).toBe(true);
+    expect(r.body.login).toBeTruthy();
+  });
+
+  it('keeps using the stored secret for the test when the field is left empty', async () => {
+    await configure();
+    const r = await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'arcanum-client' });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+  });
+
   it('refuses a login provider without discovery, without device login, or not on https', async () => {
     await call('POST', '/api/login', { password: PASSWORD });
     expect((await call('POST', '/api/login-provider', { issuer: 'http://login.test', clientId: 'x', clientSecret: 'y' })).status).toBe(400);

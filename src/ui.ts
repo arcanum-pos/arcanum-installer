@@ -77,6 +77,11 @@ export const PAGE = /* html */ `<!doctype html>
   @media (prefers-color-scheme: dark) { footer img { filter: invert(1); } }
   footer a { color: var(--muted-foreground); text-decoration: none; }
   footer a:hover { color: var(--foreground); text-decoration: underline; }
+  ul.checks { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 2px; }
+  ul.checks li::before { display: inline-block; width: 1.3em; font-weight: 700; }
+  ul.checks li.ok::before { content: "✓"; color: var(--success); }
+  ul.checks li.bad { color: var(--destructive); } ul.checks li.bad::before { content: "✕"; }
+  ul.checks li.note { color: var(--muted-foreground); } ul.checks li.note::before { content: "!"; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -130,6 +135,7 @@ export const PAGE = /* html */ `<!doctype html>
         <input id="authCodeClientSecret" name="authCodeClientSecret" type="password" autocomplete="off" placeholder="Client secret">
         <label for="connectionName">Auth0-connectie (optioneel)</label><input id="connectionName" name="connectionName" type="text">
         <button>Controleren en bewaren</button><p class="error" data-error></p>
+        <ul class="checks" data-checks></ul>
       </form>
     </section>
 
@@ -234,6 +240,12 @@ function probe(attempt = 0) {
   img.src = status.probeUrl + '?check=' + Date.now();
 }
 
+// Results of the provider test of step 2 (kassa client, its secret, browser client).
+function showChecks(checks) {
+  const list = $('[data-checks]'); list.innerHTML = '';
+  for (const c of checks) { const li = document.createElement('li'); li.className = c.ok ? 'ok' : c.blocking ? 'bad' : 'note'; li.textContent = c.message; list.append(li); }
+}
+
 function googleHint() {
   // No regex here: this page is a template string, where \/ would collapse to / .
   let google = false; try { google = new URL($('#issuer').value.trim()).host === 'accounts.google.com'; } catch {}
@@ -275,9 +287,10 @@ document.addEventListener('submit', async (ev) => {
       $('[data-accounts]', form).classList.remove('hidden'); err.textContent = 'Kies het account en bevestig opnieuw.'; return;
     }
     status = result; render();
+    if (result.checks) showChecks(result.checks);
     if (form.dataset.form === 'cloudflare') form.token.value = '';
     if (form.dataset.form === 'login-provider') { form.clientSecret.value = ''; form.authCodeClientSecret.value = ''; }
-  } catch (e) { err.textContent = e.message; } finally { button.disabled = false; }
+  } catch (e) { err.textContent = e.message; if (e.data && e.data.checks) showChecks(e.data.checks); } finally { button.disabled = false; }
 });
 
 let running = false;

@@ -298,12 +298,43 @@ export class FakeReleases {
   }
 }
 
+// A login provider's clients, by host: `device` clients can do the kassa's
+// device login, `web` clients only browser login (Google's two types).
+export const PROVIDER_CLIENTS: Record<string, Record<string, { secret: string; type: 'device' | 'web' }>> = {
+  'login.test': { 'arcanum-client': { secret: 'idp-client-secret-value-xyz', type: 'device' } },
+  'accounts.google.com': {
+    'tv-client.apps.googleusercontent.com': { secret: 'tv-secret-value-123', type: 'device' },
+    'web-client.apps.googleusercontent.com': { secret: 'web-secret-value-456', type: 'web' },
+  },
+};
+
+// The provider's device and token endpoints, answering like real ones do.
+async function providerEndpoint(host: string, kind: 'device' | 'token', request: Request, broken: { value: boolean }): Promise<Response> {
+  if (broken.value) return new Response('upstream error', { status: 503 });
+  const form = new URLSearchParams(await request.text());
+  const clients = PROVIDER_CLIENTS[host] ?? {};
+  const client = clients[form.get('client_id') ?? ''];
+  const error = (status: number, code: string, description = code) => Response.json({ error: code, error_description: description }, { status });
+  if (!client) return error(401, 'invalid_client', 'The OAuth client was not found.');
+  if (kind === 'device') {
+    if (client.type !== 'device') return error(401, 'invalid_client', 'Invalid client type.');
+    if (host === 'accounts.google.com' && (form.get('scope') ?? '').split(' ').includes('offline_access')) return error(400, 'invalid_scope', 'Some requested scopes were invalid.');
+    return Response.json({ device_code: 'dc-123', user_code: 'ABCD-EFGH', verification_uri: `https://${host}/device`, expires_in: 1800, interval: 5 });
+  }
+  if (form.get('client_secret') !== client.secret) return error(401, 'invalid_client', 'Unauthorized');
+  if (form.get('grant_type') === 'urn:ietf:params:oauth:grant-type:device_code') return error(428, 'authorization_pending', 'Precondition Required');
+  if (form.get('grant_type') === 'authorization_code') return error(400, 'invalid_grant', 'Malformed auth code.');
+  return error(400, 'unsupported_grant_type');
+}
+
 export interface Fakes {
   cf: FakeCloudflare;
   releases: FakeReleases;
   fetchCalls: () => number;
   // Fetches the installer made to the installation's own workers.dev URL.
   publicUrlFetches: () => number;
+  // Makes the provider's device/token endpoints answer 503 (an outage, not a refusal).
+  providerBroken: { value: boolean };
 }
 
 // Routes every outbound fetch of the Worker under test to the fakes.
@@ -312,6 +343,7 @@ export async function installFakes(): Promise<Fakes> {
   const releases = await FakeReleases.create();
   let calls = 0;
   let publicFetches = 0;
+  const providerBroken = { value: false };
   const realFetch = globalThis.fetch;
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const request = new Request(input as RequestInfo, init);
@@ -320,6 +352,10 @@ export async function installFakes(): Promise<Fakes> {
     calls++;
     if (url.hostname === 'cf.test') return cf.handle(request);
     if (url.hostname === 'releases.test') return releases.handle(url);
+    if ((url.hostname === 'login.test' && (url.pathname === '/device' || url.pathname === '/token')) || (url.hostname === 'oauth2.googleapis.com' && (url.pathname === '/device/code' || url.pathname === '/token'))) {
+      const host = url.hostname === 'oauth2.googleapis.com' ? 'accounts.google.com' : url.hostname;
+      return providerEndpoint(host, url.pathname.includes('device') ? 'device' : 'token', request, providerBroken);
+    }
     if (url.hostname === 'login.test' && url.pathname === '/.well-known/openid-configuration') {
       return Response.json({ issuer: 'https://login.test', authorization_endpoint: 'https://login.test/authorize', token_endpoint: 'https://login.test/token', device_authorization_endpoint: 'https://login.test/device' });
     }
@@ -336,5 +372,5 @@ export async function installFakes(): Promise<Fakes> {
     }
     throw new Error(`Unexpected outbound fetch in test: ${request.method} ${request.url}`);
   });
-  return { cf, releases, fetchCalls: () => calls, publicUrlFetches: () => publicFetches };
+  return { cf, releases, fetchCalls: () => calls, publicUrlFetches: () => publicFetches, providerBroken };
 }
