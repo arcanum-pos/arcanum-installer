@@ -225,7 +225,8 @@ function probe(attempt = 0) {
 }
 
 function googleHint() {
-  const google = /^https:\/\/accounts\.google\.com\/?$/.test($('#issuer').value.trim());
+  // No regex here: this page is a template string, where \/ would collapse to / .
+  let google = false; try { google = new URL($('#issuer').value.trim()).host === 'accounts.google.com'; } catch {}
   $('[data-google]').classList.toggle('hidden', !google);
   if (google && !$('#scopes').value) $('#scopes').value = 'openid profile email';
 }
