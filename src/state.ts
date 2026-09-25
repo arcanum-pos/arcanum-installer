@@ -26,7 +26,19 @@ export interface InstallerState {
   v: 1;
   salt: string;
   cloudflare?: { accountId: string; accountName: string; subdomain: string; remember: boolean; token?: Sealed };
-  login?: { issuer: string; clientId: string; clientSecret: Sealed; connectionName?: string; authorizationEndpoint: string };
+  login?: {
+    issuer: string;
+    clientId: string;
+    clientSecret: Sealed;
+    connectionName?: string;
+    authorizationEndpoint: string;
+    // Google rejects `offline_access`; unset = the platform default scopes.
+    scopes?: string;
+    // A separate client for browser login (Google: "Web application"); the
+    // primary client then only does the kassa's device login.
+    authCodeClientId?: string;
+    authCodeClientSecret?: Sealed;
+  };
   admins?: string;
   release?: { version: string; manifestUrl: string; manifest: Manifest; blueprint: Blueprint };
   secrets?: Sealed;

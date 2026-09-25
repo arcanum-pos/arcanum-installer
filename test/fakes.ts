@@ -5,7 +5,7 @@
 // the real v0.1.1 descriptors (test/fixtures), a login provider, and the
 // installed Arcanum's public address. Installed via vi.spyOn(fetch).
 import { vi } from 'vitest';
-import fixture from './fixtures/release-0.1.1.json';
+import fixture from './fixtures/release-0.1.2.json';
 
 export const TOKEN = 'cf-test-token-0123456789abcdefghij';
 export const OTHER_ACCOUNT_TOKEN = 'cf-other-account-token-0123456789ab';
@@ -305,6 +305,9 @@ export async function installFakes(): Promise<Fakes> {
     if (url.hostname === 'releases.test') return releases.handle(url);
     if (url.hostname === 'login.test' && url.pathname === '/.well-known/openid-configuration') {
       return Response.json({ issuer: 'https://login.test', authorization_endpoint: 'https://login.test/authorize', token_endpoint: 'https://login.test/token', device_authorization_endpoint: 'https://login.test/device' });
+    }
+    if (url.href === 'https://accounts.google.com/.well-known/openid-configuration') {
+      return Response.json({ issuer: 'https://accounts.google.com', authorization_endpoint: 'https://accounts.google.com/o/oauth2/v2/auth', token_endpoint: 'https://oauth2.googleapis.com/token', device_authorization_endpoint: 'https://oauth2.googleapis.com/device/code' });
     }
     if (url.hostname === 'nodevice.test') return Response.json({ issuer: 'https://nodevice.test', authorization_endpoint: 'https://nodevice.test/authorize' });
     if (url.origin === PUBLIC_URL) {

@@ -287,6 +287,81 @@ describe('fresh install', () => {
   });
 });
 
+describe('login provider options', () => {
+  it("Google: scopes without offline_access by default, and a separate browser-login client", async () => {
+    await call('POST', '/api/login', { password: PASSWORD });
+    await call('POST', '/api/cloudflare', { token: TOKEN });
+    const saved = await call('POST', '/api/login-provider', {
+      issuer: 'https://accounts.google.com',
+      clientId: 'tv-client.apps.googleusercontent.com',
+      clientSecret: 'tv-secret-value-123',
+      authCodeClientId: 'web-client.apps.googleusercontent.com',
+      authCodeClientSecret: 'web-secret-value-456',
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(saved.body.login).toMatchObject({ scopes: 'openid profile email', authCodeClientId: 'web-client.apps.googleusercontent.com', authCodeClientSecretSet: true });
+    await call('POST', '/api/admins', { emails: 'bert@scouts.test' });
+    await call('POST', '/api/release', { version: '0.1.1' });
+    const run = await runAll();
+    expect(run.failed, run.detail).toBeNull();
+    expect(binding('arcanum-backend', 'DEFAULT_IDP_SCOPES')).toMatchObject({ type: 'secret_text', text: 'openid profile email' });
+    expect(binding('arcanum-backend', 'DEFAULT_IDP_AUTH_CODE_CLIENT_ID').text).toBe('web-client.apps.googleusercontent.com');
+    expect(binding('arcanum-backend', 'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET').text).toBe('web-secret-value-456');
+    expect(binding('arcanum-backend', 'DEFAULT_IDP_CLIENT_ID').text).toBe('tv-client.apps.googleusercontent.com');
+    expect(bodies.join('\n')).not.toContain('web-secret-value-456');
+  });
+
+  it('other providers keep the default scopes and one client, unless given', async () => {
+    await configure();
+    await runAll();
+    const names = bindingsOf('arcanum-backend').map((b) => b.name);
+    for (const absent of ['DEFAULT_IDP_SCOPES', 'DEFAULT_IDP_AUTH_CODE_CLIENT_ID', 'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET']) expect(names).not.toContain(absent);
+  });
+
+  it('refuses scopes without openid, and a browser-login client id without its secret', async () => {
+    await call('POST', '/api/login', { password: PASSWORD });
+    expect((await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'x', clientSecret: 'y', scopes: 'profile email' })).status).toBe(400);
+    expect((await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'x', clientSecret: 'y', authCodeClientId: 'web' })).status).toBe(400);
+  });
+
+  it('choosing another version before the install completed runs every step again, keeping resources and secrets', async () => {
+    await configure();
+    fakes.cf.failOnce(/^PUT \/accounts\/acc-1\/workers\/scripts\/arcanum-bff$/);
+    await runAll();
+    const key = binding('arcanum-backend', 'ENCRYPTION_KEY').text;
+    const d1 = fakes.cf.d1.size;
+    // Same version: nothing is reset.
+    let status = (await call('POST', '/api/release', { version: '0.1.1' })).body;
+    expect(status.steps.filter((s: any) => s.status === 'done').length).toBeGreaterThan(5);
+    // Pretend another version was chosen before: every step is pending again.
+    const state = await env.INSTALLER_STATE.get<any>('state', 'json');
+    state.release.version = '0.1.0-old';
+    await env.INSTALLER_STATE.put('state', JSON.stringify(state));
+    status = (await call('POST', '/api/release', { version: '0.1.1' })).body;
+    expect(status.steps.every((s: any) => s.status === 'todo')).toBe(true);
+    const run = await runAll();
+    expect(run.failed, run.detail).toBeNull();
+    expect(binding('arcanum-backend', 'ENCRYPTION_KEY').text).toBe(key);
+    expect(fakes.cf.d1.size).toBe(d1);
+  });
+
+  it('changing the login provider after install re-deploys the backend and clears the seeded provider', async () => {
+    await configure();
+    await runAll();
+    const backendUploads = fakes.cf.scripts.get('arcanum-backend')!.order;
+    const saved = await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'arcanum-client', scopes: 'openid profile email' });
+    expect(saved.status).toBe(200);
+    const pending = saved.body.steps.filter((s: any) => s.status !== 'done').map((s: any) => s.id);
+    expect(pending).toEqual(['worker:arcanum-backend', 'login:reset', 'verify']);
+    const run = await runAll();
+    expect(run.failed, run.detail).toBeNull();
+    expect(fakes.cf.scripts.get('arcanum-backend')!.order).toBeGreaterThan(backendUploads);
+    expect(binding('arcanum-backend', 'DEFAULT_IDP_SCOPES').text).toBe('openid profile email');
+    const backendDb = [...fakes.cf.d1.values()].find((d) => d.name === 'arcanum-backend')!;
+    expect(backendDb.queries.filter((q) => q.includes("DELETE FROM identity_providers WHERE org_id = 'default'"))).toHaveLength(2);
+  });
+});
+
 describe('resilience', () => {
   it('is idempotent: running every step again creates nothing new and re-sends no migrations', async () => {
     await configure();

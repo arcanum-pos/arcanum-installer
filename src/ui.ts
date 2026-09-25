@@ -117,6 +117,10 @@ export const PAGE = /* html */ `<!doctype html>
         <label for="issuer">Issuer-URL</label><input id="issuer" name="issuer" type="url" placeholder="https://accounts.google.com" required>
         <label for="clientId">Client ID</label><input id="clientId" name="clientId" type="text" required>
         <label for="clientSecret">Client secret</label><input id="clientSecret" name="clientSecret" type="password" autocomplete="off">
+        <p data-google class="soft hidden">Google heeft <strong>twee</strong> OAuth-clients nodig: een client van het type <em>TVs and Limited Input devices</em> hierboven (voor aanmelden op de kassa) en een client van het type <em>Web application</em> hieronder, met de callback-URL als <em>Authorized redirect URI</em>. De scopes worden <code>openid profile email</code> (Google weigert <code>offline_access</code>).</p>
+        <label for="scopes">Scopes (optioneel)</label><input id="scopes" name="scopes" type="text" placeholder="openid profile email offline_access">
+        <label for="authCodeClientId">Aparte client voor aanmelden in de browser (optioneel)</label><input id="authCodeClientId" name="authCodeClientId" type="text" placeholder="Client ID">
+        <input id="authCodeClientSecret" name="authCodeClientSecret" type="password" autocomplete="off" placeholder="Client secret">
         <label for="connectionName">Auth0-connectie (optioneel)</label><input id="connectionName" name="connectionName" type="text">
         <button>Controleren en bewaren</button><p class="error" data-error></p>
       </form>
@@ -180,7 +184,12 @@ function render() {
   $('[data-callback]').textContent = s.address ? s.address.callbackUrl : '(eerst stap 1)';
   $('[data-logout]').textContent = s.address ? s.address.logoutUrl : '(eerst stap 1)';
   set('#s-login', s.login, s.login ? 'Issuer: ' + s.login.issuer + ' · client: ' + s.login.clientId : '');
-  if (s.login) { $('#issuer').value ||= s.login.issuer; $('#clientId').value ||= s.login.clientId; $('#clientSecret').placeholder = '(bewaard — leeg laten om te behouden)'; }
+  if (s.login) {
+    $('#issuer').value ||= s.login.issuer; $('#clientId').value ||= s.login.clientId; $('#clientSecret').placeholder = '(bewaard — leeg laten om te behouden)';
+    $('#scopes').value ||= s.login.scopes || ''; $('#authCodeClientId').value ||= s.login.authCodeClientId || '';
+    if (s.login.authCodeClientSecretSet) $('#authCodeClientSecret').placeholder = '(bewaard — leeg laten om te behouden)';
+  }
+  googleHint();
   set('#s-admins', s.admins, s.admins ? s.admins : '');
   if (s.admins) $('#emails').value ||= s.admins;
   set('#s-release', s.release, s.release ? 'Arcanum ' + s.release.version : '');
@@ -214,6 +223,13 @@ function probe(attempt = 0) {
   };
   img.src = status.probeUrl + '?check=' + Date.now();
 }
+
+function googleHint() {
+  const google = /^https:\/\/accounts\.google\.com\/?$/.test($('#issuer').value.trim());
+  $('[data-google]').classList.toggle('hidden', !google);
+  if (google && !$('#scopes').value) $('#scopes').value = 'openid profile email';
+}
+document.addEventListener('input', (ev) => { if (ev.target.id === 'issuer') googleHint(); });
 
 async function refresh() { status = await api('/api/status'); render(); }
 
@@ -249,7 +265,7 @@ document.addEventListener('submit', async (ev) => {
     }
     status = result; render();
     if (form.dataset.form === 'cloudflare') form.token.value = '';
-    if (form.dataset.form === 'login-provider') form.clientSecret.value = '';
+    if (form.dataset.form === 'login-provider') { form.clientSecret.value = ''; form.authCodeClientSecret.value = ''; }
   } catch (e) { err.textContent = e.message; } finally { button.disabled = false; }
 });
 

@@ -17,8 +17,8 @@
   },
   "arcanum-backend": {
    "repo": "https://github.com/arcanum-pos/arcanum-backend",
-   "commit": "2e9b5bb5cb1860722639c156c0ae75479991a868",
-   "source": "https://github.com/arcanum-pos/arcanum-backend/tree/2e9b5bb5cb1860722639c156c0ae75479991a868"
+   "commit": "8f4b95659ffdb42c32dea146f98017b622a5fc23",
+   "source": "https://github.com/arcanum-pos/arcanum-backend/tree/8f4b95659ffdb42c32dea146f98017b622a5fc23"
   },
   "arcanum-bff": {
    "repo": "https://github.com/arcanum-pos/arcanum-bff",
@@ -258,6 +258,21 @@
      "kind": "secret",
      "source": "optional",
      "note": "Auth0 only"
+    },
+    "DEFAULT_IDP_SCOPES": {
+     "kind": "secret",
+     "source": "optional",
+     "note": "e.g. \"openid profile email\" for Google"
+    },
+    "DEFAULT_IDP_AUTH_CODE_CLIENT_ID": {
+     "kind": "secret",
+     "source": "optional",
+     "note": "separate browser-login client (Google)"
+    },
+    "DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET": {
+     "kind": "secret",
+     "source": "optional",
+     "note": "separate browser-login client (Google)"
     },
     "INSTANCE_ADMIN_EMAILS": {
      "kind": "secret",

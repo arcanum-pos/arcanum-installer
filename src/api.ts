@@ -64,7 +64,17 @@ export async function status(env: Env, state: InstallerState, sessionId: string)
       ? { accountId: state.cloudflare.accountId, accountName: state.cloudflare.accountName, subdomain: state.cloudflare.subdomain, remember: state.cloudflare.remember, tokenAvailable: !!(await tokenFor(env, state, sessionId)) }
       : null,
     address: url ? { publicUrl: url, callbackUrl: `${url}/callback`, logoutUrl: url } : null,
-    login: state.login ? { issuer: state.login.issuer, clientId: state.login.clientId, connectionName: state.login.connectionName ?? null, clientSecretSet: true } : null,
+    login: state.login
+      ? {
+          issuer: state.login.issuer,
+          clientId: state.login.clientId,
+          connectionName: state.login.connectionName ?? null,
+          clientSecretSet: true,
+          scopes: state.login.scopes ?? null,
+          authCodeClientId: state.login.authCodeClientId ?? null,
+          authCodeClientSecretSet: !!state.login.authCodeClientSecret,
+        }
+      : null,
     admins: state.admins ?? null,
     release: state.release ? { version: state.release.version, components: state.release.manifest.components } : null,
     locked: installationStarted(state),
@@ -153,6 +163,14 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const clientId = typeof b.clientId === 'string' ? b.clientId.trim() : '';
       const clientSecret = typeof b.clientSecret === 'string' ? b.clientSecret.trim() : '';
       const connectionName = typeof b.connectionName === 'string' && b.connectionName.trim() ? b.connectionName.trim() : undefined;
+      const isGoogle = /^https:\/\/accounts\.google\.com$/.test(issuer);
+      // Google rejects the platform's default `offline_access` scope.
+      const scopes = (typeof b.scopes === 'string' && b.scopes.trim().replace(/\s+/g, ' ')) || (isGoogle ? 'openid profile email' : undefined);
+      if (scopes && !scopes.split(' ').includes('openid')) return json({ error: 'De scopes moeten minstens "openid" bevatten' }, 400);
+      const authCodeClientId = typeof b.authCodeClientId === 'string' && b.authCodeClientId.trim() ? b.authCodeClientId.trim() : undefined;
+      const authCodeClientSecret = typeof b.authCodeClientSecret === 'string' ? b.authCodeClientSecret.trim() : '';
+      const keepAuthCodeSecret = authCodeClientId && !authCodeClientSecret && state.login?.authCodeClientId === authCodeClientId ? state.login.authCodeClientSecret : undefined;
+      if (authCodeClientId && !authCodeClientSecret && !keepAuthCodeSecret) return json({ error: 'Geef ook het secret van de aparte browser-client' }, 400);
       if (!/^https:\/\/[^/]+/.test(issuer)) return json({ error: 'De issuer-URL moet met https:// beginnen' }, 400);
       if (!clientId) return json({ error: 'Client ID ontbreekt' }, 400);
       if (!clientSecret && !state.login) return json({ error: 'Client secret ontbreekt' }, 400);
@@ -172,7 +190,13 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
         clientSecret: clientSecret ? await sealValue(env, state, clientSecret) : state.login!.clientSecret,
         connectionName,
         authorizationEndpoint: discovery.authorization_endpoint,
+        scopes,
+        authCodeClientId,
+        authCodeClientSecret: authCodeClientId ? (authCodeClientSecret ? await sealValue(env, state, authCodeClientSecret) : keepAuthCodeSecret) : undefined,
       };
+      // Already installed? Re-deploy the backend with the new settings and
+      // let it re-seed the login provider ("Verder installeren" applies it).
+      for (const step of ['worker:arcanum-backend', 'login:reset', 'verify']) delete state.steps[step];
       await saveState(env, state);
       return json(await status(env, state, sessionId));
     }
@@ -206,6 +230,13 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const names = Object.keys(manifest.components);
       const descriptors = await Promise.all(names.map((n) => fetchReleaseJson<WorkerDescriptor>(entry.manifest_url, manifest, `${n}.json`)));
       const database = await fetchReleaseJson<{ databases: { name: string; tracked: boolean }[] }>(entry.manifest_url, manifest, 'database.json');
+      // A different version before the install completed: run every step
+      // again for it (resources and generated secrets are kept — all steps
+      // are idempotent), so no Worker of the old version stays behind.
+      if (state.release && state.release.version !== manifest.version) {
+        state.steps = {};
+        delete state.assets;
+      }
       state.release = { version: manifest.version, manifestUrl: entry.manifest_url, manifest, blueprint: blueprintFrom(manifest, descriptors, database) };
       await saveState(env, state);
       return json(await status(env, state, sessionId));

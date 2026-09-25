@@ -26,6 +26,9 @@ export function planSteps(blueprint: Blueprint): StepDef[] {
       blueprint.assetChunks.forEach((chunk, i) => steps.push({ id: `assets:${chunk}`, title: `Schermen uploaden (${i + 1}/${blueprint.assetChunks.length})` }));
     }
     steps.push({ id: `worker:${w.name}`, title: `${w.name} installeren` });
+    if (w.name === 'arcanum-backend' && blueprint.databases.some((d) => d.name === 'arcanum-backend')) {
+      steps.push({ id: 'login:reset', title: 'Aanmelding instellen' });
+    }
   }
   steps.push({ id: 'verify', title: 'Controleren of alles werkt' });
   return steps;
@@ -180,6 +183,13 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
         SOURCE_URL: `https://github.com/arcanum-pos/arcanum-releases/releases/tag/v${release.version}`,
         GIT_COMMIT_SHA: release.manifest.components[name]?.commit ?? '',
         ...(state.login?.connectionName ? { DEFAULT_IDP_CONNECTION_NAME: state.login.connectionName } : {}),
+        ...(state.login?.scopes ? { DEFAULT_IDP_SCOPES: state.login.scopes } : {}),
+        ...(state.login?.authCodeClientId && state.login.authCodeClientSecret
+          ? {
+              DEFAULT_IDP_AUTH_CODE_CLIENT_ID: state.login.authCodeClientId,
+              DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET: await unsealValue(ctx.env, state, state.login.authCodeClientSecret),
+            }
+          : {}),
       },
       secrets: await secretsOf(ctx),
       resources: { d1: state.resources.d1, kv: state.resources.kv, ratelimitNamespaceId: state.resources.ratelimitNamespaceId! },
@@ -192,6 +202,16 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     // reachable solely through service bindings.
     await cf.setWorkersDev(accountId, name, worker.public_entry);
     return { status: 'done', detail: worker.public_entry ? url : 'intern (geen publiek adres)' };
+  }
+
+  if (id === 'login:reset') {
+    // The backend seeds the default login provider from DEFAULT_IDP_* once,
+    // at the first login. Clearing that seeded row makes it re-seed from the
+    // current settings — a no-op on a fresh install, and how a changed login
+    // provider (e.g. Google's scopes) takes effect on an existing one. It's
+    // only the platform-default row: org-specific providers are untouched.
+    await cf.queryD1(accountId, state.resources.d1['arcanum-backend'], "DELETE FROM identity_providers WHERE org_id = 'default'");
+    return { status: 'done', detail: 'wordt bij de volgende aanmelding opnieuw ingesteld' };
   }
 
   if (id === 'verify') {
