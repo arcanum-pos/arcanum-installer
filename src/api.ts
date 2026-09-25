@@ -70,6 +70,7 @@ export async function status(env: Env, state: InstallerState, sessionId: string)
     locked: installationStarted(state),
     steps,
     installed: state.installed ?? null,
+    probeUrl: url && state.probePath ? `${url}${state.probePath}` : null,
   };
 }
 

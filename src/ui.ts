@@ -145,6 +145,7 @@ export const PAGE = /* html */ `<!doctype html>
     <section id="s-done" class="card hidden">
       <h2>Klaar</h2>
       <p>Arcanum draait op <a data-url target="_blank" rel="noopener"></a>.</p>
+      <p data-live class="soft">Bereikbaarheid controleren…</p>
       <p>Meld je daar aan met een beheerdersadres en maak je organisatie aan — of importeer ze via <em>Instellingen → Gegevens</em> uit een export van je vorige installatie.</p>
     </section>
 
@@ -194,7 +195,24 @@ function render() {
   $('[data-run]').disabled = !ready || running; $('[data-run]').textContent = s.steps.some(x => x.status === 'done') ? 'Verder installeren' : 'Installeren';
   set('#s-install', s.installed, '');
   $('#s-done').classList.toggle('hidden', !s.installed);
-  if (s.installed) { $('[data-url]').href = s.address.publicUrl; $('[data-url]').textContent = s.address.publicUrl; }
+  if (s.installed) { $('[data-url]').href = s.address.publicUrl; $('[data-url]').textContent = s.address.publicUrl; probe(); }
+}
+
+// Live check from the browser: load one real asset of the installation
+// (bff → frontends). The installer itself can't fetch its own account's
+// workers.dev addresses (Cloudflare blocks Worker-to-Worker fetches there).
+let probing = false;
+function probe(attempt = 0) {
+  if (probing || !status.probeUrl) return; probing = true;
+  const img = new Image();
+  img.onload = () => { probing = false; $('[data-live]').textContent = '✓ Arcanum is bereikbaar vanuit je browser.'; };
+  img.onerror = () => {
+    probing = false;
+    if (attempt >= 24) { $('[data-live]').textContent = 'Arcanum antwoordt nog niet vanuit je browser. Een nieuw workers.dev-adres kan enkele minuten nodig hebben — probeer het adres hierboven straks opnieuw.'; return; }
+    $('[data-live]').textContent = 'Wachten tot het adres bereikbaar is… (Cloudflare zet het klaar)';
+    setTimeout(() => probe(attempt + 1), 5000);
+  };
+  img.src = status.probeUrl + '?check=' + Date.now();
 }
 
 async function refresh() { status = await api('/api/status'); render(); }

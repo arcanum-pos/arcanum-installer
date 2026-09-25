@@ -132,6 +132,8 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
   if (id === 'assets:session') {
     const assetWorker = release.blueprint.workers.find((w) => w.assets)!;
     const manifest = await fetchReleaseJson<{ files: Record<string, { hash: string; size: number }> }>(release.manifestUrl, release.manifest, release.blueprint.assetManifest!);
+    const paths = Object.keys(manifest.files);
+    state.probePath = paths.find((p) => /^\/assets\/kabouter[^/]*\.png$/.test(p)) ?? paths.find((p) => /^\/assets\/.*\.(png|svg)$/.test(p));
     const session = await cf.assetsUploadSession(
       accountId,
       assetWorker.name,
@@ -193,17 +195,25 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
   }
 
   if (id === 'verify') {
-    const url = publicUrl(state)!;
-    // A fresh workers.dev address can take a minute to answer.
-    const version = await fetch(`${url}/version`).catch(() => null);
-    if (!version || !version.ok) return { status: 'retry', detail: `${url} antwoordt nog niet (${version ? `HTTP ${version.status}` : 'geen verbinding'})` };
-    const login = await fetch(`${url}/login`, { redirect: 'manual' }).catch(() => null);
-    const location = login?.headers.get('Location') ?? '';
-    if (!login || login.status < 300 || login.status >= 400 || !location.startsWith(state.login!.authorizationEndpoint)) {
-      return { status: 'retry', detail: `Aanmelden stuurt nog niet door naar de login-provider (HTTP ${login?.status ?? '—'})` };
+    // Through the Cloudflare API only: a Worker can't fetch another Worker
+    // of the same account via its workers.dev URL (Cloudflare error 1042,
+    // seen as a 404) — the setup page checks it's live from the browser.
+    const missing: string[] = [];
+    for (const w of release.blueprint.workers) if (!(await cf.scriptExists(accountId, w.name))) missing.push(w.name);
+    if (missing.length) throw new Error(`Ontbreekt nog: ${missing.join(', ')}`);
+    const entry = release.blueprint.workers.find((w) => w.public_entry)!;
+    if (!(await cf.isOnWorkersDev(accountId, entry.name))) throw new Error(`${entry.name} staat niet op workers.dev — het publieke adres is uitgeschakeld`);
+    const database = await fetchReleaseJson<{ databases: { name: string; tracked: boolean; migrations: unknown[] }[] }>(release.manifestUrl, release.manifest, 'database.json');
+    for (const db of database.databases.filter((d) => d.tracked)) {
+      const redo = `voer "Database ${db.name} inrichten" opnieuw uit`;
+      const result = (await cf.queryD1(accountId, state.resources.d1[db.name], 'SELECT COUNT(*) AS n FROM d1_migrations').catch(() => {
+        throw new Error(`Database ${db.name} is nog niet ingericht (geen migraties gevonden) — ${redo}`);
+      })) as { results?: { n: number }[] }[];
+      const recorded = result?.[0]?.results?.[0]?.n ?? 0;
+      if (recorded < db.migrations.length) throw new Error(`Database ${db.name} heeft ${recorded} van de ${db.migrations.length} migraties — voer "Database ${db.name} inrichten" opnieuw uit`);
     }
     state.installed = { version: release.version, at: new Date().toISOString() };
-    return { status: 'done', detail: `${url} werkt, aanmelden gaat naar de login-provider` };
+    return { status: 'done', detail: `${release.blueprint.workers.length} Workers, publiek adres en databases in orde` };
   }
 
   throw new Error(`Onbekende stap ${id}`);

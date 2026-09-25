@@ -119,6 +119,20 @@ export class Cloudflare {
     return this.call<{ id: string }>('PUT', `/accounts/${accountId}/workers/scripts/${scriptName}`, undefined, { form });
   }
 
+  async scriptExists(accountId: string, scriptName: string): Promise<boolean> {
+    try {
+      await this.call<unknown>('GET', `/accounts/${accountId}/workers/services/${scriptName}`);
+      return true;
+    } catch (err) {
+      if (err instanceof CloudflareError && err.status === 404) return false;
+      throw err;
+    }
+  }
+
+  async isOnWorkersDev(accountId: string, scriptName: string): Promise<boolean> {
+    return !!(await this.call<{ enabled?: boolean }>('GET', `/accounts/${accountId}/workers/scripts/${scriptName}/subdomain`)).enabled;
+  }
+
   setWorkersDev(accountId: string, scriptName: string, enabled: boolean) {
     return this.call<unknown>('POST', `/accounts/${accountId}/workers/scripts/${scriptName}/subdomain`, { enabled, previews_enabled: false });
   }

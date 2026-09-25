@@ -265,7 +265,7 @@ describe('fresh install', () => {
   it('uploads every asset and deploys the frontends with the completion token', async () => {
     await configure();
     await runAll();
-    expect([...fakes.cf.assets].sort()).toEqual(['a'.repeat(32), 'b'.repeat(32), 'c'.repeat(32)]);
+    expect([...fakes.cf.assets].sort()).toEqual(['a'.repeat(32), 'b'.repeat(32), 'c'.repeat(32), 'd'.repeat(32)]);
     const assets = fakes.cf.scripts.get('arcanum-frontends')!.metadata.assets;
     expect(fakes.cf.completionJwts.has(assets.jwt)).toBe(true);
   });
@@ -332,12 +332,32 @@ describe('resilience', () => {
     expect(binding('arcanum-backend', 'DB').id).toBe('d1-existing');
   });
 
-  it('waits for the new address to answer before calling it done', async () => {
+  it("verifies through the Cloudflare API — never by fetching its own workers.dev address (Cloudflare blocks that, error 1042)", async () => {
     await configure();
-    fakes.notReadyYet.count = 2;
     const run = await runAll();
-    expect(run.failed).toBeNull();
-    expect((await call('GET', '/api/status')).body.installed).toBeTruthy();
+    expect(run.failed, run.detail).toBeNull();
+    expect(fakes.publicUrlFetches()).toBe(0);
+    const status = (await call('GET', '/api/status')).body;
+    expect(status.steps.find((s: any) => s.id === 'verify').detail).toMatch(/5 Workers/);
+    // The browser does the live check: it loads one real asset through the bff.
+    expect(status.probeUrl).toBe(`${PUBLIC_URL}/assets/kabouter-BjXzpYjf.png`);
+    const page = await SELF.fetch('https://installer.test/', { headers: { Cookie: cookie } });
+    expect(page.headers.get('Content-Security-Policy')).toContain(`img-src 'self' ${PUBLIC_URL}`);
+  });
+
+  it('verify fails when the public address is off or the database has no migrations recorded', async () => {
+    await configure();
+    await runAll();
+    fakes.cf.workersDev.set('arcanum-bff', false);
+    const off = await call('POST', '/api/steps/verify', {});
+    expect(off.body).toMatchObject({ status: 'failed' });
+    expect(off.body.detail).toMatch(/workers\.dev/);
+    fakes.cf.workersDev.set('arcanum-bff', true);
+    const backend = [...fakes.cf.d1.values()].find((d) => d.name === 'arcanum-backend')!;
+    backend.queries = [];
+    const empty = await call('POST', '/api/steps/verify', {});
+    expect(empty.body).toMatchObject({ status: 'failed' });
+    expect(empty.body.detail).toMatch(/migraties/);
   });
 
   it('refuses a release file that does not match its checksum', async () => {

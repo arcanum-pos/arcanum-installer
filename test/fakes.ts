@@ -99,7 +99,15 @@ export class FakeCloudflare {
     if (q && method === 'POST') {
       const db = this.d1.get(q[1]);
       if (!db) return fail(404, 'Database not found', 7404);
-      db.queries.push(((await request.json()) as { sql: string }).sql);
+      const sql = ((await request.json()) as { sql: string }).sql;
+      db.queries.push(sql);
+      // Enough SQL to answer the installer's check: which migrations schema.sql recorded.
+      if (/SELECT COUNT\(\*\) AS n FROM d1_migrations/i.test(sql)) {
+        const names = new Set(db.queries.flatMap((q) => [...q.matchAll(/INSERT OR IGNORE INTO d1_migrations \(name\) VALUES \('([^']+)'\)/g)].map((m) => m[1])));
+        return names.size || db.queries.some((q) => /CREATE TABLE IF NOT EXISTS d1_migrations/i.test(q))
+          ? ok([{ success: true, results: [{ n: names.size }], meta: {} }])
+          : fail(400, 'D1_ERROR: no such table: d1_migrations: SQLITE_ERROR', 7500);
+      }
       return ok([{ success: true, results: [], meta: {} }]);
     }
 
@@ -123,6 +131,10 @@ export class FakeCloudflare {
     if (script && method === 'PUT') return this.putScript(script[1], request);
 
     const sub = rest.match(/^\/workers\/scripts\/([^/]+)\/subdomain$/);
+    if (sub && method === 'GET') {
+      if (!this.scripts.has(sub[1])) return fail(404, 'Worker not found', 10007);
+      return ok({ enabled: this.workersDev.get(sub[1]) ?? false, previews_enabled: false });
+    }
     if (sub && method === 'POST') {
       if (!this.scripts.has(sub[1])) return fail(404, 'Worker not found', 10007);
       this.workersDev.set(sub[1], ((await request.json()) as { enabled: boolean }).enabled);
@@ -230,10 +242,12 @@ export class FakeReleases {
       '/admin.html': { hash: 'a'.repeat(32), size: 20, contentType: 'text/html', chunk: 'arcanum-frontends-assets-01.json' },
       '/assets/app.js': { hash: 'b'.repeat(32), size: 30, contentType: 'text/javascript', chunk: 'arcanum-frontends-assets-01.json' },
       '/kassa.html': { hash: 'c'.repeat(32), size: 25, contentType: 'text/html', chunk: 'arcanum-frontends-assets-02.json' },
+      // The real build's hashed logo — what the setup page loads to see the installation is live.
+      [fixture.asset_paths_sample[0]]: { hash: 'd'.repeat(32), size: 30111, contentType: 'image/png', chunk: 'arcanum-frontends-assets-02.json' },
     };
     put('arcanum-frontends-assets.json', { config: fixture.assets_config, files: r.assetFiles });
     put('arcanum-frontends-assets-01.json', { ['a'.repeat(32)]: b64('<html>admin</html>'), ['b'.repeat(32)]: b64('console.log(1)') });
-    put('arcanum-frontends-assets-02.json', { ['c'.repeat(32)]: b64('<html>kassa</html>') });
+    put('arcanum-frontends-assets-02.json', { ['c'.repeat(32)]: b64('<html>kassa</html>'), ['d'.repeat(32)]: b64('PNG') });
     put('LICENSE', 'AGPL-3.0-or-later');
     const files: Record<string, { size: number; sha256: string }> = {};
     for (const [name, bytes] of [...r.files].sort()) files[name] = { size: bytes.length, sha256: await sha256(bytes) };
@@ -271,16 +285,16 @@ export interface Fakes {
   cf: FakeCloudflare;
   releases: FakeReleases;
   fetchCalls: () => number;
-  // How many more /version checks answer "not yet" before the installation is reachable.
-  notReadyYet: { count: number };
+  // Fetches the installer made to the installation's own workers.dev URL.
+  publicUrlFetches: () => number;
 }
 
 // Routes every outbound fetch of the Worker under test to the fakes.
 export async function installFakes(): Promise<Fakes> {
   const cf = new FakeCloudflare();
   const releases = await FakeReleases.create();
-  const notReadyYet = { count: 0 };
   let calls = 0;
+  let publicFetches = 0;
   const realFetch = globalThis.fetch;
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const request = new Request(input as RequestInfo, init);
@@ -294,15 +308,13 @@ export async function installFakes(): Promise<Fakes> {
     }
     if (url.hostname === 'nodevice.test') return Response.json({ issuer: 'https://nodevice.test', authorization_endpoint: 'https://nodevice.test/authorize' });
     if (url.origin === PUBLIC_URL) {
-      if (!cf.scripts.has('arcanum-bff') || !cf.workersDev.get('arcanum-bff')) return new Response('There is nothing here yet', { status: 404 });
-      if (notReadyYet.count > 0) {
-        notReadyYet.count--;
-        return new Response('not yet', { status: 404 });
-      }
-      if (url.pathname === '/version') return Response.json({ version: 'x', source_url: 'https://github.com/arcanum-pos' });
-      if (url.pathname === '/login') return new Response(null, { status: 302, headers: { Location: 'https://login.test/authorize?client_id=x' } });
+      // Like the real Cloudflare: a Worker can't fetch another Worker of the
+      // same account through its workers.dev URL (error 1042) — it gets a
+      // 404, even though a browser loads the same URL fine.
+      publicFetches++;
+      return new Response('error code: 1042', { status: 404 });
     }
     throw new Error(`Unexpected outbound fetch in test: ${request.method} ${request.url}`);
   });
-  return { cf, releases, fetchCalls: () => calls, notReadyYet };
+  return { cf, releases, fetchCalls: () => calls, publicUrlFetches: () => publicFetches };
 }

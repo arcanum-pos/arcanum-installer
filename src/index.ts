@@ -5,6 +5,7 @@
 import type { Env } from './env';
 import { handleApi } from './api';
 import { PAGE } from './ui';
+import { loadState, publicUrl } from './state';
 import kabouter from './assets/kabouter.png';
 import geist from './assets/fonts/geist-latin-wght.woff2';
 import montserrat from './assets/fonts/montserrat-latin-700.woff2';
@@ -38,7 +39,10 @@ export default {
       return new Response(asset.body, { headers: { 'Content-Type': asset.type, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' } });
     }
     if (url.pathname === '/' && request.method === 'GET') {
-      return new Response(PAGE, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY_HEADERS } });
+      // The page may load one image from the installation itself (the live check).
+      const installation = publicUrl(await loadState(env));
+      const csp = installation ? SECURITY_HEADERS['Content-Security-Policy'].replace("img-src 'self'", `img-src 'self' ${installation}`) : SECURITY_HEADERS['Content-Security-Policy'];
+      return new Response(PAGE, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY_HEADERS, 'Content-Security-Policy': csp } });
     }
     return new Response('Not found', { status: 404 });
   },

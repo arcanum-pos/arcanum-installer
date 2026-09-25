@@ -33,6 +33,9 @@ export interface InstallerState {
   resources: { d1: Record<string, string>; kv: Record<string, string>; ratelimitNamespaceId?: string };
   steps: Record<string, StepRecord>;
   assets?: { jwt: string; needed: string[]; completionJwt?: string; startedAt: string };
+  // A real asset of the installation (the hashed logo) — the setup page
+  // loads it to see the installation is live end to end.
+  probePath?: string;
   installed?: { version: string; at: string };
 }
 
