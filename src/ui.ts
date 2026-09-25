@@ -386,7 +386,7 @@ async function runAll() {
       if (step.status === 'done') continue;
       for (let attempt = 0; ; attempt++) {
         const li = $('[data-id="' + CSS.escape(step.id) + '"]'); if (li) li.className = 'running';
-        const r = await api('api/steps/' + encodeURIComponent(step.id), {});
+        const r = await api('api/step', { id: step.id });
         if (r.status === 'done') break;
         if (r.status === 'retry' && attempt < 20) { if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + ' (opnieuw over 6 s)'; } await new Promise(res => setTimeout(res, 6000)); continue; }
         await refresh(); throw new Error(step.title + ': ' + r.detail);

@@ -52,7 +52,7 @@ async function runAll() {
   for (const step of status.steps) {
     for (let attempt = 0; attempt < 10; attempt++) {
       const before = fakes.fetchCalls();
-      const r = await call('POST', `/api/steps/${encodeURIComponent(step.id)}`, {});
+      const r = await call('POST', '/api/step', { id: step.id });
       perStep[step.id] = Math.max(perStep[step.id] ?? 0, fakes.fetchCalls() - before);
       if (r.body.status === 'done') break;
       if (r.body.status === 'failed') return { failed: step.id, detail: r.body.detail, perStep };
@@ -736,5 +736,19 @@ describe('cross-site requests', () => {
     const cross = await call('POST', '/api/steps/secrets', {}, true, { headers: { 'Sec-Fetch-Site': 'cross-site' } });
     expect(cross.status).toBe(403);
     expect((await call('POST', '/api/steps/secrets', {}, true, { headers: { 'Sec-Fetch-Site': 'same-origin' } })).body.status).toBe('done');
+  });
+});
+
+describe('step requests', () => {
+  it("take the step id in the body, so no request path ends in a file extension (Arcanum's bff 404s those)", async () => {
+    await configure();
+    const status = (await call('GET', '/api/status')).body;
+    expect(status.steps.some((s: any) => /\.json$/.test(s.id))).toBe(true); // why this matters
+    const page = await (await SELF.fetch('https://installer.test/')).text();
+    expect(page).toContain("api('api/step', { id: step.id })");
+    expect(page).not.toContain("'api/steps/'");
+    expect((await call('POST', '/api/step', { id: 'secrets' })).body.status).toBe('done');
+    expect((await call('POST', '/api/step', {})).status).toBe(400);
+    expect((await call('POST', '/api/step', { id: 'nope' })).status).toBe(404);
   });
 });

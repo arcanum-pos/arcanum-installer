@@ -383,9 +383,16 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       }
     }
 
+    // POST /api/step {id} — what the page uses: the id in the body, because
+    // an id like "assets:…-01.json" in the path looks like a file to
+    // Arcanum's bff, which 404s unexpected extensions before routing.
+    // /api/steps/:id is the older form of the same.
     const stepMatch = path.match(/^\/api\/steps\/(.+)$/);
-    if (stepMatch && request.method === 'POST') {
-      const id = decodeURIComponent(stepMatch[1]);
+    const isStep = request.method === 'POST' && (path === '/api/step' || !!stepMatch);
+    if (isStep) {
+      const stepId = stepMatch ? decodeURIComponent(stepMatch[1]) : (await body(request)).id;
+      if (typeof stepId !== 'string') return json({ error: 'Geef de stap (id)' }, 400);
+      const id = stepId;
       const missing = [!state.cloudflare && 'Cloudflare-token', !state.login && 'login-provider', !state.admins && 'beheerders', !state.release && 'release'].filter(Boolean);
       if (missing.length) return json({ error: `Eerst nog: ${missing.join(', ')}` }, 409);
       if (!planSteps(state.release!.blueprint).some((s) => s.id === id)) return json({ error: `Onbekende stap ${id}` }, 404);
