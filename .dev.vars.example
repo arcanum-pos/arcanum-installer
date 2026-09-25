@@ -1,0 +1,3 @@
+# Protects the installer's setup page (its workers.dev URL is public).
+# The Deploy to Cloudflare button asks for it. Choose a long, unique value.
+INSTALLER_PASSWORD=

@@ -1,0 +1,488 @@
+{
+ "components": {
+  "arcanum-mailer": {
+   "repo": "https://github.com/arcanum-pos/arcanum-mailer",
+   "commit": "030395fff8bd20775391a9757285ead3b7afb104",
+   "source": "https://github.com/arcanum-pos/arcanum-mailer/tree/030395fff8bd20775391a9757285ead3b7afb104"
+  },
+  "arcanum-devicehub": {
+   "repo": "https://github.com/arcanum-pos/arcanum-devicehub",
+   "commit": "f0b8ae0633d325eee298a6f6f30ea842492a2096",
+   "source": "https://github.com/arcanum-pos/arcanum-devicehub/tree/f0b8ae0633d325eee298a6f6f30ea842492a2096"
+  },
+  "arcanum-frontends": {
+   "repo": "https://github.com/arcanum-pos/arcanum-frontends",
+   "commit": "d6c041c6c646936eac296121aeacca159841b528",
+   "source": "https://github.com/arcanum-pos/arcanum-frontends/tree/d6c041c6c646936eac296121aeacca159841b528"
+  },
+  "arcanum-backend": {
+   "repo": "https://github.com/arcanum-pos/arcanum-backend",
+   "commit": "2e9b5bb5cb1860722639c156c0ae75479991a868",
+   "source": "https://github.com/arcanum-pos/arcanum-backend/tree/2e9b5bb5cb1860722639c156c0ae75479991a868"
+  },
+  "arcanum-bff": {
+   "repo": "https://github.com/arcanum-pos/arcanum-bff",
+   "commit": "3c8546bf80a5ebd532760fd247ad5bd2e80de171",
+   "source": "https://github.com/arcanum-pos/arcanum-bff/tree/3c8546bf80a5ebd532760fd247ad5bd2e80de171"
+  }
+ },
+ "workers": {
+  "arcanum-mailer": {
+   "name": "arcanum-mailer",
+   "compatibility_date": "2026-09-15",
+   "compatibility_flags": [],
+   "public_entry": false,
+   "observability": {
+    "enabled": true
+   },
+   "bindings": [],
+   "durable_object_migrations": [],
+   "assets": null,
+   "env": {
+    "MAILER_INTERNAL_KEY": {
+     "kind": "secret",
+     "source": "shared",
+     "key": "MAILER_INTERNAL_KEY"
+    }
+   },
+   "main_module": "index.js",
+   "modules": [
+    {
+     "name": "index.js",
+     "type": "esm",
+     "content": "// arcanum-mailer (test stub)\nexport default { fetch() { return new Response(\"arcanum-mailer\"); } };\n"
+    }
+   ]
+  },
+  "arcanum-devicehub": {
+   "name": "arcanum-devicehub",
+   "compatibility_date": "2026-09-13",
+   "compatibility_flags": [],
+   "public_entry": false,
+   "observability": {
+    "enabled": true
+   },
+   "bindings": [
+    {
+     "type": "d1",
+     "name": "DB",
+     "database": "arcanum-devices"
+    },
+    {
+     "type": "durable_object_namespace",
+     "name": "DEVICE_HUB",
+     "class_name": "DeviceHub"
+    }
+   ],
+   "durable_object_migrations": [
+    {
+     "tag": "v1",
+     "new_sqlite_classes": [
+      "DeviceHub"
+     ]
+    },
+    {
+     "tag": "v2",
+     "deleted_classes": [
+      "DeviceHub"
+     ]
+    },
+    {
+     "tag": "v3",
+     "new_sqlite_classes": [
+      "DeviceHub"
+     ]
+    }
+   ],
+   "assets": null,
+   "env": {
+    "WS_TOKEN_SECRET": {
+     "kind": "secret",
+     "source": "generate",
+     "format": "hex32"
+    },
+    "INTERNAL_API_KEY": {
+     "kind": "secret",
+     "source": "shared",
+     "key": "INTERNAL_API_KEY"
+    }
+   },
+   "main_module": "index.js",
+   "modules": [
+    {
+     "name": "index.js",
+     "type": "esm",
+     "content": "// arcanum-devicehub (test stub)\nexport default { fetch() { return new Response(\"arcanum-devicehub\"); } };\n"
+    }
+   ]
+  },
+  "arcanum-frontends": {
+   "name": "arcanum-frontends",
+   "compatibility_date": "2026-09-15",
+   "compatibility_flags": [],
+   "public_entry": false,
+   "observability": {
+    "enabled": true
+   },
+   "bindings": [
+    {
+     "type": "assets",
+     "name": "ASSETS"
+    }
+   ],
+   "durable_object_migrations": [],
+   "assets": {
+    "config": {}
+   },
+   "env": {},
+   "main_module": "index.js",
+   "modules": [
+    {
+     "name": "index.js",
+     "type": "esm",
+     "content": "// arcanum-frontends (test stub)\nexport default { fetch() { return new Response(\"arcanum-frontends\"); } };\n"
+    }
+   ]
+  },
+  "arcanum-backend": {
+   "name": "arcanum-backend",
+   "compatibility_date": "2026-09-11",
+   "compatibility_flags": [],
+   "public_entry": false,
+   "observability": {
+    "enabled": true
+   },
+   "bindings": [
+    {
+     "type": "d1",
+     "name": "DB",
+     "database": "arcanum-backend"
+    },
+    {
+     "type": "durable_object_namespace",
+     "name": "CHARGE_POLLER",
+     "class_name": "ChargePoller"
+    },
+    {
+     "type": "service",
+     "name": "ARCANUM_DEVICEHUB_SERVICE",
+     "service": "arcanum-devicehub"
+    },
+    {
+     "type": "service",
+     "name": "ARCANUM_MAILER_SERVICE",
+     "service": "arcanum-mailer"
+    }
+   ],
+   "durable_object_migrations": [
+    {
+     "tag": "v1",
+     "new_sqlite_classes": [
+      "SumupChargeCoordinator"
+     ]
+    },
+    {
+     "tag": "v2",
+     "renamed_classes": [
+      {
+       "from": "SumupChargeCoordinator",
+       "to": "ChargePoller"
+      }
+     ]
+    },
+    {
+     "tag": "v3",
+     "deleted_classes": [
+      "ChargePoller"
+     ]
+    },
+    {
+     "tag": "v4",
+     "new_sqlite_classes": [
+      "ChargePoller"
+     ]
+    }
+   ],
+   "assets": null,
+   "env": {
+    "AUTH_SCHEME": {
+     "kind": "var",
+     "source": "fixed",
+     "value": "Bearer"
+    },
+    "PUBLIC_BASE_URL": {
+     "kind": "var",
+     "source": "public_url"
+    },
+    "CLOUDFLARE_ZONE_ID": {
+     "kind": "var",
+     "source": "optional",
+     "note": "custom domains per org"
+    },
+    "ENCRYPTION_KEY": {
+     "kind": "secret",
+     "source": "generate",
+     "format": "base64-32"
+    },
+    "INTERNAL_API_KEY": {
+     "kind": "secret",
+     "source": "shared",
+     "key": "INTERNAL_API_KEY"
+    },
+    "BFF_INTERNAL_KEY": {
+     "kind": "secret",
+     "source": "shared",
+     "key": "BFF_INTERNAL_KEY"
+    },
+    "MAILER_INTERNAL_KEY": {
+     "kind": "secret",
+     "source": "shared",
+     "key": "MAILER_INTERNAL_KEY"
+    },
+    "DEFAULT_IDP_ISSUER_URL": {
+     "kind": "secret",
+     "source": "install",
+     "question": "login.issuer"
+    },
+    "DEFAULT_IDP_CLIENT_ID": {
+     "kind": "secret",
+     "source": "install",
+     "question": "login.clientId"
+    },
+    "DEFAULT_IDP_CLIENT_SECRET": {
+     "kind": "secret",
+     "source": "install",
+     "question": "login.clientSecret"
+    },
+    "DEFAULT_IDP_CONNECTION_NAME": {
+     "kind": "secret",
+     "source": "optional",
+     "note": "Auth0 only"
+    },
+    "INSTANCE_ADMIN_EMAILS": {
+     "kind": "secret",
+     "source": "install",
+     "question": "admins"
+    },
+    "DEFAULT_SMTP_HOST": {
+     "kind": "secret",
+     "source": "optional",
+     "note": "mail is configured per org in the portal"
+    },
+    "DEFAULT_SMTP_PORT": {
+     "kind": "secret",
+     "source": "optional"
+    },
+    "DEFAULT_SMTP_USER": {
+     "kind": "secret",
+     "source": "optional"
+    },
+    "DEFAULT_SMTP_PASS": {
+     "kind": "secret",
+     "source": "optional"
+    },
+    "DEFAULT_SMTP_FROM_ADDRESS": {
+     "kind": "secret",
+     "source": "optional"
+    },
+    "DEFAULT_SMTP_FROM_NAME": {
+     "kind": "secret",
+     "source": "optional"
+    },
+    "CLOUDFLARE_API_TOKEN": {
+     "kind": "secret",
+     "source": "optional",
+     "note": "custom domains per org"
+    }
+   },
+   "main_module": "index.js",
+   "modules": [
+    {
+     "name": "index.js",
+     "type": "esm",
+     "content": "// arcanum-backend (test stub)\nexport default { fetch() { return new Response(\"arcanum-backend\"); } };\n"
+    }
+   ]
+  },
+  "arcanum-bff": {
+   "name": "arcanum-bff",
+   "compatibility_date": "2025-07-18",
+   "compatibility_flags": [],
+   "public_entry": true,
+   "observability": {
+    "enabled": true
+   },
+   "bindings": [
+    {
+     "type": "kv_namespace",
+     "name": "ARCANUM_SESSIONS",
+     "namespace": "arcanum-bff:ARCANUM_SESSIONS"
+    },
+    {
+     "type": "service",
+     "name": "ARCANUM_BACKEND_SERVICE",
+     "service": "arcanum-backend"
+    },
+    {
+     "type": "service",
+     "name": "ARCANUM_DEVICEHUB_SERVICE",
+     "service": "arcanum-devicehub"
+    },
+    {
+     "type": "service",
+     "name": "ARCANUM_FRONTENDS_SERVICE",
+     "service": "arcanum-frontends"
+    },
+    {
+     "type": "ratelimit",
+     "name": "LOGIN_RATE_LIMITER",
+     "simple": {
+      "limit": 5,
+      "period": 60
+     }
+    },
+    {
+     "type": "version_metadata",
+     "name": "CF_VERSION_METADATA"
+    }
+   ],
+   "durable_object_migrations": [],
+   "assets": null,
+   "env": {
+    "SESSION_TTL": {
+     "kind": "var",
+     "source": "fixed",
+     "value": 604800
+    },
+    "FRONTEND_URL": {
+     "kind": "var",
+     "source": "public_url"
+    },
+    "AUTH0_DOMAIN": {
+     "kind": "var",
+     "source": "issuer_host",
+     "note": "legacy Bearer-token path only"
+    },
+    "BFF_INTERNAL_KEY": {
+     "kind": "secret",
+     "source": "shared",
+     "key": "BFF_INTERNAL_KEY"
+    },
+    "SOURCE_URL": {
+     "kind": "var",
+     "source": "optional",
+     "note": "AGPL \"Broncode\" link; unset = upstream repos"
+    },
+    "COOKIE_DOMAIN": {
+     "kind": "var",
+     "source": "optional"
+    },
+    "ALLOWED_ORIGINS": {
+     "kind": "var",
+     "source": "optional"
+    },
+    "GIT_COMMIT_SHA": {
+     "kind": "var",
+     "source": "optional",
+     "note": "the installer can set it from the manifest"
+    }
+   },
+   "main_module": "index.js",
+   "modules": [
+    {
+     "name": "index.js",
+     "type": "esm",
+     "content": "// arcanum-bff (test stub)\nexport default { fetch() { return new Response(\"arcanum-bff\"); } };\n"
+    }
+   ]
+  }
+ },
+ "database": {
+  "databases": [
+   {
+    "name": "arcanum-devices",
+    "component": "arcanum-devicehub",
+    "schema": "-- Registered POS/CFD/sim terminals. A CFD/sim sits idle (linked_to IS NULL)\n-- until a POS links it to itself. org_id scopes every device to one\n-- organization (see worker/src/organizations \u2014 a separate Worker/database;\n-- this table just stores the id, it doesn't verify membership itself).\n-- Nullable for backward compatibility with devices registered before\n-- organizations existed; new registrations always require it.\nCREATE TABLE IF NOT EXISTS devices (\n  terminal_id TEXT PRIMARY KEY,\n  org_id TEXT,\n  role TEXT NOT NULL,\n  linked_to TEXT,\n  created_at TEXT NOT NULL\n);\n\nCREATE INDEX IF NOT EXISTS idx_devices_role_linked_to ON devices(role, linked_to);\nCREATE INDEX IF NOT EXISTS idx_devices_org ON devices(org_id);\n",
+    "migrations": [],
+    "tracked": false
+   },
+   {
+    "name": "arcanum-backend",
+    "component": "arcanum-backend",
+    "schema": "-- Per-org events (see organizations/events.ts) \u2014 will drive what a kassa\n-- shows (menu/catalogue) for a given event once that part is built; for\n-- now, just name + date, and something transactions can be tagged with.\nCREATE TABLE IF NOT EXISTS events (\n  id TEXT PRIMARY KEY,\n  org_id TEXT NOT NULL REFERENCES organizations(id),\n  name TEXT NOT NULL,\n  event_date TEXT NOT NULL, -- ISO date, YYYY-MM-DD\n  created_at TEXT NOT NULL\n);\n\nCREATE INDEX IF NOT EXISTS idx_events_org ON events(org_id);\n\nCREATE TABLE IF NOT EXISTS transactions (\n  id TEXT PRIMARY KEY,\n  amount_cents INTEGER NOT NULL,\n  description TEXT,\n  method TEXT NOT NULL,\n  items TEXT,\n  slot_id TEXT,\n  device_id TEXT,\n  device_name TEXT,\n  user_name TEXT,\n  user_email TEXT,\n  -- Nullable only for backward compat with rows recorded before organization\n  -- scoping existed; every new transaction is required to carry one.\n  org_id TEXT,\n  -- Nullable: nothing assigns this yet (that needs the kassa to know which\n  -- event is active, a later step) \u2014 the column exists now so that step\n  -- doesn't need its own migration.\n  event_id TEXT REFERENCES events(id),\n  -- Set for sales paid through a tab (see tabs.ts) \u2014 every kassa sale from\n  -- migration 0012 on. NULL for rows recorded before tabs existed.\n  tab_id TEXT REFERENCES tabs(id),\n  -- Part of amount_cents, not revenue (step 3d). 0 for everything before tips.\n  tip_cents INTEGER NOT NULL DEFAULT 0,\n  completed_at TEXT NOT NULL\n);\n\nCREATE INDEX IF NOT EXISTS idx_transactions_completed_at ON transactions(completed_at);\nCREATE INDEX IF NOT EXISTS idx_transactions_slot_id ON transactions(slot_id);\nCREATE INDEX IF NOT EXISTS idx_transactions_org_id ON transactions(org_id);\nCREATE INDEX IF NOT EXISTS idx_transactions_event_id ON transactions(event_id);\nCREATE INDEX IF NOT EXISTS idx_transactions_tab_id ON transactions(tab_id);\n\n-- The `devices` table used to live here; it moved to arcanum-devicehub's own\n-- D1 database (arcanum-devices) so the two Workers don't",
+    "migrations": [
+     {
+      "name": "0001_add_org_support.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0002_multi_issuer_identity.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0003_smtp_credentials.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0004_events.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0005_org_slug.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0006_mail_provider.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0007_idp_scopes.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0008_auth_code_client.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0009_custom_domain.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0010_custom_domain_route.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0011_drop_org_slug.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0012_tabs.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0013_catalog.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0014_order_catalog.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0015_tips.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0016_prep_stations.sql",
+      "sql": "-- test stub"
+     },
+     {
+      "name": "0017_org_import.sql",
+      "sql": "-- test stub"
+     }
+    ],
+    "tracked": true
+   }
+  ]
+ },
+ "assets_config": {}
+}

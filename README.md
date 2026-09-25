@@ -1,5 +1,52 @@
 # arcanum-installer
 
+Installs [Arcanum](https://github.com/arcanum-pos) — kassa, customer
+display, admin portal — on **your own** Cloudflare account, so your data
+lives there and nowhere else. It deploys the five Arcanum Workers from a
+published release ([arcanum-releases](https://github.com/arcanum-pos/arcanum-releases)),
+creates their databases and storage, and generates every secret.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/arcanum-pos/arcanum-installer)
+
+## How it works
+
+1. Click **Deploy to Cloudflare** above. It deploys this installer (one
+   Worker + one KV namespace for its state) to your account and asks for
+   `INSTALLER_PASSWORD` — choose a long, unique value; it protects the
+   setup page.
+2. Open the installer's workers.dev address and log in with that password.
+3. Answer four questions:
+   - a **Cloudflare API token** — the page links to Cloudflare's token page
+     with exactly the needed permissions filled in (Workers Scripts, D1 and
+     Workers KV Storage: Edit; Account Settings: Read);
+   - your **login provider** (Google, Microsoft, Auth0, Keycloak…): issuer
+     URL, client id and secret — the page shows the callback URL to
+     register, and checks the provider supports device login (needed for
+     the kassa);
+   - the **admins** allowed to create or import organizations;
+   - the **version** to install.
+4. Click **Installeren**. Around 20 small steps run one by one; each can
+   safely be run again, so an interrupted install just continues.
+5. Open Arcanum on `https://arcanum-bff.<your-subdomain>.workers.dev`, log
+   in as an admin, and create your organization — or import it from an
+   export of your previous installation (*Instellingen → Gegevens*).
+
+Everything else (five generated keys, all internal wiring between the
+Workers) is taken care of. The Cloudflare token (if "onthouden"), the login
+provider's client secret and the generated keys are stored encrypted in
+the installer's KV and are never shown again.
+
+Status: first version — fresh installs on workers.dev. Updating to a newer
+release and custom domains come next.
+
+## Development
+
+```sh
+npm ci
+npm test          # end-to-end against a fake Cloudflare API and a fake release
+npx wrangler dev  # needs a .dev.vars with INSTALLER_PASSWORD
+```
+
 ## License
 
 Copyright (C) 2026 kaboutersoft.be

@@ -1,0 +1,20 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	// Deployed with the "Deploy to Cloudflare" button (see README) onto the
+	// account that will host Arcanum. It installs and updates the five Arcanum
+	// Workers from the published release bundles (arcanum-pos/arcanum-releases).
+	"name": "arcanum-installer",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-09-11",
+	// Its setup page lives on workers.dev, protected by INSTALLER_PASSWORD.
+	"workers_dev": true,
+	// The installer's own state: configuration, resource ids, progress, and
+	// (encrypted) the Cloudflare token and generated secrets. No id: the
+	// Deploy button creates the namespace.
+	"kv_namespaces": [{ "binding": "INSTALLER_STATE" }],
+	"vars": {
+		// Where the list of releases is read from (not the rate-limited GitHub API).
+		"RELEASES_INDEX_URL": "https://raw.githubusercontent.com/arcanum-pos/arcanum-releases/main/releases.json"
+	},
+	"observability": { "enabled": true }
+}
