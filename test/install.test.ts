@@ -86,6 +86,25 @@ describe('setup page access', () => {
     expect((await call('GET', '/api/status')).status).toBe(401);
   });
 
+  it("serves the platform's logo and fonts itself, and the page uses only those", async () => {
+    for (const [path, type] of [
+      ['/assets/kabouter.png', 'image/png'],
+      ['/assets/geist.woff2', 'font/woff2'],
+      ['/assets/montserrat-700.woff2', 'font/woff2'],
+    ]) {
+      const res = await SELF.fetch(`https://installer.test${path}`);
+      expect(res.status, path).toBe(200);
+      expect(res.headers.get('Content-Type')).toBe(type);
+      expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(10_000);
+    }
+    const page = await SELF.fetch('https://installer.test/');
+    const html = await page.text();
+    expect(html).toContain('/assets/kabouter.png');
+    expect(html).toContain('<span>arcanum</span>');
+    expect(page.headers.get('Content-Security-Policy')).toContain("font-src 'self'");
+    expect(html).not.toMatch(/https?:\/\/(fonts\.|cdn|unpkg)/);
+  });
+
   it('locks out after 10 wrong passwords', async () => {
     for (let i = 0; i < 10; i++) await call('POST', '/api/login', { password: `fout-${i}` });
     expect((await call('POST', '/api/login', { password: PASSWORD })).status).toBe(429);

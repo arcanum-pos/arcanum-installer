@@ -16,5 +16,9 @@
 		// Where the list of releases is read from (not the rate-limited GitHub API).
 		"RELEASES_INDEX_URL": "https://raw.githubusercontent.com/arcanum-pos/arcanum-releases/main/releases.json"
 	},
+	// The logo and fonts (the platform's own: kabouter logo, Geist, Montserrat
+	// Bold) are bundled into the Worker as binary modules — the setup page
+	// loads nothing from anywhere else.
+	"rules": [{ "type": "Data", "globs": ["**/*.png", "**/*.woff2"], "fallthrough": true }],
 	"observability": { "enabled": true }
 }
