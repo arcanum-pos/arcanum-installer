@@ -10,7 +10,15 @@ creates their databases and storage, and generates every secret.
 
 ## How it works
 
-1. Click **Deploy to Cloudflare** above. It deploys this installer (one
+0. **New Cloudflare account?** First open *Workers & Pages* once in the
+   [Cloudflare dashboard](https://dash.cloudflare.com/?to=/:account/workers-and-pages)
+   and choose your **workers.dev subdomain** (the `<name>.workers.dev` part).
+   Without it the installer gets no address to open. (The installer can
+   register one for Arcanum itself, but not for itself.)
+1. Click **Deploy to Cloudflare** above. It asks for a GitHub (or GitLab)
+   account: it copies this installer into a new repository there and
+   deploys from it — nothing else in that account is touched, and Arcanum
+   itself is installed from the public releases, not from GitHub. It deploys this installer (one
    Worker + one KV namespace for its state) to your account and asks for
    `INSTALLER_PASSWORD` — choose a long, unique value; it protects the
    setup page.

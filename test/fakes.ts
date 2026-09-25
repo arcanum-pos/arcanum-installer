@@ -39,6 +39,10 @@ export class FakeCloudflare {
   kv = new Map<string, string>(); // id -> title
   scripts = new Map<string, UploadedScript>();
   migrationTags = new Map<string, string>();
+  // Durable Object classes exported by each script's deployed version.
+  doClasses = new Map<string, Set<string>>();
+  // null = the account has no workers.dev subdomain yet (a brand-new account).
+  subdomain: string | null = SUBDOMAIN;
   workersDev = new Map<string, boolean>();
   assets = new Set<string>(); // uploaded hashes
   sessions = new Map<string, { needed: Set<string>; completion: string }>();
@@ -72,7 +76,16 @@ export class FakeCloudflare {
     const [, accountId, rest] = m;
     if (!accounts.some((a) => a.id === accountId)) return fail(403, 'Not allowed on this account');
 
-    if (method === 'GET' && rest === '/workers/subdomain') return ok({ subdomain: SUBDOMAIN });
+    if (rest === '/workers/subdomain') {
+      if (method === 'GET') return this.subdomain ? ok({ subdomain: this.subdomain }) : fail(404, 'This account does not have a workers.dev subdomain', 10007);
+      if (method === 'PUT') {
+        const { subdomain } = (await request.json()) as { subdomain: string };
+        if (this.subdomain) return fail(409, 'A subdomain is already registered for this account', 10036);
+        if (subdomain === 'taken') return fail(409, 'This subdomain is not available', 10032);
+        this.subdomain = subdomain;
+        return ok({ subdomain });
+      }
+    }
 
     if (rest === '/d1/database') {
       if (method === 'GET') return ok([...this.d1].filter(([, d]) => !url.searchParams.get('name') || d.name === url.searchParams.get('name')).map(([uuid, d]) => ({ uuid, name: d.name })));
@@ -171,10 +184,28 @@ export class FakeCloudflare {
       if ((b.type === 'plain_text' || b.type === 'secret_text') && typeof b.text !== 'string') return fail(400, `binding ${b.name} needs text`);
     }
     const current = this.migrationTags.get(name);
+    let classes = new Set(this.doClasses.get(name) ?? []);
     if (metadata.migrations) {
       if ((metadata.migrations.old_tag ?? null) !== (current ?? null)) return fail(400, `Migration old_tag ${metadata.migrations.old_tag} does not match the current tag ${current}`, 10079);
+      // Like the real API: deletes and renames are checked against the
+      // classes the *previously deployed* version exported — not against
+      // earlier steps in the same upload.
+      const previous = this.doClasses.get(name) ?? new Set<string>();
+      for (const step of metadata.migrations.steps ?? []) {
+        for (const c of step.deleted_classes ?? []) {
+          if (!previous.has(c)) return fail(400, `Cannot apply delete-class migration to class '${c}' which was not exported in the previous version of the script`, 10074);
+          classes.delete(c);
+        }
+        for (const r of step.renamed_classes ?? []) {
+          if (!previous.has(r.from)) return fail(400, `Cannot apply rename-class migration to class '${r.from}' which was not exported in the previous version of the script`, 10074);
+          classes.delete(r.from);
+          classes.add(r.to);
+        }
+        for (const c of [...(step.new_classes ?? []), ...(step.new_sqlite_classes ?? [])]) classes.add(c);
+      }
       this.migrationTags.set(name, metadata.migrations.new_tag);
     }
+    this.doClasses.set(name, classes);
     if (metadata.assets && !this.completionJwts.has(metadata.assets.jwt)) return fail(400, 'Invalid assets completion token', 10401);
     this.scripts.set(name, { metadata, modules, order: ++this.uploads });
     return ok({ id: name });

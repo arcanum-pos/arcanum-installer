@@ -69,6 +69,11 @@ export class Cloudflare {
     }
   }
 
+  // A brand-new account has no workers.dev subdomain until one is chosen.
+  async registerWorkersSubdomain(accountId: string, subdomain: string): Promise<string> {
+    return (await this.call<{ subdomain: string }>('PUT', `/accounts/${accountId}/workers/subdomain`, { subdomain })).subdomain;
+  }
+
   async findD1(accountId: string, name: string): Promise<string | null> {
     const list = await this.call<{ uuid: string; name: string }[]>('GET', `/accounts/${accountId}/d1/database?name=${encodeURIComponent(name)}&per_page=50`);
     return list.find((d) => d.name === name)?.uuid ?? null;

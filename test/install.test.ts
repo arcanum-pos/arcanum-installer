@@ -103,6 +103,22 @@ describe('setup page access', () => {
 });
 
 describe('configuration', () => {
+  it("registers the account's workers.dev subdomain when a brand-new account has none", async () => {
+    fakes.cf.subdomain = null;
+    await call('POST', '/api/login', { password: PASSWORD });
+    const first = await call('POST', '/api/cloudflare', { token: TOKEN });
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({ needsSubdomain: true, suggestion: 'scouts-elewijt' });
+    expect((await call('POST', '/api/cloudflare', { token: TOKEN, subdomain: 'Geen Geldige!' })).status).toBe(400);
+    const taken = await call('POST', '/api/cloudflare', { token: TOKEN, subdomain: 'taken' });
+    expect(taken.status).toBe(400);
+    expect(taken.body.error).toMatch(/not available/);
+    const done = await call('POST', '/api/cloudflare', { token: TOKEN, subdomain: 'scouts-elewijt' });
+    expect(done.status).toBe(200);
+    expect(done.body.address.publicUrl).toBe('https://arcanum-bff.scouts-elewijt.workers.dev');
+    expect(fakes.cf.subdomain).toBe('scouts-elewijt');
+  });
+
   it('shows the callback URL to register once the account is known', async () => {
     await call('POST', '/api/login', { password: PASSWORD });
     const status = (await call('POST', '/api/cloudflare', { token: TOKEN })).body;
@@ -213,15 +229,18 @@ describe('fresh install', () => {
     });
   });
 
-  it('sends the full Durable Object migration history to a new script', async () => {
+  it("gives a new script its Durable Object history's net effect as one step, under the latest tag", async () => {
+    // Replaying the history (create → delete → create) on a new script is
+    // refused by Cloudflare: a delete is checked against the previously
+    // deployed version, and a new script has none (error 10074).
     await configure();
-    await runAll();
+    const run = await runAll();
+    expect(run.failed, run.detail).toBeNull();
+    const devicehub = fakes.cf.scripts.get('arcanum-devicehub')!.metadata.migrations;
+    expect(devicehub).toEqual({ new_tag: 'v3', steps: [{ new_sqlite_classes: ['DeviceHub'] }] });
     const backend = fakes.cf.scripts.get('arcanum-backend')!.metadata.migrations;
-    expect(backend.old_tag).toBeUndefined();
-    expect(backend.new_tag).toBe('v4');
-    expect(backend.steps).toHaveLength(4);
-    expect(backend.steps.every((s: any) => !('tag' in s))).toBe(true);
-    expect(fakes.cf.migrationTags.get('arcanum-devicehub')).toBe('v3');
+    expect(backend).toEqual({ new_tag: 'v4', steps: [{ new_sqlite_classes: ['ChargePoller'] }] });
+    expect(fakes.cf.doClasses.get('arcanum-backend')).toEqual(new Set(['ChargePoller']));
   });
 
   it('uploads every asset and deploys the frontends with the completion token', async () => {

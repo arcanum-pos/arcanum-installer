@@ -47,6 +47,7 @@ export const PAGE = /* html */ `<!doctype html>
       <form data-form="cloudflare">
         <label for="token">API-token</label><input id="token" name="token" type="password" autocomplete="off" required>
         <div data-accounts class="hidden"><label for="accountId">Account</label><select id="accountId" name="accountId"></select></div>
+        <div data-subdomain class="hidden"><label for="subdomain">Kies je workers.dev-naam</label><input id="subdomain" name="subdomain" type="text" autocomplete="off"><p class="soft">Dit account heeft nog geen workers.dev-adres. Arcanum komt dan op <code>arcanum-bff.<span data-subdomain-preview>…</span>.workers.dev</code>. De naam geldt voor het hele Cloudflare-account en is later moeilijk te wijzigen.</p></div>
         <label class="row" style="font-weight:normal"><input type="checkbox" name="remember" checked> Token onthouden voor latere updates (veilig versleuteld, nooit opnieuw zichtbaar)</label>
         <button>Controleren en bewaren</button><p class="error" data-error></p>
       </form>
@@ -156,6 +157,13 @@ document.addEventListener('submit', async (ev) => {
   try {
     const result = await api('/api/' + form.dataset.form, data);
     if (form.dataset.form === 'login') { show(true); await refresh(); await loadReleases(); return; }
+    if (result.needsSubdomain) {
+      const box = $('[data-subdomain]', form); box.classList.remove('hidden');
+      if (!form.subdomain.value) form.subdomain.value = result.suggestion;
+      $('[data-subdomain-preview]').textContent = form.subdomain.value;
+      form.subdomain.oninput = () => { $('[data-subdomain-preview]').textContent = form.subdomain.value || '…'; };
+      err.textContent = 'Kies een workers.dev-naam en bevestig opnieuw.'; return;
+    }
     if (result.needsAccount) {
       const sel = $('#accountId'); sel.innerHTML = ''; for (const a of result.accounts) { const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; sel.append(o); }
       $('[data-accounts]', form).classList.remove('hidden'); err.textContent = 'Kies het account en bevestig opnieuw.'; return;

@@ -114,13 +114,49 @@ function resourceBinding(b: DescriptorBinding, ctx: InstallContext): ApiBinding 
   }
 }
 
-// Exactly wrangler's logic (getMigrationsToUpload): a new script gets every
-// step; an existing one only the steps after its current tag.
+// The net effect of a Durable Object migration history: which classes exist
+// at the end, SQLite- or KV-backed.
+export function netClasses(migrations: WorkerDescriptor['durable_object_migrations']): { sqlite: string[]; kv: string[] } {
+  const classes = new Map<string, 'sqlite' | 'kv'>();
+  const list = (v: unknown) => (Array.isArray(v) ? (v as unknown[]) : []);
+  for (const step of migrations) {
+    for (const key of Object.keys(step)) {
+      if (!['tag', 'new_classes', 'new_sqlite_classes', 'renamed_classes', 'deleted_classes'].includes(key)) {
+        throw new ContractError(`Durable Object-migratie "${key}" (tag ${step.tag}) wordt door de installer nog niet ondersteund`);
+      }
+    }
+    for (const c of list(step.new_classes)) classes.set(String(c), 'kv');
+    for (const c of list(step.new_sqlite_classes)) classes.set(String(c), 'sqlite');
+    for (const r of list(step.renamed_classes) as { from: string; to: string }[]) {
+      const storage = classes.get(r.from);
+      if (!storage) throw new ContractError(`Migratie ${step.tag} hernoemt ${r.from}, dat niet bestaat`);
+      classes.delete(r.from);
+      classes.set(r.to, storage);
+    }
+    for (const c of list(step.deleted_classes)) classes.delete(String(c));
+  }
+  const of = (kind: 'sqlite' | 'kv') => [...classes].filter(([, k]) => k === kind).map(([c]) => c).sort();
+  return { sqlite: of('sqlite'), kv: of('kv') };
+}
+
+// An existing script: exactly wrangler's logic (getMigrationsToUpload) —
+// only the steps after its current tag. A NEW script can't be given the
+// history itself: Cloudflare checks a delete or rename against the
+// previously deployed version, which a new script doesn't have (error
+// 10074 for devicehub's create → delete → create). So a new script gets
+// the history's net effect as one step, under the latest tag — later
+// updates then continue from that tag as if the history had been replayed.
 export function migrationsPayload(migrations: WorkerDescriptor['durable_object_migrations'], currentTag: string | null) {
   if (migrations.length === 0) return undefined;
   const newTag = migrations[migrations.length - 1].tag;
   const strip = (m: { tag: string } & Record<string, unknown>) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== 'tag'));
-  if (!currentTag) return { new_tag: newTag, steps: migrations.map(strip) };
+  if (!currentTag) {
+    const { sqlite, kv } = netClasses(migrations);
+    const step: Record<string, string[]> = {};
+    if (sqlite.length) step.new_sqlite_classes = sqlite;
+    if (kv.length) step.new_classes = kv;
+    return { new_tag: newTag, steps: Object.keys(step).length ? [step] : [] };
+  }
   const at = migrations.findIndex((m) => m.tag === currentTag);
   if (at === -1) return { old_tag: currentTag, new_tag: newTag, steps: migrations.map(strip) };
   if (at === migrations.length - 1) return undefined;

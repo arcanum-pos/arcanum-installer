@@ -23,6 +23,19 @@ export const TOKEN_TEMPLATE_URL =
 
 const SESSION_TOKEN_TTL_S = 2 * 60 * 60;
 
+// "Scouts Elewijt's Account" → "scouts-elewijt".
+export function suggestSubdomain(accountName: string): string {
+  const base = accountName
+    .toLowerCase()
+    .replace(/'s account$|\baccount\b/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return base || 'arcanum';
+}
+
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers } });
 }
@@ -89,7 +102,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
 
   try {
     if (path === '/api/cloudflare' && request.method === 'POST') {
-      const { token, remember, accountId } = await body(request);
+      const { token, remember, accountId, subdomain: wantedSubdomain } = await body(request);
       if (typeof token !== 'string' || token.trim().length < 20) return json({ error: 'Plak het API-token van Cloudflare' }, 400);
       const cf = cloudflareFor(env, token.trim());
       const accounts = await cf.listAccounts();
@@ -99,8 +112,24 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       if (installationStarted(state) && state.cloudflare && state.cloudflare.accountId !== account.id) {
         return json({ error: `Arcanum is al (deels) geïnstalleerd op account ${state.cloudflare.accountName} — gebruik een token voor dat account` }, 409);
       }
-      const subdomain = await cf.getWorkersSubdomain(account.id);
-      if (!subdomain) return json({ error: 'Dit account heeft nog geen workers.dev-subdomein — open Workers & Pages in het Cloudflare-dashboard om er een te kiezen' }, 400);
+      let subdomain = await cf.getWorkersSubdomain(account.id);
+      if (!subdomain) {
+        // A brand-new account: register its workers.dev subdomain here instead
+        // of sending the admin to the dashboard.
+        if (typeof wantedSubdomain !== 'string' || !wantedSubdomain) {
+          return json({ needsSubdomain: true, suggestion: suggestSubdomain(account.name) });
+        }
+        const name = wantedSubdomain.trim().toLowerCase();
+        if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(name)) {
+          return json({ error: 'Gebruik alleen kleine letters, cijfers en koppeltekens (niet aan het begin of einde), max. 63 tekens' }, 400);
+        }
+        try {
+          subdomain = await cf.registerWorkersSubdomain(account.id, name);
+        } catch (err) {
+          if (err instanceof CloudflareError) return json({ error: `Dat workers.dev-subdomein kon niet geregistreerd worden: ${err.message}` }, 400);
+          throw err;
+        }
+      }
       // A cheap read of D1 checks the token reaches D1 at all; write rights show during the install.
       await cf.findD1(account.id, 'arcanum-backend');
       const keep = remember !== false;
