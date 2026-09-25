@@ -133,6 +133,18 @@ export class Cloudflare {
     return !!(await this.call<{ enabled?: boolean }>('GET', `/accounts/${accountId}/workers/scripts/${scriptName}/subdomain`)).enabled;
   }
 
+  // What wrangler does after an upload for a route with `custom_domain: true`:
+  // attach the hostname to the Worker (Cloudflare creates the DNS record and
+  // certificate; the hostname must be in a zone of this account).
+  attachCustomDomain(accountId: string, hostname: string, service: string) {
+    return this.call<{ id: string }>('PUT', `/accounts/${accountId}/workers/domains`, { hostname, service, environment: 'production' });
+  }
+
+  async customDomainService(accountId: string, hostname: string): Promise<string | null> {
+    const list = await this.call<{ hostname: string; service: string }[]>('GET', `/accounts/${accountId}/workers/domains?hostname=${encodeURIComponent(hostname)}`);
+    return list.find((d) => d.hostname === hostname)?.service ?? null;
+  }
+
   setWorkersDev(accountId: string, scriptName: string, enabled: boolean) {
     return this.call<unknown>('POST', `/accounts/${accountId}/workers/scripts/${scriptName}/subdomain`, { enabled, previews_enabled: false });
   }

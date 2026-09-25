@@ -43,6 +43,9 @@ export class FakeCloudflare {
   doClasses = new Map<string, Set<string>>();
   // null = the account has no workers.dev subdomain yet (a brand-new account).
   subdomain: string | null = SUBDOMAIN;
+  // Zones on the account (Workers Custom Domains must be in one of them) and attached domains.
+  zones = ['scouts-elewijt.be'];
+  domains = new Map<string, string>(); // hostname -> service
   workersDev = new Map<string, boolean>();
   assets = new Set<string>(); // uploaded hashes
   sessions = new Map<string, { needed: Set<string>; completion: string }>();
@@ -118,6 +121,20 @@ export class FakeCloudflare {
       const id = `kv-${++this.seq}`;
       this.kv.set(id, title);
       return ok({ id, title });
+    }
+
+    if (rest === '/workers/domains' && method === 'PUT') {
+      const { hostname, service } = (await request.json()) as { hostname: string; service: string };
+      if (!this.scripts.has(service)) return fail(404, 'Worker not found', 10007);
+      if (!this.zones.some((z) => hostname === z || hostname.endsWith(`.${z}`))) return fail(400, 'Could not find zone for hostname', 100117);
+      const other = this.domains.get(hostname);
+      if (other && other !== service) return fail(409, 'Hostname already has externally managed DNS records', 100116);
+      this.domains.set(hostname, service);
+      return ok({ id: `dom-${hostname}`, hostname, service, environment: 'production' });
+    }
+    if (rest === '/workers/domains' && method === 'GET') {
+      const host = url.searchParams.get('hostname');
+      return ok([...this.domains].filter(([h]) => !host || h === host).map(([hostname, service]) => ({ id: `dom-${hostname}`, hostname, service })));
     }
 
     const svc = rest.match(/^\/workers\/services\/([^/]+)$/);

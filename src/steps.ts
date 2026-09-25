@@ -4,7 +4,7 @@
 // Cloudflare API calls and one release file each. Every step can be re-run
 // safely, so a failed or interrupted install simply continues.
 import type { Env } from './env';
-import { Cloudflare } from './cloudflare';
+import { Cloudflare, CloudflareError } from './cloudflare';
 import { generateSecret, randomBytes } from './crypto';
 import { secretsNeeded, uploadMetadata, type InstallContext, type WorkerDescriptor } from './contract';
 import { fetchReleaseJson, type Manifest } from './releases';
@@ -201,6 +201,19 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     // Only the public entry gets a workers.dev address; everything else is
     // reachable solely through service bindings.
     await cf.setWorkersDev(accountId, name, worker.public_entry);
+    if (worker.public_entry && state.customDomain) {
+      try {
+        await cf.attachCustomDomain(accountId, state.customDomain, name);
+      } catch (err) {
+        const denied = err instanceof CloudflareError && (err.status === 401 || err.status === 403);
+        throw new Error(
+          `Het domein ${state.customDomain} kon niet gekoppeld worden: ${(err as Error).message}. ` +
+            (denied
+              ? 'Geef het token ook rechten op die zone (Zone: Read en Workers Routes: Edit) en probeer opnieuw.'
+              : 'Het domein moet in een zone van dit Cloudflare-account staan.')
+        );
+      }
+    }
     return { status: 'done', detail: worker.public_entry ? url : 'intern (geen publiek adres)' };
   }
 
@@ -223,6 +236,9 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     if (missing.length) throw new Error(`Ontbreekt nog: ${missing.join(', ')}`);
     const entry = release.blueprint.workers.find((w) => w.public_entry)!;
     if (!(await cf.isOnWorkersDev(accountId, entry.name))) throw new Error(`${entry.name} staat niet op workers.dev — het publieke adres is uitgeschakeld`);
+    if (state.customDomain && (await cf.customDomainService(accountId, state.customDomain)) !== entry.name) {
+      throw new Error(`${state.customDomain} is niet (meer) aan ${entry.name} gekoppeld`);
+    }
     const database = await fetchReleaseJson<{ databases: { name: string; tracked: boolean; migrations: unknown[] }[] }>(release.manifestUrl, release.manifest, 'database.json');
     for (const db of database.databases.filter((d) => d.tracked)) {
       const redo = `voer "Database ${db.name} inrichten" opnieuw uit`;

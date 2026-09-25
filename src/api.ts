@@ -6,7 +6,7 @@ import { checkLoginAllowed, clearedCookie, newSessionCookie, passwordMatches, re
 import { Cloudflare, CloudflareError } from './cloudflare';
 import type { WorkerDescriptor } from './contract';
 import { fetchIndex, fetchManifest, fetchReleaseJson, installable, ReleaseError } from './releases';
-import { installationStarted, loadState, publicUrl, saveState, sealValue, unsealValue, type InstallerState } from './state';
+import { installationStarted, loadState, publicUrl, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
 import { blueprintFrom, planSteps, runStep } from './steps';
 
 const TOKEN_PERMISSIONS = [
@@ -63,7 +63,7 @@ export async function status(env: Env, state: InstallerState, sessionId: string)
     cloudflare: state.cloudflare
       ? { accountId: state.cloudflare.accountId, accountName: state.cloudflare.accountName, subdomain: state.cloudflare.subdomain, remember: state.cloudflare.remember, tokenAvailable: !!(await tokenFor(env, state, sessionId)) }
       : null,
-    address: url ? { publicUrl: url, callbackUrl: `${url}/callback`, logoutUrl: url } : null,
+    address: url ? { publicUrl: url, callbackUrl: `${url}/callback`, logoutUrl: url, customDomain: state.customDomain ?? null, workersDevUrl: workersDevUrl(state) } : null,
     login: state.login
       ? {
           issuer: state.login.issuer,
@@ -197,6 +197,22 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       // Already installed? Re-deploy the backend with the new settings and
       // let it re-seed the login provider ("Verder installeren" applies it).
       for (const step of ['worker:arcanum-backend', 'login:reset', 'verify']) delete state.steps[step];
+      await saveState(env, state);
+      return json(await status(env, state, sessionId));
+    }
+
+    if (path === '/api/address' && request.method === 'POST') {
+      const { customDomain } = await body(request);
+      const host = typeof customDomain === 'string' ? customDomain.trim().toLowerCase().replace(/\.$/, '') : '';
+      if (host && !/^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)) {
+        return json({ error: 'Geef alleen de domeinnaam, bv. arcanum.jouwdomein.be (zonder https:// of pad)' }, 400);
+      }
+      if ((state.customDomain ?? '') !== host) {
+        if (host) state.customDomain = host;
+        else delete state.customDomain;
+        // Already installed: re-deploy with the new address (the bff step attaches the domain).
+        for (const step of ['worker:arcanum-backend', 'worker:arcanum-bff', 'verify']) delete state.steps[step];
+      }
       await saveState(env, state);
       return json(await status(env, state, sessionId));
     }

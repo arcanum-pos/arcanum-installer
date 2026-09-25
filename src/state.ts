@@ -40,6 +40,9 @@ export interface InstallerState {
     authCodeClientSecret?: Sealed;
   };
   admins?: string;
+  // The installation's own domain (a Workers Custom Domain on the bff, in a
+  // zone of this account — no Cloudflare for SaaS). Unset = workers.dev only.
+  customDomain?: string;
   release?: { version: string; manifestUrl: string; manifest: Manifest; blueprint: Blueprint };
   secrets?: Sealed;
   resources: { d1: Record<string, string>; kv: Record<string, string>; ratelimitNamespaceId?: string };
@@ -65,9 +68,15 @@ export async function saveState(env: Env, state: InstallerState): Promise<void> 
 export const sealValue = (env: Env, state: InstallerState, value: string) => seal(value, env.INSTALLER_PASSWORD, state.salt);
 export const unsealValue = (env: Env, state: InstallerState, value: Sealed) => unseal(value, env.INSTALLER_PASSWORD, state.salt);
 
-// The public address of the installation: the bff on the account's workers.dev subdomain.
-export function publicUrl(state: InstallerState): string | null {
+// The bff on the account's workers.dev subdomain — always there, also as a fallback.
+export function workersDevUrl(state: InstallerState): string | null {
   return state.cloudflare?.subdomain ? `https://arcanum-bff.${state.cloudflare.subdomain}.workers.dev` : null;
+}
+
+// The installation's address: its own domain if it has one, else workers.dev.
+export function publicUrl(state: InstallerState): string | null {
+  if (!state.cloudflare) return null;
+  return state.customDomain ? `https://${state.customDomain}` : workersDevUrl(state);
 }
 
 // Once anything exists on the account, the account and address are locked:

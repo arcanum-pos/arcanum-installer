@@ -141,7 +141,7 @@ describe('configuration', () => {
   it('shows the callback URL to register once the account is known', async () => {
     await call('POST', '/api/login', { password: PASSWORD });
     const status = (await call('POST', '/api/cloudflare', { token: TOKEN })).body;
-    expect(status.address).toEqual({ publicUrl: PUBLIC_URL, callbackUrl: `${PUBLIC_URL}/callback`, logoutUrl: PUBLIC_URL });
+    expect(status.address).toEqual({ publicUrl: PUBLIC_URL, callbackUrl: `${PUBLIC_URL}/callback`, logoutUrl: PUBLIC_URL, customDomain: null, workersDevUrl: PUBLIC_URL });
     expect(status.cloudflare).toMatchObject({ accountName: 'Scouts Elewijt', subdomain: 'scouts', tokenAvailable: true });
   });
 
@@ -359,6 +359,58 @@ describe('login provider options', () => {
     expect(binding('arcanum-backend', 'DEFAULT_IDP_SCOPES').text).toBe('openid profile email');
     const backendDb = [...fakes.cf.d1.values()].find((d) => d.name === 'arcanum-backend')!;
     expect(backendDb.queries.filter((q) => q.includes("DELETE FROM identity_providers WHERE org_id = 'default'"))).toHaveLength(2);
+  });
+});
+
+describe('own domain (Workers Custom Domain on the bff, no Cloudflare for SaaS)', () => {
+  const DOMAIN = 'arcanum.scouts-elewijt.be';
+
+  it('deploys with the domain as its address and attaches it to the bff', async () => {
+    await call('POST', '/api/login', { password: PASSWORD });
+    await call('POST', '/api/cloudflare', { token: TOKEN });
+    const saved = await call('POST', '/api/address', { customDomain: DOMAIN });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(saved.body.address).toEqual({ publicUrl: `https://${DOMAIN}`, callbackUrl: `https://${DOMAIN}/callback`, logoutUrl: `https://${DOMAIN}`, customDomain: DOMAIN, workersDevUrl: PUBLIC_URL });
+    await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'arcanum-client', clientSecret: CLIENT_SECRET });
+    await call('POST', '/api/admins', { emails: 'bert@scouts.test' });
+    await call('POST', '/api/release', { version: '0.1.1' });
+    const run = await runAll();
+    expect(run.failed, run.detail).toBeNull();
+    expect(binding('arcanum-bff', 'FRONTEND_URL').text).toBe(`https://${DOMAIN}`);
+    expect(binding('arcanum-backend', 'PUBLIC_BASE_URL').text).toBe(`https://${DOMAIN}`);
+    expect(Object.fromEntries(fakes.cf.domains)).toEqual({ [DOMAIN]: 'arcanum-bff' });
+    const status = (await call('GET', '/api/status')).body;
+    expect(status.probeUrl).toBe(`https://${DOMAIN}/assets/kabouter-BjXzpYjf.png`);
+  });
+
+  it('shows the error when the domain is not in a zone of this account', async () => {
+    await configure();
+    await call('POST', '/api/address', { customDomain: 'arcanum.elders.example' });
+    const run = await runAll();
+    expect(run.failed).toBe('worker:arcanum-bff');
+    expect(run.detail).toMatch(/zone/i);
+  });
+
+  it('validates the hostname', async () => {
+    await call('POST', '/api/login', { password: PASSWORD });
+    await call('POST', '/api/cloudflare', { token: TOKEN });
+    for (const bad of ['https://arcanum.scouts-elewijt.be', 'geen domein', 'arcanum.scouts-elewijt.be/pad']) {
+      expect((await call('POST', '/api/address', { customDomain: bad })).status, bad).toBe(400);
+    }
+  });
+
+  it('changing the address after install re-deploys backend and bff with the new address', async () => {
+    await configure();
+    await runAll();
+    const saved = await call('POST', '/api/address', { customDomain: DOMAIN });
+    expect(saved.body.steps.filter((s: any) => s.status !== 'done').map((s: any) => s.id)).toEqual(['worker:arcanum-backend', 'worker:arcanum-bff', 'verify']);
+    const run = await runAll();
+    expect(run.failed, run.detail).toBeNull();
+    expect(binding('arcanum-bff', 'FRONTEND_URL').text).toBe(`https://${DOMAIN}`);
+    // Back to workers.dev only.
+    await call('POST', '/api/address', { customDomain: '' });
+    await runAll();
+    expect(binding('arcanum-bff', 'FRONTEND_URL').text).toBe(PUBLIC_URL);
   });
 });
 

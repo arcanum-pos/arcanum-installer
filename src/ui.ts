@@ -108,6 +108,13 @@ export const PAGE = /* html */ `<!doctype html>
       </form>
     </section>
 
+    <section id="s-address" class="card">
+      <h2>Adres</h2>
+      <p class="soft">Arcanum komt op <code data-workersdev>—</code>. Heb je een domein in dit Cloudflare-account? Dan kan het ook op een eigen adres, bv. <code>arcanum.jouwdomein.be</code> — Cloudflare maakt het DNS-record en het certificaat zelf aan.</p>
+      <p data-summary class="soft"></p>
+      <form data-form="address"><label for="customDomain">Eigen domein (optioneel)</label><input id="customDomain" name="customDomain" type="text" placeholder="arcanum.jouwdomein.be" autocomplete="off"><button>Bewaren</button><p class="error" data-error></p></form>
+    </section>
+
     <section id="s-login" class="card">
       <h2>2. Aanmelden bij Arcanum</h2>
       <p>Arcanum gebruikt een bestaande login-provider (Google, Microsoft, Auth0, Keycloak…). Maak daar een OAuth-client aan met:</p>
@@ -181,6 +188,9 @@ function render() {
   $('#token-link').href = s.tokenTemplateUrl;
   const set = (id, done, summary) => { const el = $(id); el.classList.toggle('done', !!done); $('[data-summary]', el) && ($('[data-summary]', el).textContent = summary || ''); };
   set('#s-cloudflare', s.cloudflare && s.cloudflare.tokenAvailable, s.cloudflare ? 'Account: ' + s.cloudflare.accountName + ' · adres: ' + (s.address ? s.address.publicUrl : '') + (s.cloudflare.tokenAvailable ? '' : ' · token opnieuw nodig') : '');
+  $('[data-workersdev]').textContent = s.address ? s.address.workersDevUrl : '(eerst stap 1)';
+  set('#s-address', false, s.address && s.address.customDomain ? 'Adres: ' + s.address.publicUrl + ' (workers.dev blijft ook werken)' : '');
+  if (s.address && s.address.customDomain) $('#customDomain').value ||= s.address.customDomain;
   $('[data-callback]').textContent = s.address ? s.address.callbackUrl : '(eerst stap 1)';
   $('[data-logout]').textContent = s.address ? s.address.logoutUrl : '(eerst stap 1)';
   set('#s-login', s.login, s.login ? 'Issuer: ' + s.login.issuer + ' · client: ' + s.login.clientId : '');
