@@ -279,6 +279,7 @@ export class FakeReleases {
     r.versions.set('0.1.1', await r.publish('0.1.1', fixture.workers, fixture.database));
     const workers = structuredClone(fixture.workers) as any;
     workers['arcanum-bff'].env.INSTALLER_INTERNAL_KEY = { kind: 'secret', source: 'optional' };
+    workers['arcanum-bff'].env.ARCANUM_VERSION = { kind: 'var', source: 'optional' };
     const database = structuredClone(fixture.database) as any;
     const backend = database.databases.find((d: any) => d.name === 'arcanum-backend');
     backend.migrations.push(NEXT_MIGRATION);

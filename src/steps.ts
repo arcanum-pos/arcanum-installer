@@ -211,6 +211,8 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
         // AGPL §13: where users find the source of exactly what runs here.
         SOURCE_URL: `https://github.com/arcanum-pos/arcanum-releases/releases/tag/v${release.version}`,
         GIT_COMMIT_SHA: release.manifest.components[name]?.commit ?? '',
+        // Shown in the console footer.
+        ARCANUM_VERSION: release.version,
         ...(state.login?.connectionName ? { DEFAULT_IDP_CONNECTION_NAME: state.login.connectionName } : {}),
         ...(state.login?.scopes ? { DEFAULT_IDP_SCOPES: state.login.scopes } : {}),
         ...(state.login?.authCodeClientId && state.login.authCodeClientSecret

@@ -618,6 +618,8 @@ describe('updates', () => {
     const run = await runAll();
     expect(run.failed, run.detail).toBeNull();
     expect((await call('GET', '/api/status')).body.installed.version).toBe(NEXT_VERSION);
+    // The console footer shows the installed release.
+    expect(binding('arcanum-bff', 'ARCANUM_VERSION')).toEqual({ type: 'plain_text', name: 'ARCANUM_VERSION', text: NEXT_VERSION });
     // The new migration ran exactly once, with its record; schema.sql never ran again
     // (it would have marked the migration applied without running it).
     expect(backendDb.queries.filter((q) => q.includes(NEXT_MIGRATION.sql))).toHaveLength(1);
