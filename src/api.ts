@@ -118,8 +118,9 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
 export async function handleApi(request: Request, env: Env, path: string): Promise<Response> {
   if (!env.INSTALLER_PASSWORD) return json({ error: 'INSTALLER_PASSWORD is niet ingesteld op deze Worker' }, 500);
 
-  // No cross-site requests, and JSON bodies only: Arcanum's session cookie is
-  // SameSite=None, so this is what keeps another site from driving the API.
+  // No cross-site requests, and JSON bodies only: another site must never
+  // drive this API with the admin's cookie — the password session's, or
+  // Arcanum's behind /installer (SameSite=Lax; this doesn't rely on that).
   if (request.method !== 'GET') {
     if (request.headers.get('Sec-Fetch-Site') === 'cross-site') return json({ error: 'Niet toegestaan vanaf een andere site' }, 403);
     if (!(request.headers.get('Content-Type') ?? '').includes('application/json')) return json({ error: 'Verwacht JSON' }, 415);

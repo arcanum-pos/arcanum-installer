@@ -722,7 +722,7 @@ describe('behind Arcanum ("Openbare toegang verwijderen")', () => {
 });
 
 describe('cross-site requests', () => {
-  it('refuses POSTs that are not JSON or come from another site (the Arcanum session cookie is SameSite=None)', async () => {
+  it('refuses POSTs that are not JSON or come from another site (whatever the cookie's SameSite)', async () => {
     await configure();
     const form = await SELF.fetch('https://installer.test/api/steps/secrets', { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'a=1' });
     expect(form.status).toBe(415);
