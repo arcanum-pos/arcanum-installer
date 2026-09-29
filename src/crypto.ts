@@ -1,7 +1,8 @@
 // Small crypto helpers. Everything the installer stores that could hurt
 // (the Cloudflare token, the login provider's client secret, the generated
 // Arcanum secrets) is AES-GCM-encrypted with a key derived from the
-// INSTALLER_PASSWORD secret via HKDF — cheap enough for the Free plan's
+// INSTALLER_PASSWORD secret (or, on a bootstrapped installer, the random
+// INSTALLER_STATE_KEY — state.ts rootSecret) via HKDF — cheap enough for the Free plan's
 // ~10 ms CPU per request (PBKDF2 with a real iteration count isn't). This
 // protects against anyone who can only read the KV namespace; the secret
 // itself lives in the Worker's encrypted secret store.

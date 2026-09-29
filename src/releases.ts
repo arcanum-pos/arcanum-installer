@@ -28,6 +28,8 @@ export interface Manifest {
   released_at: string;
   license: string;
   components: Record<string, { repo: string; commit: string; source: string }>;
+  // The installer itself (not one of the components); absent in older releases.
+  installer?: { file: string; commit: string; sha256: string };
   files: Record<string, { size: number; sha256: string }>;
 }
 

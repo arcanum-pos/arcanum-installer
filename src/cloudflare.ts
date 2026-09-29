@@ -3,7 +3,9 @@
 // source): script uploads as multipart with `metadata` + module parts
 // (application/javascript+module), D1 bindings as { type: 'd1', id }, DO
 // migrations as { old_tag?, new_tag, steps }, asset uploads with the
-// upload-session JWT instead of the API token.
+// upload-session JWT instead of the API token. `data` modules (a wrangler
+// "Data" rule: the installer's logo and fonts) go as application/octet-stream,
+// like wrangler sends them.
 
 export class CloudflareError extends Error {
   constructor(
@@ -22,7 +24,7 @@ export interface Account {
 
 export interface ScriptModule {
   name: string;
-  type: 'esm' | 'compiled_wasm' | 'text';
+  type: 'esm' | 'compiled_wasm' | 'text' | 'data';
   content?: string;
   base64?: string;
 }
@@ -31,6 +33,7 @@ const MODULE_TYPES: Record<ScriptModule['type'], string> = {
   esm: 'application/javascript+module',
   compiled_wasm: 'application/wasm',
   text: 'text/plain',
+  data: 'application/octet-stream',
 };
 
 export class Cloudflare {
@@ -117,6 +120,34 @@ export class Cloudflare {
       form.set(m.name, new File([bytes], m.name, { type: MODULE_TYPES[m.type] }));
     }
     return this.call<{ id: string }>('PUT', `/accounts/${accountId}/workers/scripts/${scriptName}`, undefined, { form });
+  }
+
+  // A script's current bindings (without secret values) — how the
+  // installer finds its own KV namespace before uploading itself.
+  // NOT VERIFIED against a live account: GET …/scripts/:name/settings.
+  async scriptBindings(accountId: string, scriptName: string): Promise<{ type: string; name: string; namespace_id?: string }[] | null> {
+    try {
+      return (await this.call<{ bindings?: { type: string; name: string; namespace_id?: string }[] }>('GET', `/accounts/${accountId}/workers/scripts/${scriptName}/settings`)).bindings ?? [];
+    } catch (err) {
+      if (err instanceof CloudflareError && err.status === 404) return null;
+      throw err;
+    }
+  }
+
+  // The deployment serving the script now (Workers → Deployments in the
+  // dashboard, where it can be rolled back to). NOT VERIFIED against a live
+  // account: GET …/scripts/:name/deployments, newest first.
+  async currentDeployment(accountId: string, scriptName: string): Promise<{ id: string; versionId: string | null } | null> {
+    const result = await this.call<{ deployments?: { id: string; versions?: { version_id: string; percentage: number }[] }[] }>('GET', `/accounts/${accountId}/workers/scripts/${scriptName}/deployments`);
+    const latest = result.deployments?.[0];
+    if (!latest) return null;
+    const version = [...(latest.versions ?? [])].sort((a, b) => b.percentage - a.percentage)[0];
+    return { id: latest.id, versionId: version?.version_id ?? null };
+  }
+
+  // One secret of a script (what `wrangler secret put` does).
+  putSecret(accountId: string, scriptName: string, name: string, text: string) {
+    return this.call<unknown>('PUT', `/accounts/${accountId}/workers/scripts/${scriptName}/secrets`, { name, text, type: 'secret_text' });
   }
 
   async scriptExists(accountId: string, scriptName: string): Promise<boolean> {

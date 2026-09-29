@@ -6,52 +6,104 @@ lives there and nowhere else. It deploys the five Arcanum Workers from a
 published release ([arcanum-releases](https://github.com/arcanum-pos/arcanum-releases)),
 creates their databases and storage, and generates every secret.
 
+The easy way: sign in at **https://start.kaboutersoft.be**, choose
+**Eigen installatie** and paste a Cloudflare API token — the bootstrapper
+puts this installer on your account and hands it over (below). The Deploy
+button is still there for doing it by hand.
+
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/arcanum-pos/arcanum-installer)
 
-## How it works
+## From start.kaboutersoft.be (bootstrapped)
 
-0. **New Cloudflare account?** First open *Workers & Pages* once in the
-   [Cloudflare dashboard](https://dash.cloudflare.com/?to=/:account/workers-and-pages)
-   and choose your **workers.dev subdomain** (the `<name>.workers.dev` part).
-   Without it the installer gets no address to open. (The installer can
-   register one for Arcanum itself, but not for itself.)
-1. Click **Deploy to Cloudflare** above. It asks for a GitHub (or GitLab)
-   account: it copies this installer into a new repository there and
-   deploys from it — nothing else in that account is touched, and Arcanum
-   itself is installed from the public releases, not from GitHub. It deploys this installer (one
-   Worker + one KV namespace for its state) to your account and asks for
-   `INSTALLER_PASSWORD` — choose a long, unique value; it protects the
-   setup page.
-2. Open the installer's workers.dev address and log in with that password.
-3. Answer four questions:
-   - a **Cloudflare API token** — the page links to Cloudflare's token page
-     with exactly the needed permissions filled in (Workers Scripts, D1 and
-     Workers KV Storage: Edit; Account Settings: Read);
-   - your **login provider** (Google, Microsoft, Auth0, Keycloak…): issuer
-     URL, client id and secret — the page shows the callback URL to
-     register, and checks the provider supports device login (needed for
-     the kassa);
-   - the **admins** allowed to create or import organizations;
-   - the **version** to install.
-4. Click **Installeren**. Around 20 small steps run one by one; each can
-   safely be run again, so an interrupted install just continues.
-5. Open Arcanum on `https://arcanum-bff.<your-subdomain>.workers.dev`, log
-   in as an admin, and create your organization — or import it from an
-   export of your previous installation (*Instellingen → Gegevens*).
+1. Sign in at start.kaboutersoft.be → **Eigen installatie**. No Cloudflare
+   account yet? The page explains how to make one (free). **Maak een
+   token** opens Cloudflare's token page with the permissions filled in;
+   paste the token back.
+2. In that one request the bootstrapper checks the token, picks the
+   account (or asks which), registers its workers.dev subdomain if it has
+   none, creates this installation's own OAuth client at
+   `login.kaboutersoft.be`, uploads this installer (from the latest
+   release) with its KV and two secrets, and sends you to
+   `https://arcanum-installer.<subdomain>.workers.dev/handoff?code=…`. The
+   token is never stored on kaboutersoft.be's side.
+3. The handoff signs you in and shows a **recovery code once** — keep it.
+   From then on you sign in with your account (`login.kaboutersoft.be`), or
+   with the recovery code if that ever can't be reached.
+4. One screen: **Installeren** (the latest release, everything else filled
+   in). **Geavanceerd** has your own domain, your own login provider, the
+   token and the admins. When it's done: **Open je Arcanum**.
 
-Everything else (five generated keys, all internal wiring between the
-Workers) is taken care of. The Cloudflare token (if "onthouden"), the login
-provider's client secret and the generated keys are stored encrypted in
-the installer's KV and are never shown again.
+### The contract with the bootstrapper
 
-Status: first version — fresh installs on workers.dev. Updating to a newer
-release and custom domains come next.
+Two secrets on the Worker (plus its KV `INSTALLER_STATE`, title
+`arcanum-installer-INSTALLER_STATE`, reused when it exists):
+
+- `INSTALLER_STATE_KEY` — random, set on the first upload and **never
+  changed** (a re-run of the bootstrapper keeps it with `keep_bindings`):
+  the root of the key that seals the state, like `INSTALLER_PASSWORD` for a
+  Deploy-button installer (the password wins when both are set).
+- `BOOTSTRAP_CONFIG` — JSON:
+
+  ```json
+  {
+    "version": 1,
+    "cloudflareToken": "…",
+    "accountId": "…", "accountName": "…", "subdomain": "…",
+    "login": { "issuer": "https://login.kaboutersoft.be", "clientId": "arc_…", "clientSecret": "…" },
+    "owner": { "email": "…", "sub": "…" },
+    "handoffCodeHash": "<hex SHA-256 of the code in the link>",
+    "handoffExpiresAt": "<ISO time, 30 minutes after the upload>"
+  }
+  ```
+
+  `login` is `null` when the bootstrapper reuses the client this installer
+  already has (it reads `state.bootstrap.login.clientId` from the KV). The
+  client has the redirect URIs `https://arcanum-bff.<sub>.workers.dev/callback`
+  and `https://arcanum-installer.<sub>.workers.dev/auth/callback`, logout URL
+  `https://arcanum-bff.<sub>.workers.dev`.
+
+Paths: `GET /handoff?code=…` (the page, which posts the code to
+`POST /api/handoff`), `GET /auth/login` → the provider → `GET /auth/callback`.
+
+The first handoff imports the config into the state: the token sealed (as
+"onthouden"), the client as Arcanum's login provider *and* as this page's
+sign-in, the owner as admin. Then `BOOTSTRAP_CONFIG` is replaced by
+`{"version":1,"imported":true}`, so the token only exists sealed in the
+state. A code works once and until `handoffExpiresAt`. A later handoff (the
+bootstrapper run again for the same account) refreshes the token, adds the
+owner as admin and gives a new recovery code — it never replaces a login
+provider the installer already has, nor anything installed.
+
+Signing in with an account: authorization code + PKCE with the client
+above; only addresses on the admin list, with `email_verified: true`.
+
+## Updates — the installer first
+
+Every release carries the installer (`manifest.installer` in
+arcanum-releases). Updating to a release whose installer differs from the
+running one (`INSTALLER_RELEASE`) starts with **"De installer zelf
+bijwerken"**: the installer records the deployment that's live now, then
+uploads the release's installer over itself — same Worker name, its own KV
+(read from the Worker's settings), every secret it has re-sent unchanged.
+The next step already runs on the new installer. If that upload fails,
+nothing else runs and nothing changed: the old installer keeps running.
+If the new installer doesn't start at all: Cloudflare dashboard → *Workers
+& Pages* → *arcanum-installer* → *Deployments* → the previous version →
+*Rollback*.
+
+With your own domain (Geavanceerd) on a bootstrapped installation, the
+step after the bff adds `https://<domain>/callback` and `https://<domain>`
+to the installation's client at `login.kaboutersoft.be` (`PATCH
+/clients/self`, with the client's own id and secret — the workers.dev
+addresses keep working).
+
+## With the Deploy button
 
 ## Development
 
 ```sh
 npm ci
-npm test          # end-to-end against a fake Cloudflare API and a fake release
+npm test          # end-to-end against a fake Cloudflare API, a fake release and a fake login provider
 npx wrangler dev  # needs a .dev.vars with INSTALLER_PASSWORD
 ```
 

@@ -1,7 +1,7 @@
 // Durable Object migration payloads — what a mistake here would break is a
 // live installation's Durable Objects, so every case is spelled out.
 import { describe, expect, it } from 'vitest';
-import { ContractError, migrationsPayload, netClasses, uploadMetadata, type InstallContext, type WorkerDescriptor } from '../src/contract';
+import { ContractError, installerUploadMetadata, migrationsPayload, netClasses, uploadMetadata, type InstallContext, type WorkerDescriptor } from '../src/contract';
 import { suggestSubdomain } from '../src/api';
 
 // arcanum-devicehub's real history, and arcanum-backend's.
@@ -95,5 +95,49 @@ describe('own-instance settings', () => {
     });
     const names = (uploadMetadata(d, ctx).bindings as { name: string }[]).map((b) => b.name);
     expect(names).toEqual(['ORG_CREATION']);
+  });
+});
+
+describe("the installer's own upload", () => {
+  const installer = (extra: Partial<WorkerDescriptor> = {}): WorkerDescriptor => ({
+    name: 'arcanum-installer',
+    main_module: 'index.js',
+    compatibility_date: '2026-09-11',
+    compatibility_flags: [],
+    public_entry: false,
+    observability: { enabled: true },
+    bindings: [{ type: 'kv_namespace', name: 'INSTALLER_STATE', namespace: 'arcanum-installer:INSTALLER_STATE' }],
+    durable_object_migrations: [],
+    assets: null,
+    env: {
+      RELEASES_INDEX_URL: { kind: 'var', source: 'fixed', value: 'https://example.test/releases.json' },
+      INSTALLER_RELEASE: { kind: 'var', source: 'release_version' },
+      INSTALLER_PASSWORD: { kind: 'secret', source: 'keep' },
+      INSTALLER_STATE_KEY: { kind: 'secret', source: 'bootstrap' },
+      BOOTSTRAP_CONFIG: { kind: 'secret', source: 'bootstrap' },
+    },
+    ...extra,
+  });
+
+  it('binds its KV by id, sets the release, and sends exactly the secrets it has', () => {
+    const m = installerUploadMetadata(installer(), { kvNamespaceId: 'kv-1', releaseVersion: '0.2.0', secrets: { INSTALLER_STATE_KEY: 'k', BOOTSTRAP_CONFIG: '{}', INSTALLER_PASSWORD: undefined } });
+    expect(m).toEqual({
+      main_module: 'index.js',
+      compatibility_date: '2026-09-11',
+      compatibility_flags: [],
+      observability: { enabled: true },
+      bindings: [
+        { type: 'kv_namespace', name: 'INSTALLER_STATE', namespace_id: 'kv-1' },
+        { type: 'plain_text', name: 'RELEASES_INDEX_URL', text: 'https://example.test/releases.json' },
+        { type: 'plain_text', name: 'INSTALLER_RELEASE', text: '0.2.0' },
+        { type: 'secret_text', name: 'INSTALLER_STATE_KEY', text: 'k' },
+        { type: 'secret_text', name: 'BOOTSTRAP_CONFIG', text: '{}' },
+      ],
+    });
+  });
+
+  it('refuses what it cannot carry over by itself', () => {
+    expect(() => installerUploadMetadata(installer({ bindings: [{ type: 'd1', name: 'DB', database: 'x' }] }), { kvNamespaceId: 'kv', releaseVersion: '1', secrets: {} })).toThrow(ContractError);
+    expect(() => installerUploadMetadata(installer({ env: { X: { kind: 'secret', source: 'generate' } } }), { kvNamespaceId: 'kv', releaseVersion: '1', secrets: {} })).toThrow(/onbekende bron/);
   });
 });

@@ -14,6 +14,16 @@ export interface Blueprint {
   kv: string[];
   assetManifest: string | null;
   assetChunks: string[];
+  // Set when choosing an update whose release carries a newer installer.
+  installer?: InstallerTarget;
+}
+
+// The self-update of an update: the release's installer is uploaded over
+// this one before anything of Arcanum changes (steps.ts 'installer:self').
+export interface InstallerTarget {
+  file: string;
+  // This installer's own Worker name.
+  script: string;
 }
 
 export interface StepRecord {
@@ -58,6 +68,20 @@ export interface InstallerState {
   // `secrets`). `publicAccessRemoved`: its own workers.dev address was
   // switched off from there.
   behindArcanum?: { script: string; publicAccessRemoved?: boolean };
+  // Made by the bootstrapper (bootstrap.ts): who set it up, the OAuth client
+  // at its login provider that admins sign in to this page with (oidc.ts —
+  // also the one Arcanum starts with), the handoff codes already used, and
+  // the recovery code (its SHA-256 only).
+  bootstrap?: {
+    importedAt: string;
+    owner: { email: string; sub: string };
+    login?: { issuer: string; clientId: string; clientSecret: Sealed };
+    handoffs: string[];
+    recoveryHash?: string;
+  };
+  // The last self-update: from which installer to which, and the Cloudflare
+  // deployment that was live before it (to roll back to in the dashboard).
+  selfUpdate?: { from: string | null; to: string; at: string; previousDeploymentId: string | null; previousVersionId: string | null };
 }
 
 const KEY = 'state';
@@ -74,8 +98,16 @@ export async function saveState(env: Env, state: InstallerState): Promise<void> 
   await env.INSTALLER_STATE.put(KEY, JSON.stringify(state));
 }
 
-export const sealValue = (env: Env, state: InstallerState, value: string) => seal(value, env.INSTALLER_PASSWORD, state.salt);
-export const unsealValue = (env: Env, state: InstallerState, value: Sealed) => unseal(value, env.INSTALLER_PASSWORD, state.salt);
+// The root of every key the installer derives (sealing, session cookies):
+// the Deploy button's password, or the bootstrapper's random state key. The
+// password wins when both are set — an installer made with the Deploy
+// button keeps reading its state after the bootstrapper took it over.
+export function rootSecret(env: Env): string {
+  return env.INSTALLER_PASSWORD || env.INSTALLER_STATE_KEY || '';
+}
+
+export const sealValue = (env: Env, state: InstallerState, value: string) => seal(value, rootSecret(env), state.salt);
+export const unsealValue = (env: Env, state: InstallerState, value: Sealed) => unseal(value, rootSecret(env), state.salt);
 
 // The bff on the account's workers.dev subdomain — always there, also as a fallback.
 export function workersDevUrl(state: InstallerState): string | null {

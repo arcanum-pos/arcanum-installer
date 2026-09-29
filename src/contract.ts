@@ -4,7 +4,8 @@
 
 export interface EnvSpec {
   kind: 'secret' | 'var';
-  source: 'fixed' | 'public_url' | 'public_host' | 'zone_id' | 'issuer_host' | 'generate' | 'shared' | 'install' | 'optional';
+  // The last three only on the installer's own descriptor (installerUploadMetadata).
+  source: 'fixed' | 'public_url' | 'public_host' | 'zone_id' | 'issuer_host' | 'generate' | 'shared' | 'install' | 'optional' | 'keep' | 'bootstrap' | 'release_version';
   value?: unknown;
   key?: string;
   format?: string;
@@ -31,7 +32,7 @@ export interface WorkerDescriptor {
   durable_object_migrations: ({ tag: string } & Record<string, unknown>)[];
   assets: { config: Record<string, unknown> } | null;
   env: Record<string, EnvSpec>;
-  modules?: { name: string; type: 'esm' | 'compiled_wasm' | 'text'; content?: string; base64?: string }[];
+  modules?: { name: string; type: 'esm' | 'compiled_wasm' | 'text' | 'data'; content?: string; base64?: string }[];
 }
 
 export interface InstallContext {
@@ -208,4 +209,40 @@ export function secretsNeeded(descriptors: WorkerDescriptor[]): Record<string, s
     }
   }
   return needed;
+}
+
+// The installer's own upload (arcanum-releases manifest.installer) — what
+// this installer sends when it uploads a release's installer over itself.
+// The bootstrapper (arcanum-bootstrapper src/installer-upload.ts) builds
+// the same metadata for a new account. Its only resource is its KV; its
+// secrets are whatever the running installer has (`keep`, `bootstrap`),
+// re-sent unchanged — a script upload replaces every binding, so a secret
+// left out would be gone.
+export interface InstallerUploadContext {
+  kvNamespaceId: string;
+  releaseVersion: string;
+  secrets: Record<string, string | undefined>;
+}
+
+export function installerUploadMetadata(descriptor: WorkerDescriptor, ctx: InstallerUploadContext): Record<string, unknown> {
+  const bindings: ApiBinding[] = descriptor.bindings.map((b) => {
+    if (b.type !== 'kv_namespace') throw new ContractError(`De installer van deze release heeft een ${b.type}-binding — werk de installer met de hand bij`);
+    return { type: 'kv_namespace', name: b.name, namespace_id: ctx.kvNamespaceId };
+  });
+  for (const [name, spec] of Object.entries(descriptor.env)) {
+    if (spec.source === 'fixed') bindings.push(typeof spec.value === 'string' ? { type: 'plain_text', name, text: spec.value } : { type: 'json', name, json: spec.value });
+    else if (spec.source === 'release_version') bindings.push({ type: 'plain_text', name, text: ctx.releaseVersion });
+    else if (spec.source === 'keep' || spec.source === 'bootstrap') {
+      const value = ctx.secrets[name];
+      if (value) bindings.push({ type: 'secret_text', name, text: value });
+    } else if (spec.source !== 'optional') throw new ContractError(`${name}: onbekende bron "${spec.source}" voor de installer`);
+  }
+  const metadata: Record<string, unknown> = {
+    main_module: descriptor.main_module,
+    compatibility_date: descriptor.compatibility_date,
+    compatibility_flags: descriptor.compatibility_flags,
+    bindings,
+  };
+  if (descriptor.observability) metadata.observability = descriptor.observability;
+  return metadata;
 }

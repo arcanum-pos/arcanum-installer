@@ -1,11 +1,13 @@
-// arcanum-installer — deployed with the "Deploy to Cloudflare" button onto
-// the account that will host Arcanum. Its setup page installs the five
-// Arcanum Workers from a published release (arcanum-pos/arcanum-releases).
-// See README.md and INSTALLER_PLAN.md.
+// arcanum-installer — on the account that will host Arcanum, uploaded there
+// by the bootstrapper (start.kaboutersoft.be, handed over via /handoff) or
+// with the "Deploy to Cloudflare" button. Its setup page installs the five
+// Arcanum Workers from a published release (arcanum-pos/arcanum-releases),
+// and updates them — itself first. See README.md and HOSTING_PLAN.md.
 import type { Env } from './env';
 import { handleApi } from './api';
 import { PAGE } from './ui';
-import { loadState, publicUrl } from './state';
+import { loadState, publicUrl, rootSecret } from './state';
+import { CALLBACK_PATH, finishSignIn, startSignIn } from './oidc';
 import kabouter from './assets/kabouter.png';
 import geist from './assets/fonts/geist-latin-wght.woff2';
 import montserrat from './assets/fonts/montserrat-latin-700.woff2';
@@ -38,7 +40,12 @@ export default {
     if (asset && request.method === 'GET') {
       return new Response(asset.body, { headers: { 'Content-Type': asset.type, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' } });
     }
-    if (url.pathname === '/' && request.method === 'GET') {
+    // Signing in with an admin's account (bootstrapped installers).
+    if (url.pathname.startsWith('/auth/') && !rootSecret(env)) return new Response('INSTALLER_STATE_KEY ontbreekt', { status: 500 });
+    if (url.pathname === '/auth/login' && request.method === 'GET') return startSignIn(request, env);
+    if (url.pathname === CALLBACK_PATH && request.method === 'GET') return finishSignIn(request, env);
+    // The page itself — also at /handoff, the bootstrapper's link (its script posts the code).
+    if ((url.pathname === '/' || url.pathname === '/handoff') && request.method === 'GET') {
       // The page may load one image from the installation itself (the live check).
       const installation = publicUrl(await loadState(env));
       const csp = installation ? SECURITY_HEADERS['Content-Security-Policy'].replace("img-src 'self'", `img-src 'self' ${installation}`) : SECURITY_HEADERS['Content-Security-Policy'];

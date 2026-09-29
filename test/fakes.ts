@@ -28,7 +28,7 @@ function fail(status: number, message: string, code = 10000) {
 
 export interface UploadedScript {
   metadata: any;
-  modules: Record<string, { type: string; text: string }>;
+  modules: Record<string, { type: string; text: string; bytes?: number[] }>;
   order: number;
 }
 
@@ -50,6 +50,8 @@ export class FakeCloudflare {
   sessions = new Map<string, { needed: Set<string>; completion: string }>();
   completionJwts = new Set<string>();
   failures: { match: RegExp; message: string }[] = [];
+  // Secrets set one by one (PUT …/secrets, what `wrangler secret put` does).
+  secretPuts: { script: string; name: string; text: string }[] = [];
   uploads = 0;
   private seq = 0;
 
@@ -146,6 +148,31 @@ export class FakeCloudflare {
     const script = rest.match(/^\/workers\/scripts\/([^/]+)$/);
     if (script && method === 'PUT') return this.putScript(script[1], request);
 
+    // A script's settings: its bindings, secrets without their values.
+    const settings = rest.match(/^\/workers\/scripts\/([^/]+)\/settings$/);
+    if (settings && method === 'GET') {
+      const s = this.scripts.get(settings[1]);
+      if (!s) return fail(404, 'This Worker does not exist on your account.', 10007);
+      return ok({ bindings: (s.metadata.bindings ?? []).map((b: any) => (b.type === 'secret_text' ? { type: b.type, name: b.name } : b)), compatibility_date: s.metadata.compatibility_date });
+    }
+    // One deployment per upload, newest first.
+    const deployments = rest.match(/^\/workers\/scripts\/([^/]+)\/deployments$/);
+    if (deployments && method === 'GET') {
+      const s = this.scripts.get(deployments[1]);
+      if (!s) return fail(404, 'This Worker does not exist on your account.', 10007);
+      return ok({ deployments: [{ id: `dep-${deployments[1]}-${s.order}`, source: 'api', strategy: 'percentage', versions: [{ version_id: `ver-${deployments[1]}-${s.order}`, percentage: 100 }] }] });
+    }
+    const secrets = rest.match(/^\/workers\/scripts\/([^/]+)\/secrets$/);
+    if (secrets && method === 'PUT') {
+      const s = this.scripts.get(secrets[1]);
+      if (!s) return fail(404, 'This Worker does not exist on your account.', 10007);
+      const { name, text, type } = (await request.json()) as { name: string; text: string; type: string };
+      if (type !== 'secret_text' || typeof text !== 'string') return fail(400, 'bad secret');
+      this.secretPuts.push({ script: secrets[1], name, text });
+      s.metadata.bindings = [...(s.metadata.bindings ?? []).filter((b: any) => b.name !== name), { type: 'secret_text', name, text }];
+      return ok({ name, type });
+    }
+
     const sub = rest.match(/^\/workers\/scripts\/([^/]+)\/subdomain$/);
     if (sub && method === 'GET') {
       if (!this.scripts.has(sub[1])) return fail(404, 'Worker not found', 10007);
@@ -202,7 +229,7 @@ export class FakeCloudflare {
     for (const [key, value] of form.entries()) {
       if (key === 'metadata') continue;
       const file = value as File;
-      modules[key] = { type: file.type, text: await file.text() };
+      modules[key] = { type: file.type, text: await file.text(), ...(file.type === 'application/octet-stream' ? { bytes: [...new Uint8Array(await file.arrayBuffer())] } : {}) };
     }
     if (!modules[metadata.main_module]) return fail(400, `No such module "${metadata.main_module}"`, 10021);
     for (const b of metadata.bindings) {
@@ -245,6 +272,8 @@ export class FakeCloudflare {
 // 0.1.3 — the same plus what an update has to handle: a bff that can
 // forward /installer/*, and one new backend migration.
 export const NEXT_VERSION = '0.1.3';
+// A release that also carries the installer (manifest.installer).
+export const SELF_UPDATE_VERSION = '0.1.4';
 export const NEXT_MIGRATION = { name: '0018_update_test.sql', sql: 'ALTER TABLE tabs ADD COLUMN update_test TEXT' };
 const releaseBase = (version: string) => `https://releases.test/download/v${version}`;
 
@@ -257,6 +286,7 @@ export class FakeReleases {
   versions = new Map<string, Published>();
   tampered = new Set<string>();
   offerUpdate = false;
+  offerSelfUpdate = false;
   // The fetch cache mode of every releases.json request.
   indexCacheModes: (RequestInit['cache'] | undefined)[] = [];
   assetFiles: Record<string, { hash: string; size: number; contentType: string; chunk: string }> = {};
@@ -287,10 +317,11 @@ export class FakeReleases {
     backend.migrations.push(NEXT_MIGRATION);
     backend.schema += `\nINSERT OR IGNORE INTO d1_migrations (name) VALUES ('${NEXT_MIGRATION.name}');\n`;
     r.versions.set(NEXT_VERSION, await r.publish(NEXT_VERSION, workers, database));
+    r.versions.set(SELF_UPDATE_VERSION, await r.publish(SELF_UPDATE_VERSION, workers, database, INSTALLER_ARTIFACT));
     return r;
   }
 
-  private async publish(version: string, workers: Record<string, unknown>, database: unknown): Promise<Published> {
+  private async publish(version: string, workers: Record<string, unknown>, database: unknown, installer?: unknown): Promise<Published> {
     const files = new Map<string, Uint8Array>();
     const put = (name: string, value: unknown) => files.set(name, enc.encode(typeof value === 'string' ? value : JSON.stringify(value)));
     for (const [name, descriptor] of Object.entries(workers)) put(`${name}.json`, descriptor);
@@ -300,9 +331,11 @@ export class FakeReleases {
     put('arcanum-frontends-assets-01.json', { ['a'.repeat(32)]: b64('<html>admin</html>'), ['b'.repeat(32)]: b64('console.log(1)') });
     put('arcanum-frontends-assets-02.json', { ['c'.repeat(32)]: b64('<html>kassa</html>'), ['d'.repeat(32)]: b64('PNG') });
     put('LICENSE', 'AGPL-3.0-or-later');
+    if (installer) put('arcanum-installer.json', installer);
     const sums: Record<string, { size: number; sha256: string }> = {};
     for (const [name, bytes] of [...files].sort()) sums[name] = { size: bytes.length, sha256: await sha256(bytes) };
-    const manifest = { format: 'arcanum-release', format_version: 1, version, released_at: '2026-09-25T12:00:00.000Z', license: 'AGPL-3.0-or-later', components: fixture.components, files: sums };
+    const manifest: any = { format: 'arcanum-release', format_version: 1, version, released_at: '2026-09-25T12:00:00.000Z', license: 'AGPL-3.0-or-later', components: fixture.components, files: sums };
+    if (installer) manifest.installer = { file: 'arcanum-installer.json', commit: 'c0ffee0000000000000000000000000000000000', sha256: sums['arcanum-installer.json'].sha256 };
     return { files, manifest };
   }
 
@@ -312,6 +345,7 @@ export class FakeReleases {
       format: 'arcanum-releases-index',
       latest: null,
       releases: [
+        ...(this.offerSelfUpdate ? [entry(SELF_UPDATE_VERSION)] : []),
         ...(this.offerUpdate ? [entry(NEXT_VERSION)] : []),
         entry('0.1.1'),
         // An older layout the installer must not offer.
@@ -337,10 +371,41 @@ export class FakeReleases {
   }
 }
 
+// The installer as a release carries it (arcanum-releases arcanum-installer.json):
+// the shape build-release.mjs writes, with a stub for its code and a tiny
+// "logo" as a Data module.
+export const INSTALLER_LOGO = [0x89, 0x50, 0x4e, 0x47, 0x00, 0xff];
+export const INSTALLER_ARTIFACT = {
+  name: 'arcanum-installer',
+  compatibility_date: '2026-09-11',
+  compatibility_flags: [],
+  public_entry: false,
+  observability: { enabled: true },
+  bindings: [{ type: 'kv_namespace', name: 'INSTALLER_STATE', namespace: 'arcanum-installer:INSTALLER_STATE' }],
+  durable_object_migrations: [],
+  assets: null,
+  env: {
+    RELEASES_INDEX_URL: { kind: 'var', source: 'fixed', value: 'https://releases.test/releases.json' },
+    INSTALLER_RELEASE: { kind: 'var', source: 'release_version' },
+    INSTALLER_PASSWORD: { kind: 'secret', source: 'keep' },
+    INSTALLER_STATE_KEY: { kind: 'secret', source: 'bootstrap' },
+    BOOTSTRAP_CONFIG: { kind: 'secret', source: 'bootstrap' },
+  },
+  main_module: 'index.js',
+  modules: [
+    { name: 'index.js', type: 'esm', content: '// arcanum-installer (test stub)\nimport logo from "./abc-kabouter.png";\nexport default { fetch() { return new Response(logo); } };\n' },
+    { name: 'abc-kabouter.png', type: 'data', base64: btoa(String.fromCharCode(...INSTALLER_LOGO)) },
+  ],
+};
+
+// The login provider the bootstrapper hands over (login.test stands in for
+// login.kaboutersoft.be) and this installation's own client there.
+export const INSTANCE_CLIENT = { id: 'arc_instance', secret: 'instance-client-secret-value-xyz' };
+
 // A login provider's clients, by host: `device` clients can do the kassa's
 // device login, `web` clients only browser login (Google's two types).
 export const PROVIDER_CLIENTS: Record<string, Record<string, { secret: string; type: 'device' | 'web' }>> = {
-  'login.test': { 'arcanum-client': { secret: 'idp-client-secret-value-xyz', type: 'device' } },
+  'login.test': { 'arcanum-client': { secret: 'idp-client-secret-value-xyz', type: 'device' }, [INSTANCE_CLIENT.id]: { secret: INSTANCE_CLIENT.secret, type: 'device' } },
   'accounts.google.com': {
     'tv-client.apps.googleusercontent.com': { secret: 'tv-secret-value-123', type: 'device' },
     'web-client.apps.googleusercontent.com': { secret: 'web-secret-value-456', type: 'web' },
@@ -366,9 +431,52 @@ async function providerEndpoint(host: string, kind: 'device' | 'token', request:
   return error(400, 'unsupported_grant_type');
 }
 
+// The provider's side of a browser sign-in (authorization code + PKCE) and
+// of client self-service (arcanum-auth /clients/self).
+export class FakeIssuer {
+  // Codes the test "approved" at /authorize, with who signed in.
+  codes = new Map<string, { challenge: string; redirectUri: string; clientId: string; claims: Record<string, unknown> }>();
+  tokenRequests: Record<string, string>[] = [];
+  client = { redirect_uris: [`${PUBLIC_URL}/callback`, `https://arcanum-installer.${SUBDOMAIN}.workers.dev/auth/callback`], post_logout_redirect_uris: [PUBLIC_URL] };
+  selfCalls: { method: string; auth: string | null; body: any }[] = [];
+
+  // What the test does in the browser: sign in at the provider, which redirects back with a code.
+  approve(authorizeUrl: string, claims: Record<string, unknown>): string {
+    const u = new URL(authorizeUrl);
+    const code = `code-${this.codes.size + 1}`;
+    this.codes.set(code, { challenge: u.searchParams.get('code_challenge')!, redirectUri: u.searchParams.get('redirect_uri')!, clientId: u.searchParams.get('client_id')!, claims: { iss: 'https://login.test', aud: u.searchParams.get('client_id'), nonce: u.searchParams.get('nonce'), ...claims } });
+    return code;
+  }
+
+  async token(form: URLSearchParams): Promise<Response | null> {
+    if (form.get('grant_type') !== 'authorization_code' || !this.codes.has(form.get('code') ?? '')) return null;
+    this.tokenRequests.push(Object.fromEntries(form));
+    const grant = this.codes.get(form.get('code')!)!;
+    this.codes.delete(form.get('code')!);
+    const client = PROVIDER_CLIENTS['login.test'][form.get('client_id') ?? ''];
+    const challenge = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(form.get('code_verifier') ?? '')))))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    if (!client || client.secret !== form.get('client_secret') || grant.clientId !== form.get('client_id')) return Response.json({ error: 'invalid_client' }, { status: 401 });
+    if (grant.redirectUri !== form.get('redirect_uri') || grant.challenge !== challenge) return Response.json({ error: 'invalid_grant' }, { status: 400 });
+    const part = (o: object) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return Response.json({ access_token: 'at', token_type: 'Bearer', id_token: `${part({ alg: 'RS256' })}.${part(grant.claims)}.sig` });
+  }
+
+  async clientsSelf(request: Request): Promise<Response> {
+    const auth = request.headers.get('Authorization');
+    const body = request.method === 'PATCH' ? await request.json() : null;
+    this.selfCalls.push({ method: request.method, auth, body });
+    const [id, secret] = atob((auth ?? '').replace(/^Basic /, '')).split(':').map(decodeURIComponent);
+    if (id !== INSTANCE_CLIENT.id || secret !== INSTANCE_CLIENT.secret) return Response.json({ error: 'invalid_client' }, { status: 401 });
+    if (request.method === 'PATCH') this.client = { ...this.client, ...(body as object) };
+    return Response.json({ client_id: id, name: 'Arcanum', ...this.client });
+  }
+}
+
 export interface Fakes {
   cf: FakeCloudflare;
   releases: FakeReleases;
+  issuer: FakeIssuer;
   fetchCalls: () => number;
   // Fetches the installer made to the installation's own workers.dev URL.
   publicUrlFetches: () => number;
@@ -380,6 +488,7 @@ export interface Fakes {
 export async function installFakes(): Promise<Fakes> {
   const cf = new FakeCloudflare();
   const releases = await FakeReleases.create();
+  const issuer = new FakeIssuer();
   let calls = 0;
   let publicFetches = 0;
   const providerBroken = { value: false };
@@ -393,6 +502,11 @@ export async function installFakes(): Promise<Fakes> {
     if (url.hostname === 'releases.test') {
       if (url.pathname === '/releases.json') releases.indexCacheModes.push(request.cache);
       return releases.handle(url);
+    }
+    if (url.hostname === 'login.test' && url.pathname === '/clients/self') return issuer.clientsSelf(request);
+    if (url.hostname === 'login.test' && url.pathname === '/token') {
+      const answer = await issuer.token(new URLSearchParams(await request.clone().text()));
+      if (answer) return answer;
     }
     if ((url.hostname === 'login.test' && (url.pathname === '/device' || url.pathname === '/token')) || (url.hostname === 'oauth2.googleapis.com' && (url.pathname === '/device/code' || url.pathname === '/token'))) {
       const host = url.hostname === 'oauth2.googleapis.com' ? 'accounts.google.com' : url.hostname;
@@ -414,5 +528,5 @@ export async function installFakes(): Promise<Fakes> {
     }
     throw new Error(`Unexpected outbound fetch in test: ${request.method} ${request.url}`);
   });
-  return { cf, releases, fetchCalls: () => calls, publicUrlFetches: () => publicFetches, providerBroken };
+  return { cf, releases, issuer, fetchCalls: () => calls, publicUrlFetches: () => publicFetches, providerBroken };
 }

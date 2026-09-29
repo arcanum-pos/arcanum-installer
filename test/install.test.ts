@@ -4,7 +4,7 @@
 // idempotency, resuming, and that secrets never leak.
 import { env, SELF } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { installFakes, NEXT_MIGRATION, NEXT_VERSION, OTHER_ACCOUNT_TOKEN, PUBLIC_URL, SUBDOMAIN, TOKEN, type Fakes } from './fakes';
+import { installFakes, NEXT_MIGRATION, NEXT_VERSION, OTHER_ACCOUNT_TOKEN, PUBLIC_URL, SELF_UPDATE_VERSION, SUBDOMAIN, TOKEN, type Fakes } from './fakes';
 
 const PASSWORD = 'test-installer-password';
 const CLIENT_SECRET = 'idp-client-secret-value-xyz';
@@ -752,5 +752,37 @@ describe('step requests', () => {
     expect((await call('POST', '/api/step', { id: 'secrets' })).body.status).toBe('done');
     expect((await call('POST', '/api/step', {})).status).toBe(400);
     expect((await call('POST', '/api/step', { id: 'nope' })).status).toBe(404);
+  });
+});
+
+describe('an installer made with the Deploy button (INSTALLER_PASSWORD)', () => {
+  it('offers only the password — no account sign-in, no recovery code', async () => {
+    expect((await call('GET', '/api/login-options', undefined, false)).body).toEqual({ password: true, recoveryCode: false, account: null, awaitingHandoff: false });
+    const start = await SELF.fetch('https://installer.test/auth/login', { redirect: 'manual' });
+    expect(start.status).toBe(302);
+    expect(start.headers.get('Location')).toBe('/?fout=geen-account-aanmelding');
+    expect((await call('POST', '/api/handoff', { code: 'x' }, false)).status).toBe(404);
+  });
+
+  it('updates itself too: its own KV and its password re-sent, before anything of Arcanum', async () => {
+    await configure();
+    expect((await runAll()).failed).toBeNull();
+    // The installer as the Deploy button made it (its KV, its password).
+    fakes.cf.kv.set('kv-deploy-button', 'arcanum-installer-kv');
+    fakes.cf.scripts.set('arcanum-installer', { metadata: { bindings: [{ type: 'kv_namespace', name: 'INSTALLER_STATE', namespace_id: 'kv-deploy-button' }, { type: 'secret_text', name: 'INSTALLER_PASSWORD', text: PASSWORD }] }, modules: {}, order: 0 });
+    fakes.releases.offerSelfUpdate = true;
+    const uploads = fakes.cf.uploads;
+    const chosen = await call('POST', '/api/release', { version: SELF_UPDATE_VERSION });
+    expect(chosen.body.steps.map((s: any) => s.id).slice(0, 2)).toEqual(['installer:self', 'secrets']);
+    const run = await runAll();
+    expect(run.failed, run.detail).toBeNull();
+    expect(fakes.cf.scripts.get('arcanum-installer')!.order).toBe(uploads + 1);
+    expect(binding('arcanum-installer', 'INSTALLER_STATE').namespace_id).toBe('kv-deploy-button');
+    expect(binding('arcanum-installer', 'INSTALLER_PASSWORD')).toEqual({ type: 'secret_text', name: 'INSTALLER_PASSWORD', text: PASSWORD });
+    expect(binding('arcanum-installer', 'BOOTSTRAP_CONFIG')).toBeUndefined();
+    // The password still gets in, and the update completed.
+    await call('POST', '/api/logout', {});
+    expect((await call('POST', '/api/login', { password: PASSWORD })).status).toBe(200);
+    expect((await call('GET', '/api/status')).body.installed.version).toBe(SELF_UPDATE_VERSION);
   });
 });

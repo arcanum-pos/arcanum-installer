@@ -6,8 +6,9 @@
 import type { Env } from './env';
 import { Cloudflare, CloudflareError } from './cloudflare';
 import { generateSecret, randomBytes } from './crypto';
-import { secretsNeeded, uploadMetadata, type InstallContext, type WorkerDescriptor } from './contract';
+import { installerUploadMetadata, secretsNeeded, uploadMetadata, type InstallContext, type WorkerDescriptor } from './contract';
 import { fetchReleaseJson, type Manifest } from './releases';
+import { addClientUris } from './auth-client';
 import { INSTALLER_KEY_SECRET, publicUrl, sealValue, unsealValue, type Blueprint, type InstallerState } from './state';
 
 export interface StepDef {
@@ -15,8 +16,16 @@ export interface StepDef {
   title: string;
 }
 
-export function planSteps(blueprint: Blueprint): StepDef[] {
-  const steps: StepDef[] = [{ id: 'secrets', title: 'Geheime sleutels aanmaken' }];
+// A bootstrapped installation on its own domain: that domain's callback and
+// logout URL are added to its client at the login provider (auth-client.ts).
+export const needsClientUris = (state: InstallerState) => !!state.bootstrap?.login && !!state.customDomain;
+
+export function planSteps(blueprint: Blueprint, state?: InstallerState): StepDef[] {
+  const steps: StepDef[] = [];
+  // An update with a newer installer: that one first, over this one — the
+  // installer that knows the new release is the one applying it.
+  if (blueprint.installer) steps.push({ id: 'installer:self', title: 'De installer zelf bijwerken' });
+  steps.push({ id: 'secrets', title: 'Geheime sleutels aanmaken' });
   for (const db of blueprint.databases) steps.push({ id: `d1:${db.name}`, title: `Database ${db.name} aanmaken` });
   for (const ns of blueprint.kv) steps.push({ id: `kv:${ns}`, title: `Opslag ${ns.split(':').pop()} aanmaken` });
   for (const db of blueprint.databases) steps.push({ id: `schema:${db.name}`, title: `Database ${db.name} inrichten` });
@@ -29,6 +38,7 @@ export function planSteps(blueprint: Blueprint): StepDef[] {
     if (w.name === 'arcanum-backend' && blueprint.databases.some((d) => d.name === 'arcanum-backend')) {
       steps.push({ id: 'login:reset', title: 'Aanmelding instellen' });
     }
+    if (w.public_entry && state && needsClientUris(state)) steps.push({ id: 'login:uris', title: `${state.customDomain} bij de aanmelding registreren` });
   }
   steps.push({ id: 'verify', title: 'Controleren of alles werkt' });
   return steps;
@@ -98,6 +108,38 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
   const { state, cf } = ctx;
   const release = state.release!;
   const accountId = state.cloudflare!.accountId;
+
+  if (id === 'installer:self') {
+    // Uploads the release's installer over this one: same Worker, same KV
+    // (read from the running script), every secret it has re-sent as is.
+    // The request finishes on this code; the next one runs the new
+    // installer. Failing here changes nothing — this installer keeps running.
+    const target = release.blueprint.installer!;
+    const descriptor = await fetchReleaseJson<WorkerDescriptor>(release.manifestUrl, release.manifest, target.file);
+    const bindings = await cf.scriptBindings(accountId, target.script);
+    if (!bindings) throw new Error(`Geen Worker ${target.script} gevonden op dit account — de installer kon zichzelf niet bijwerken`);
+    const kv = bindings.find((b) => b.type === 'kv_namespace' && b.name === 'INSTALLER_STATE')?.namespace_id;
+    if (!kv) throw new Error(`${target.script} heeft geen INSTALLER_STATE-opslag — de installer kon zichzelf niet bijwerken`);
+    // Recorded first: the deployment to roll back to from the dashboard.
+    const previous = await cf.currentDeployment(accountId, target.script).catch(() => null);
+    const env = ctx.env as unknown as Record<string, string | undefined>;
+    const secrets = Object.fromEntries(Object.entries(descriptor.env).filter(([, spec]) => spec.kind === 'secret').map(([name]) => [name, env[name]]));
+    const metadata = installerUploadMetadata(descriptor, { kvNamespaceId: kv, releaseVersion: release.version, secrets });
+    try {
+      await cf.uploadScript(accountId, target.script, metadata, descriptor.modules ?? []);
+    } catch (err) {
+      throw new Error(`De installer kon zichzelf niet bijwerken (${(err as Error).message}). Er is niets gewijzigd: deze installer blijft werken — probeer het opnieuw.`);
+    }
+    state.selfUpdate = { from: ctx.env.INSTALLER_RELEASE ?? null, to: release.version, at: new Date().toISOString(), previousDeploymentId: previous?.id ?? null, previousVersionId: previous?.versionId ?? null };
+    return { status: 'done', detail: `installer ${release.version} staat klaar — hij voert de volgende stappen uit` };
+  }
+
+  if (id === 'login:uris') {
+    const login = state.bootstrap!.login!;
+    const url = `https://${state.customDomain}`;
+    const { added } = await addClientUris(login.issuer, { id: login.clientId, secret: await unsealValue(ctx.env, state, login.clientSecret) }, { redirectUris: [`${url}/callback`], postLogoutRedirectUris: [url] });
+    return { status: 'done', detail: added.length ? `${added.length} adres(sen) toegevoegd bij ${new URL(login.issuer).host}` : 'stond er al' };
+  }
 
   if (id === 'secrets') {
     // Generated once, never regenerated: ENCRYPTION_KEY in particular must
