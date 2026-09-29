@@ -240,6 +240,8 @@ export const PAGE = /* html */ `<!doctype html>
   <a href="https://kaboutersoft.be" target="_blank" rel="noopener noreferrer">Voor u geserveerd door kaboutersoft.be</a>
   <span aria-hidden="true">·</span>
   <a href="https://github.com/arcanum-pos/arcanum-installer" target="_blank" rel="noopener noreferrer" title="Arcanum is vrije software (AGPL-3.0)">Broncode</a>
+  <span aria-hidden="true">·</span>
+  <span data-installer-version title="De versie van deze installer zelf — bij elke update werkt hij eerst zichzelf bij"></span>
 </footer>
 <script>
 const $ = (s, el = document) => el.querySelector(s);
@@ -312,6 +314,9 @@ function arrange(s) {
 function render() {
   const s = status;
   arrange(s);
+  // Which release this installer itself came from (INSTALLER_RELEASE): after
+  // an update it shows the new one — the proof it updated itself.
+  $('[data-installer-version]').textContent = 'Installer ' + (s.installer && s.installer.release ? s.installer.release : '(zonder releasenummer)');
   $('#token-link').href = s.tokenTemplateUrl;
   const set = (id, done, summary) => { const el = $(id); el.classList.toggle('done', !!done); $('[data-summary]', el) && ($('[data-summary]', el).textContent = summary || ''); };
   set('#s-cloudflare', s.cloudflare && s.cloudflare.tokenAvailable, s.cloudflare ? 'Account: ' + s.cloudflare.accountName + ' · adres: ' + (s.address ? s.address.publicUrl : '') + (s.cloudflare.tokenAvailable ? '' : ' · token opnieuw nodig') : '');

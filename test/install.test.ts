@@ -77,6 +77,8 @@ describe('setup page access', () => {
     const page = await SELF.fetch('https://installer.test/');
     expect(page.status).toBe(200);
     expect(page.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+    // The footer shows which release the installer itself is (proof of a self-update).
+    expect(await page.clone().text()).toContain('data-installer-version');
     expect((await call('GET', '/api/status', undefined, false)).status).toBe(401);
     expect((await call('POST', '/api/login', { password: 'fout' })).status).toBe(401);
     expect((await call('POST', '/api/login', { password: PASSWORD })).status).toBe(200);
