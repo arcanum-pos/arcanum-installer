@@ -278,10 +278,12 @@ describe('fresh install', () => {
     expect(binding('arcanum-backend', 'DEFAULT_IDP_ISSUER_URL')).toMatchObject({ type: 'secret_text', text: 'https://login.test' });
     expect(binding('arcanum-backend', 'DEFAULT_IDP_CLIENT_SECRET')).toMatchObject({ type: 'secret_text', text: CLIENT_SECRET });
     expect(binding('arcanum-backend', 'INSTANCE_ADMIN_EMAILS')).toMatchObject({ type: 'secret_text', text: 'bert@scouts.test, *@leiding.test' });
+    // An own instance: its first org only — even from this release, whose descriptor predates the setting.
+    expect(binding('arcanum-backend', 'ORG_CREATION')).toEqual({ type: 'plain_text', name: 'ORG_CREATION', text: 'single' });
     expect(binding('arcanum-bff', 'SOURCE_URL').text).toBe('https://github.com/arcanum-pos/arcanum-releases/releases/tag/v0.1.1');
     // Never: dev-only settings, or optional ones nobody gave.
     const all = [...fakes.cf.scripts.values()].flatMap((s) => s.metadata.bindings.map((b: any) => b.name));
-    for (const absent of ['DEVICEHUB_LOCAL_URL', 'MAILER_LOCAL_URL', 'CONSOLE_LOCAL_URL', 'DEFAULT_SMTP_HOST', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ZONE_ID']) expect(all).not.toContain(absent);
+    for (const absent of ['DEVICEHUB_LOCAL_URL', 'MAILER_LOCAL_URL', 'CONSOLE_LOCAL_URL', 'DEFAULT_SMTP_HOST', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ZONE_ID', 'DEMO_INSTALL_URL', 'BOOTSTRAP_API_KEY']) expect(all).not.toContain(absent);
   });
 
   it('generates each secret once and shares it exactly between the Workers that need it', async () => {

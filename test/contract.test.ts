@@ -1,7 +1,7 @@
 // Durable Object migration payloads — what a mistake here would break is a
 // live installation's Durable Objects, so every case is spelled out.
 import { describe, expect, it } from 'vitest';
-import { ContractError, migrationsPayload, netClasses } from '../src/contract';
+import { ContractError, migrationsPayload, netClasses, uploadMetadata, type InstallContext, type WorkerDescriptor } from '../src/contract';
 import { suggestSubdomain } from '../src/api';
 
 // arcanum-devicehub's real history, and arcanum-backend's.
@@ -53,5 +53,47 @@ describe('suggestSubdomain', () => {
     expect(suggestSubdomain('Scouts Elewijt')).toBe('scouts-elewijt');
     expect(suggestSubdomain('Café Élan')).toBe('cafe-elan');
     expect(suggestSubdomain('***')).toBe('arcanum');
+  });
+});
+
+describe('own-instance settings', () => {
+  const ctx: InstallContext = {
+    publicUrl: 'https://arcanum-bff.club.workers.dev',
+    issuerUrl: 'https://login.test',
+    answers: {},
+    optional: {},
+    secrets: {},
+    resources: { d1: {}, kv: {}, ratelimitNamespaceId: 'r' },
+    currentMigrationTag: null,
+  };
+  const descriptor = (name: string, env: WorkerDescriptor['env']): WorkerDescriptor => ({
+    name,
+    main_module: 'index.js',
+    compatibility_date: '2026-09-11',
+    compatibility_flags: [],
+    public_entry: false,
+    observability: null,
+    bindings: [],
+    durable_object_migrations: [],
+    assets: null,
+    env,
+  });
+  const envOf = (d: WorkerDescriptor) => (uploadMetadata(d, ctx).bindings as { name: string; text?: string }[]).filter((b) => b.name === 'ORG_CREATION');
+
+  it("always makes the backend 'single' — whatever the descriptor says, or when it says nothing", () => {
+    const expected = [{ type: 'plain_text', name: 'ORG_CREATION', text: 'single' }];
+    expect(envOf(descriptor('arcanum-backend', {}))).toEqual(expected);
+    expect(envOf(descriptor('arcanum-backend', { ORG_CREATION: { kind: 'var', source: 'fixed', value: 'internal' } }))).toEqual(expected);
+    expect(envOf(descriptor('arcanum-backend', { ORG_CREATION: { kind: 'var', source: 'fixed', value: 'single' } }))).toEqual(expected);
+    expect(envOf(descriptor('arcanum-bff', {}))).toEqual([]);
+  });
+
+  it('never sets the demo-instance settings (optional, and the installer gives no value)', () => {
+    const d = descriptor('arcanum-backend', {
+      DEMO_INSTALL_URL: { kind: 'var', source: 'optional' },
+      BOOTSTRAP_API_KEY: { kind: 'secret', source: 'optional' },
+    });
+    const names = (uploadMetadata(d, ctx).bindings as { name: string }[]).map((b) => b.name);
+    expect(names).toEqual(['ORG_CREATION']);
   });
 });

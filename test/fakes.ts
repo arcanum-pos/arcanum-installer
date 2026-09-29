@@ -258,7 +258,7 @@ export class FakeReleases {
   tampered = new Set<string>();
   offerUpdate = false;
   // The fetch cache mode of every releases.json request.
-  indexCacheModes: (RequestCache | undefined)[] = [];
+  indexCacheModes: (RequestInit['cache'] | undefined)[] = [];
   assetFiles: Record<string, { hash: string; size: number; contentType: string; chunk: string }> = {};
 
   get files() {

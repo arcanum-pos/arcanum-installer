@@ -163,12 +163,24 @@ export function migrationsPayload(migrations: WorkerDescriptor['durable_object_m
   return { old_tag: currentTag, new_tag: newTag, steps: migrations.slice(at + 1).map(strip) };
 }
 
+// Every installation this installer makes is an own instance (one org —
+// HOSTING_PLAN.md section 1), whatever a release's descriptor says: a
+// release built before ORG_CREATION existed doesn't carry it, and a
+// mistake in the contract could hand over the shared demo tenant's
+// "internal". Applied last, replacing any descriptor value.
+export const OWN_INSTANCE_VARS: Record<string, Record<string, string>> = {
+  'arcanum-backend': { ORG_CREATION: 'single' },
+};
+
 export function uploadMetadata(descriptor: WorkerDescriptor, ctx: InstallContext): Record<string, unknown> {
+  const forced = OWN_INSTANCE_VARS[descriptor.name] ?? {};
   const bindings = [
     ...descriptor.bindings.map((b) => resourceBinding(b, ctx)),
     ...Object.entries(descriptor.env)
+      .filter(([name]) => !(name in forced))
       .map(([name, spec]) => envBinding(name, spec, ctx))
       .filter((b): b is ApiBinding => b !== null),
+    ...Object.entries(forced).map(([name, text]): ApiBinding => ({ type: 'plain_text', name, text })),
   ];
   const metadata: Record<string, unknown> = {
     main_module: descriptor.main_module,
