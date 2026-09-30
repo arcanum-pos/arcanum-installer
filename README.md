@@ -97,6 +97,41 @@ to the installation's client at `login.kaboutersoft.be` (`PATCH
 /clients/self`, with the client's own id and secret — the workers.dev
 addresses keep working).
 
+## Changing the login provider ("Aanmelding wijzigen")
+
+Arcanum binds every membership to the `(issuer, sub)` of its first login,
+so once Arcanum is installed another provider (or client) can't simply be
+saved — `POST /api/login-provider` refuses it (409, `useLoginChange`); the
+same provider and clients with a new secret or other scopes still saves
+directly. Instead (`src/login-change.ts`):
+
+1. **Klaarzetten** — the step 2 form, with the same live checks; kept as
+   *staged*, nothing changes. The page lists the callback URLs to register
+   at the new provider (for its browser client): the installer's
+   `/auth/test-callback` and `/auth/callback`, and Arcanum's `/callback`.
+2. **Test-aanmelding** — `GET /auth/test-login` (needs an installer session
+   on the installer's own address) → the new provider (code + PKCE + nonce)
+   → `/auth/test-callback`. Shows the e-mail, `sub` and `email_verified`
+   that came back.
+3. **Toepassen** (`POST /api/login-change/apply`, same session as the test,
+   verified e-mail) — first a sealed snapshot of the login settings and every
+   membership, then the backend re-deployed with the new `DEFAULT_IDP_*`,
+   its `default` provider row cleared (re-seeds), and one `UPDATE`: the
+   tester's memberships (by the installer session's e-mail or the new one)
+   bound to the new `(issuer, sub)`, every other active membership back to
+   `pending` by e-mail (role kept — it re-activates at that person's next
+   login). Refused when the tester has no membership. Then this page's own
+   sign-in moves to the new provider. A switch that stops half way is
+   finished by applying again (the snapshot is kept, the writes are
+   idempotent).
+4. **Terugzetten** (`POST /api/login-change/undo`) for 7 days: the previous
+   provider and every membership exactly as in the snapshot. Then the
+   snapshot is dropped.
+
+The recovery code works whatever the provider: sign in with it on the
+installer's own address to undo when neither provider works. That's why
+applying needs the installer's own address switched on.
+
 ## With the Deploy button
 
 ## Development

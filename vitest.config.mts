@@ -8,6 +8,8 @@ export default defineConfig({
     cloudflareTest({
       wrangler: { configPath: './wrangler.jsonc' },
       miniflare: {
+        // The fake Cloudflare API runs the backend's membership queries here (test/fakes.ts).
+        d1Databases: ['TEST_BACKEND_DB'],
         bindings: {
           INSTALLER_PASSWORD: 'test-installer-password',
           // Served by the fakes in test/fakes.ts — nothing reaches the network.

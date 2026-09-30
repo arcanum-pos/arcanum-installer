@@ -87,8 +87,10 @@ export class Cloudflare {
   }
 
   // Several statements separated by ';' run as one batch (D1 HTTP API).
-  queryD1(accountId: string, databaseId: string, sql: string) {
-    return this.call<unknown[]>('POST', `/accounts/${accountId}/d1/database/${databaseId}/query`, { sql });
+  // `params` bind ?1, ?2, … — used here only with a single statement (how
+  // params combine with several statements is not verified).
+  queryD1(accountId: string, databaseId: string, sql: string, params?: string[]) {
+    return this.call<unknown[]>('POST', `/accounts/${accountId}/d1/database/${databaseId}/query`, params ? { sql, params } : { sql });
   }
 
   async findKv(accountId: string, title: string): Promise<string | null> {

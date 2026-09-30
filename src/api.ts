@@ -12,7 +12,7 @@ import { compareVersions, fetchIndex, fetchManifest, fetchReleaseJson, installab
 import { INSTALLER_KEY_SECRET, installationStarted, isAdmin, loadState, publicUrl, rootSecret, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
 import { bffSupportsInstaller, blueprintFrom, planSteps, runStep } from './steps';
 import { generateSecret, safeEqual } from './crypto';
-import { checkClients } from './idp-check';
+import { applyChange, changeInfo, changesIdentity, dropExpiredSnapshot, providerIdentity, readLoginProvider, undoChange } from './login-change';
 
 const TOKEN_PERMISSIONS = [
   { key: 'workers_scripts', type: 'edit' },
@@ -78,6 +78,14 @@ async function arcanumAccess(env: Env, state: InstallerState, request: Request):
   return { via: 'arcanum', sessionId: `arcanum:${email}`, email };
 }
 
+// The installer's own address (the test sign-in's and its own sign-in's
+// callbacks live there), also when the page is opened through Arcanum.
+export function installerOrigin(state: InstallerState, request: Request): string {
+  const own = new URL(request.url);
+  if (state.cloudflare && own.hostname.endsWith(`.${state.cloudflare.subdomain}.workers.dev`)) return own.origin;
+  return state.cloudflare ? `https://${installerScript(state, request)}.${state.cloudflare.subdomain}.workers.dev` : own.origin;
+}
+
 // The installer's own Worker name, from its workers.dev address
 // (<script>.<subdomain>.workers.dev) — the bff's service binding needs it.
 export function installerScript(state: InstallerState, request: Request): string {
@@ -118,6 +126,11 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
     // Made by the bootstrapper: the page is one screen ("Installeren", the rest under "Geavanceerd").
     bootstrapped: state.bootstrap ? { owner: state.bootstrap.owner.email, issuer: state.bootstrap.login?.issuer ?? null } : null,
     installer: { release: env.INSTALLER_RELEASE ?? null, selfUpdate: state.selfUpdate ?? null },
+    // "Aanmelding wijzigen": a staged provider, or a change that can still be undone.
+    loginChange: {
+      staged: state.loginChange?.staged ? { issuer: state.loginChange.staged.login.issuer } : null,
+      applied: state.loginChange?.applied ? { at: state.loginChange.applied.at, undoUntil: state.loginChange.applied.undoUntil, phase: state.loginChange.applied.phase } : null,
+    },
     behindArcanum: state.behindArcanum ? { installerUrl: url ? `${url}/installer/` : null, publicAccessRemoved: !!state.behindArcanum.publicAccessRemoved } : null,
   };
 }
@@ -186,6 +199,8 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
     access = { via: 'session', sessionId: id, email: await sessionEmail(env, id) };
   }
   const sessionId = access.sessionId;
+  // "Terugzetten" is possible for 7 days after a login change, then the snapshot goes.
+  if (dropExpiredSnapshot(state)) await saveState(env, state);
 
   if (path === '/api/logout' && request.method === 'POST') {
     await env.INSTALLER_STATE.delete(`session-token:${sessionId}`);
@@ -242,64 +257,61 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
 
     if (path === '/api/login-provider' && request.method === 'POST') {
       const b = await body(request);
-      const issuer = typeof b.issuer === 'string' ? b.issuer.trim().replace(/\/+$/, '') : '';
-      const clientId = typeof b.clientId === 'string' ? b.clientId.trim() : '';
-      const clientSecret = typeof b.clientSecret === 'string' ? b.clientSecret.trim() : '';
-      const connectionName = typeof b.connectionName === 'string' && b.connectionName.trim() ? b.connectionName.trim() : undefined;
-      const isGoogle = /^https:\/\/accounts\.google\.com$/.test(issuer);
-      // Google rejects the platform's default `offline_access` scope.
-      const scopes = (typeof b.scopes === 'string' && b.scopes.trim().replace(/\s+/g, ' ')) || (isGoogle ? 'openid profile email' : undefined);
-      if (scopes && !scopes.split(' ').includes('openid')) return json({ error: 'De scopes moeten minstens "openid" bevatten' }, 400);
-      const authCodeClientId = typeof b.authCodeClientId === 'string' && b.authCodeClientId.trim() ? b.authCodeClientId.trim() : undefined;
-      const authCodeClientSecret = typeof b.authCodeClientSecret === 'string' ? b.authCodeClientSecret.trim() : '';
-      const keepAuthCodeSecret = authCodeClientId && !authCodeClientSecret && state.login?.authCodeClientId === authCodeClientId ? state.login.authCodeClientSecret : undefined;
-      if (authCodeClientId && !authCodeClientSecret && !keepAuthCodeSecret) return json({ error: 'Geef ook het secret van de aparte browser-client' }, 400);
-      if (!/^https:\/\/[^/]+/.test(issuer)) return json({ error: 'De issuer-URL moet met https:// beginnen' }, 400);
-      if (!clientId) return json({ error: 'Client ID ontbreekt' }, 400);
-      if (!clientSecret && !state.login) return json({ error: 'Client secret ontbreekt' }, 400);
-      // The same check the platform does at login: discovery must work and
-      // offer the device login the kassa uses.
-      const res = await fetch(`${issuer}/.well-known/openid-configuration`).catch(() => null);
-      const discovery = res?.ok ? ((await res.json().catch(() => null)) as Record<string, unknown> | null) : null;
-      if (!discovery || typeof discovery.authorization_endpoint !== 'string') {
-        return json({ error: `Geen geldige OpenID-configuratie op ${issuer}/.well-known/openid-configuration` }, 400);
+      // Installed: another provider (or client) means other (issuer, sub)
+      // values for everyone — only through "Aanmelding wijzigen" (stage,
+      // test, apply). The same provider and clients (a new secret, scopes)
+      // are still saved here.
+      if (state.installed && state.login && changesIdentity(providerIdentity(b), state.login)) {
+        return json({ error: 'Arcanum is al geïnstalleerd: een andere login-provider of client gaat via "Aanmelding wijzigen" (klaarzetten, test-aanmelding, toepassen) — anders kan niemand zich nog aanmelden.', useLoginChange: true }, 409);
       }
-      if (typeof discovery.device_authorization_endpoint !== 'string') {
-        return json({ error: 'Deze login-provider ondersteunt geen apparaat-aanmelding (device authorization) — die is nodig voor de kassa' }, 400);
-      }
-      // Test the clients with the provider before saving anything.
-      const kassaSecret = clientSecret || (state.login ? await unsealValue(env, state, state.login.clientSecret) : '');
-      const browserSecret = authCodeClientSecret || (keepAuthCodeSecret ? await unsealValue(env, state, keepAuthCodeSecret) : '');
-      const checks =
-        typeof discovery.token_endpoint === 'string'
-          ? await checkClients({
-              deviceEndpoint: discovery.device_authorization_endpoint,
-              tokenEndpoint: discovery.token_endpoint,
-              isGoogle,
-              clientId,
-              clientSecret: kassaSecret,
-              scopes: scopes ?? 'openid profile email offline_access',
-              authCode: authCodeClientId ? { clientId: authCodeClientId, clientSecret: browserSecret, redirectUri: `${publicUrl(state) ?? issuer}/callback` } : undefined,
-            })
-          : [];
-      const refused = checks.filter((c) => c.blocking);
-      if (refused.length) return json({ error: refused.map((c) => c.message).join(' '), checks }, 400);
-
-      state.login = {
-        issuer,
-        clientId,
-        clientSecret: clientSecret ? await sealValue(env, state, clientSecret) : state.login!.clientSecret,
-        connectionName,
-        authorizationEndpoint: discovery.authorization_endpoint,
-        scopes,
-        authCodeClientId,
-        authCodeClientSecret: authCodeClientId ? (authCodeClientSecret ? await sealValue(env, state, authCodeClientSecret) : keepAuthCodeSecret) : undefined,
-      };
+      const read = await readLoginProvider(env, state, b, state.login);
+      if (!read.ok) return json({ error: read.error, ...(read.checks ? { checks: read.checks } : {}) }, read.status);
+      state.login = read.login;
       // Already installed? Re-deploy the backend with the new settings and
       // let it re-seed the login provider ("Verder installeren" applies it).
       for (const step of ['worker:arcanum-backend', 'login:reset', 'verify']) delete state.steps[step];
       await saveState(env, state);
-      return json({ ...(await status(env, state, sessionId, access)), checks });
+      return json({ ...(await status(env, state, sessionId, access)), checks: read.checks });
+    }
+
+    // "Aanmelding wijzigen" (login-change.ts).
+    if (path.startsWith('/api/login-change')) {
+      const token = await tokenFor(env, state, sessionId);
+      const cf = token ? cloudflareFor(env, token) : null;
+      const origin = installerOrigin(state, request);
+      if (path === '/api/login-change' && request.method === 'GET') return json(await changeInfo(env, state, sessionId, origin, cf));
+      if (!state.installed) return json({ error: 'Nog niet geïnstalleerd: kies de login-provider gewoon bij stap 2' }, 409);
+
+      if (path === '/api/login-change/stage' && request.method === 'POST') {
+        if (state.loginChange?.applied?.phase === 'started') return json({ error: 'Een vorige wijziging is halverwege gestopt — maak ze eerst af (Toepassen) of zet ze terug' }, 409);
+        const b = await body(request);
+        const fallback = state.loginChange?.staged?.login.issuer === providerIdentity(b).issuer ? state.loginChange.staged.login : state.login;
+        const read = await readLoginProvider(env, state, b, fallback);
+        if (!read.ok) return json({ error: read.error, ...(read.checks ? { checks: read.checks } : {}) }, read.status);
+        state.loginChange = { ...state.loginChange, staged: { login: read.login, at: new Date().toISOString() } };
+        delete state.loginChange.test;
+        await saveState(env, state);
+        return json({ ...(await changeInfo(env, state, sessionId, origin, cf)), checks: read.checks });
+      }
+
+      if (path === '/api/login-change/cancel' && request.method === 'POST') {
+        if (state.loginChange?.applied?.phase === 'started') return json({ error: 'Deze wijziging is halverwege — maak ze af (Toepassen) of zet ze terug' }, 409);
+        if (state.loginChange) {
+          delete state.loginChange.staged;
+          delete state.loginChange.test;
+        }
+        await saveState(env, state);
+        return json(await changeInfo(env, state, sessionId, origin, cf));
+      }
+
+      if (path === '/api/login-change/apply' || path === '/api/login-change/undo') {
+        if (request.method !== 'POST') return json({ error: 'Not found' }, 404);
+        if (!cf) return json({ error: 'Plak het Cloudflare-token opnieuw (het werd niet onthouden)', needsToken: true }, 409);
+        const ctx = { env, state, cf, sessionId };
+        const outcome = path.endsWith('/apply') ? await applyChange(ctx) : await undoChange(ctx);
+        if (!outcome.ok) return json({ error: outcome.error, info: await changeInfo(env, state, sessionId, origin, cf).catch(() => null) }, outcome.status);
+        return json(await changeInfo(env, state, sessionId, origin, cf));
+      }
     }
 
     if (path === '/api/address' && request.method === 'POST') {

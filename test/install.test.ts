@@ -520,7 +520,7 @@ describe('resilience', () => {
 
   it('adopts a database that already exists with the same name instead of failing', async () => {
     await configure();
-    fakes.cf.d1.set('d1-existing', { name: 'arcanum-backend', queries: [] });
+    fakes.cf.d1.set('d1-existing', { name: 'arcanum-backend', queries: [], params: [] });
     const run = await runAll();
     expect(run.failed).toBeNull();
     expect(binding('arcanum-backend', 'DB').id).toBe('d1-existing');

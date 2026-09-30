@@ -32,6 +32,40 @@ export interface StepRecord {
   detail?: string;
 }
 
+// The login provider as the installer keeps it (Arcanum's DEFAULT_IDP_*).
+export type LoginSettings = NonNullable<InstallerState['login']>;
+
+// This page's own sign-in client (oidc.ts). `selfService: false` once
+// "Aanmelding wijzigen" pointed it at another provider: then it's no longer
+// the bootstrapper's client at arcanum-auth, so no /clients/self (login:uris).
+export interface SignInClient {
+  issuer: string;
+  clientId: string;
+  clientSecret: Sealed;
+  selfService?: false;
+}
+
+// "Aanmelding wijzigen" (login-change.ts): a new provider is staged, tested
+// by the admin doing the change, then applied — with a snapshot to undo it
+// for 7 days.
+export interface LoginChange {
+  staged?: { login: LoginSettings; at: string };
+  // A real sign-in at the staged provider, by an installer session.
+  test?: { at: string; stagedAt: string; sessionId: string; sessionEmail: string | null; email: string; sub: string; emailVerified: boolean };
+  applied?: {
+    at: string;
+    undoUntil: string;
+    // 'started': the snapshot is saved, the switch may be half done (apply
+    // again, or undo); 'done': everything switched.
+    phase: 'started' | 'done';
+    previous: { login: LoginSettings; signIn: SignInClient | null; adminsAdded: string | null };
+    to: { issuer: string };
+    // Sealed JSON (login-change.ts Snapshot): every membership in scope as it
+    // was, the tester's binding, who has to sign in again.
+    snapshot: Sealed;
+  };
+}
+
 export interface InstallerState {
   v: 1;
   salt: string;
@@ -75,13 +109,14 @@ export interface InstallerState {
   bootstrap?: {
     importedAt: string;
     owner: { email: string; sub: string };
-    login?: { issuer: string; clientId: string; clientSecret: Sealed };
+    login?: SignInClient;
     handoffs: string[];
     recoveryHash?: string;
   };
   // The last self-update: from which installer to which, and the Cloudflare
   // deployment that was live before it (to roll back to in the dashboard).
   selfUpdate?: { from: string | null; to: string; at: string; previousDeploymentId: string | null; previousVersionId: string | null };
+  loginChange?: LoginChange;
 }
 
 const KEY = 'state';

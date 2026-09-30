@@ -8,6 +8,7 @@ import { handleApi } from './api';
 import { PAGE } from './ui';
 import { loadState, publicUrl, rootSecret } from './state';
 import { CALLBACK_PATH, finishSignIn, startSignIn } from './oidc';
+import { finishTest, startTest, TEST_CALLBACK_PATH } from './login-change';
 import kabouter from './assets/kabouter.png';
 import geist from './assets/fonts/geist-latin-wght.woff2';
 import montserrat from './assets/fonts/montserrat-latin-700.woff2';
@@ -44,6 +45,9 @@ export default {
     if (url.pathname.startsWith('/auth/') && !rootSecret(env)) return new Response('INSTALLER_STATE_KEY ontbreekt', { status: 500 });
     if (url.pathname === '/auth/login' && request.method === 'GET') return startSignIn(request, env);
     if (url.pathname === CALLBACK_PATH && request.method === 'GET') return finishSignIn(request, env);
+    // "Aanmelding wijzigen": the test sign-in at a staged provider.
+    if (url.pathname === '/auth/test-login' && request.method === 'GET') return startTest(request, env);
+    if (url.pathname === TEST_CALLBACK_PATH && request.method === 'GET') return finishTest(request, env);
     // The page itself — also at /handoff, the bootstrapper's link (its script posts the code).
     if ((url.pathname === '/' || url.pathname === '/handoff') && request.method === 'GET') {
       // The page may load one image from the installation itself (the live check).

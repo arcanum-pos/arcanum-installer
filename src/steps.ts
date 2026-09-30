@@ -18,7 +18,8 @@ export interface StepDef {
 
 // A bootstrapped installation on its own domain: that domain's callback and
 // logout URL are added to its client at the login provider (auth-client.ts).
-export const needsClientUris = (state: InstallerState) => !!state.bootstrap?.login && !!state.customDomain;
+// Not after "Aanmelding wijzigen" moved the sign-in to another provider.
+export const needsClientUris = (state: InstallerState) => !!state.bootstrap?.login && state.bootstrap.login.selfService !== false && !!state.customDomain;
 
 export function planSteps(blueprint: Blueprint, state?: InstallerState): StepDef[] {
   const steps: StepDef[] = [];

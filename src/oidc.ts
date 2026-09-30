@@ -15,10 +15,10 @@ export const CALLBACK_PATH = '/auth/callback';
 const PENDING_COOKIE = 'arcanum_installer_oidc';
 const PENDING_TTL_S = 600;
 
-const base64url = (bytes: Uint8Array) => toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-const random = (n: number) => base64url(randomBytes(n));
+export const base64url = (bytes: Uint8Array) => toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+export const random = (n: number) => base64url(randomBytes(n));
 
-async function discovery(issuer: string): Promise<{ authorization_endpoint: string; token_endpoint: string } | null> {
+export async function discovery(issuer: string): Promise<{ authorization_endpoint: string; token_endpoint: string } | null> {
   const res = await fetch(`${issuer}/.well-known/openid-configuration`).catch(() => null);
   const doc = res?.ok ? ((await res.json().catch(() => null)) as Record<string, unknown> | null) : null;
   return doc && typeof doc.authorization_endpoint === 'string' && typeof doc.token_endpoint === 'string'
@@ -35,6 +35,11 @@ const redirect = (location: string, cookies: string[] = []) => {
 // Back to the page with a reason it shows (ui.ts reads ?fout=).
 const failed = (reason: string, extra: Record<string, string> = {}) =>
   redirect(`/?${new URLSearchParams({ fout: reason, ...extra })}`, [`${PENDING_COOKIE}=; Path=/auth; HttpOnly; Secure; SameSite=Lax; Max-Age=0`]);
+
+// "https://x.eu.auth0.com/" (Auth0's iss) is the issuer "https://x.eu.auth0.com".
+export const sameIssuer = (a: unknown, b: string) => typeof a === 'string' && a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
+
+export const pkceChallenge = async (verifier: string) => base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
 
 export const canSignInWithAccount = (state: InstallerState) => !!state.bootstrap?.login;
 
@@ -56,14 +61,14 @@ export async function startSignIn(request: Request, env: Env): Promise<Response>
     scope: 'openid profile email',
     state: pending,
     nonce,
-    code_challenge: base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)))),
+    code_challenge: await pkceChallenge(verifier),
     code_challenge_method: 'S256',
   }).toString();
   // Ties the answer to this browser (SameSite=Lax: sent on the provider's redirect back).
   return redirect(target.toString(), [`${PENDING_COOKIE}=${pending}; Path=/auth; HttpOnly; Secure; SameSite=Lax; Max-Age=${PENDING_TTL_S}`]);
 }
 
-function claimsOf(idToken: string): Record<string, unknown> | null {
+export function claimsOf(idToken: string): Record<string, unknown> | null {
   try {
     const part = idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(part + '='.repeat((4 - (part.length % 4)) % 4)), (c) => c.charCodeAt(0))));
@@ -101,7 +106,7 @@ export async function finishSignIn(request: Request, env: Env): Promise<Response
   const tokens = res?.ok ? ((await res.json().catch(() => null)) as { id_token?: string } | null) : null;
   const claims = tokens?.id_token ? claimsOf(tokens.id_token) : null;
   const audience = Array.isArray(claims?.aud) ? claims.aud : [claims?.aud];
-  if (!claims || claims.iss !== login.issuer || !audience.includes(login.clientId) || claims.nonce !== saved.nonce) return failed('aanmelden-mislukt');
+  if (!claims || !sameIssuer(claims.iss, login.issuer) || !audience.includes(login.clientId) || claims.nonce !== saved.nonce) return failed('aanmelden-mislukt');
   const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
   if (!email || claims.email_verified !== true) return failed('niet-bevestigd');
   if (!isAdmin(state, email)) return failed('geen-beheerder', { email });

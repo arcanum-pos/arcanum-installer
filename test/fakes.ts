@@ -34,7 +34,9 @@ export interface UploadedScript {
 
 export class FakeCloudflare {
   accounts = [{ id: 'acc-1', name: 'Scouts Elewijt' }];
-  d1 = new Map<string, { name: string; queries: string[] }>();
+  d1 = new Map<string, { name: string; queries: string[]; params: string[][] }>();
+  // Where membership queries really run (see the D1 query handler).
+  sqlDb: D1Database | null = null;
   kv = new Map<string, string>(); // id -> title
   scripts = new Map<string, UploadedScript>();
   migrationTags = new Map<string, string>();
@@ -96,15 +98,32 @@ export class FakeCloudflare {
       const { name } = (await request.json()) as { name: string };
       if ([...this.d1.values()].some((d) => d.name === name)) return fail(409, 'A database with that name already exists', 7502);
       const uuid = `d1-${++this.seq}`;
-      this.d1.set(uuid, { name, queries: [] });
+      this.d1.set(uuid, { name, queries: [], params: [] });
       return ok({ uuid, name });
     }
     const q = rest.match(/^\/d1\/database\/([^/]+)\/query$/);
     if (q && method === 'POST') {
       const db = this.d1.get(q[1]);
       if (!db) return fail(404, 'Database not found', 7404);
-      const sql = ((await request.json()) as { sql: string }).sql;
+      const { sql, params } = (await request.json()) as { sql: string; params?: unknown[] };
       db.queries.push(sql);
+      if (params !== undefined) {
+        // The installer binds params only to a single statement (how the real
+        // endpoint combines params with several statements isn't verified).
+        if (sql.trim().replace(/;$/, '').includes(';')) return fail(400, 'params with several statements', 7500);
+        if (!Array.isArray(params) || params.some((p) => typeof p !== 'string')) return fail(400, 'params must be strings', 7400);
+        db.params.push(params as string[]);
+      }
+      // The backend's memberships (and what they join) live in a real SQLite
+      // database (a D1 binding of the test), so the SQL really runs.
+      if (this.sqlDb && /\bmemberships\b/.test(sql)) {
+        try {
+          const result = await this.sqlDb.prepare(sql).bind(...((params as string[]) ?? [])).all();
+          return ok([{ success: true, results: result.results, meta: result.meta }]);
+        } catch (err) {
+          return fail(400, `D1_ERROR: ${(err as Error).message}`, 7500);
+        }
+      }
       // Enough SQL to answer the installer's questions: which migrations are recorded.
       const count = /SELECT COUNT\(\*\) AS n FROM d1_migrations/i.test(sql);
       if (count || /^SELECT name FROM d1_migrations$/i.test(sql)) {
@@ -406,6 +425,8 @@ export const INSTANCE_CLIENT = { id: 'arc_instance', secret: 'instance-client-se
 // device login, `web` clients only browser login (Google's two types).
 export const PROVIDER_CLIENTS: Record<string, Record<string, { secret: string; type: 'device' | 'web' }>> = {
   'login.test': { 'arcanum-client': { secret: 'idp-client-secret-value-xyz', type: 'device' }, [INSTANCE_CLIENT.id]: { secret: INSTANCE_CLIENT.secret, type: 'device' } },
+  // Another provider to change to ("Aanmelding wijzigen").
+  'nieuw.test': { 'nieuw-client': { secret: 'nieuw-client-secret-value', type: 'device' } },
   'accounts.google.com': {
     'tv-client.apps.googleusercontent.com': { secret: 'tv-secret-value-123', type: 'device' },
     'web-client.apps.googleusercontent.com': { secret: 'web-secret-value-456', type: 'web' },
@@ -440,11 +461,14 @@ export class FakeIssuer {
   client = { redirect_uris: [`${PUBLIC_URL}/callback`, `https://arcanum-installer.${SUBDOMAIN}.workers.dev/auth/callback`], post_logout_redirect_uris: [PUBLIC_URL] };
   selfCalls: { method: string; auth: string | null; body: any }[] = [];
 
+  constructor(readonly host = 'login.test') {}
+
   // What the test does in the browser: sign in at the provider, which redirects back with a code.
   approve(authorizeUrl: string, claims: Record<string, unknown>): string {
     const u = new URL(authorizeUrl);
-    const code = `code-${this.codes.size + 1}`;
-    this.codes.set(code, { challenge: u.searchParams.get('code_challenge')!, redirectUri: u.searchParams.get('redirect_uri')!, clientId: u.searchParams.get('client_id')!, claims: { iss: 'https://login.test', aud: u.searchParams.get('client_id'), nonce: u.searchParams.get('nonce'), ...claims } });
+    if (u.host !== this.host) throw new Error(`${authorizeUrl} is not at ${this.host}`);
+    const code = `code-${this.host}-${this.codes.size + 1}`;
+    this.codes.set(code, { challenge: u.searchParams.get('code_challenge')!, redirectUri: u.searchParams.get('redirect_uri')!, clientId: u.searchParams.get('client_id')!, claims: { iss: `https://${this.host}`, aud: u.searchParams.get('client_id'), nonce: u.searchParams.get('nonce'), ...claims } });
     return code;
   }
 
@@ -453,7 +477,7 @@ export class FakeIssuer {
     this.tokenRequests.push(Object.fromEntries(form));
     const grant = this.codes.get(form.get('code')!)!;
     this.codes.delete(form.get('code')!);
-    const client = PROVIDER_CLIENTS['login.test'][form.get('client_id') ?? ''];
+    const client = PROVIDER_CLIENTS[this.host][form.get('client_id') ?? ''];
     const challenge = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(form.get('code_verifier') ?? '')))))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     if (!client || client.secret !== form.get('client_secret') || grant.clientId !== form.get('client_id')) return Response.json({ error: 'invalid_client' }, { status: 401 });
@@ -477,6 +501,10 @@ export interface Fakes {
   cf: FakeCloudflare;
   releases: FakeReleases;
   issuer: FakeIssuer;
+  // The provider an installation changes to (nieuw.test).
+  newIssuer: FakeIssuer;
+  // Hosts that don't answer at all (a provider that's gone).
+  unreachable: Set<string>;
   fetchCalls: () => number;
   // Fetches the installer made to the installation's own workers.dev URL.
   publicUrlFetches: () => number;
@@ -489,6 +517,9 @@ export async function installFakes(): Promise<Fakes> {
   const cf = new FakeCloudflare();
   const releases = await FakeReleases.create();
   const issuer = new FakeIssuer();
+  const newIssuer = new FakeIssuer('nieuw.test');
+  const issuers: Record<string, FakeIssuer> = { 'login.test': issuer, 'nieuw.test': newIssuer };
+  const unreachable = new Set<string>();
   let calls = 0;
   let publicFetches = 0;
   const providerBroken = { value: false };
@@ -503,17 +534,20 @@ export async function installFakes(): Promise<Fakes> {
       if (url.pathname === '/releases.json') releases.indexCacheModes.push(request.cache);
       return releases.handle(url);
     }
+    if (unreachable.has(url.hostname)) throw new TypeError(`fetch failed: ${url.hostname} unreachable`);
+    const own = issuers[url.hostname];
     if (url.hostname === 'login.test' && url.pathname === '/clients/self') return issuer.clientsSelf(request);
-    if (url.hostname === 'login.test' && url.pathname === '/token') {
-      const answer = await issuer.token(new URLSearchParams(await request.clone().text()));
+    if (own && url.pathname === '/token') {
+      const answer = await own.token(new URLSearchParams(await request.clone().text()));
       if (answer) return answer;
     }
-    if ((url.hostname === 'login.test' && (url.pathname === '/device' || url.pathname === '/token')) || (url.hostname === 'oauth2.googleapis.com' && (url.pathname === '/device/code' || url.pathname === '/token'))) {
+    if ((own && (url.pathname === '/device' || url.pathname === '/token')) || (url.hostname === 'oauth2.googleapis.com' && (url.pathname === '/device/code' || url.pathname === '/token'))) {
       const host = url.hostname === 'oauth2.googleapis.com' ? 'accounts.google.com' : url.hostname;
       return providerEndpoint(host, url.pathname.includes('device') ? 'device' : 'token', request, providerBroken);
     }
-    if (url.hostname === 'login.test' && url.pathname === '/.well-known/openid-configuration') {
-      return Response.json({ issuer: 'https://login.test', authorization_endpoint: 'https://login.test/authorize', token_endpoint: 'https://login.test/token', device_authorization_endpoint: 'https://login.test/device' });
+    if (own && url.pathname === '/.well-known/openid-configuration') {
+      const base = `https://${url.hostname}`;
+      return Response.json({ issuer: base, authorization_endpoint: `${base}/authorize`, token_endpoint: `${base}/token`, device_authorization_endpoint: `${base}/device` });
     }
     if (url.href === 'https://accounts.google.com/.well-known/openid-configuration') {
       return Response.json({ issuer: 'https://accounts.google.com', authorization_endpoint: 'https://accounts.google.com/o/oauth2/v2/auth', token_endpoint: 'https://oauth2.googleapis.com/token', device_authorization_endpoint: 'https://oauth2.googleapis.com/device/code' });
@@ -528,5 +562,5 @@ export async function installFakes(): Promise<Fakes> {
     }
     throw new Error(`Unexpected outbound fetch in test: ${request.method} ${request.url}`);
   });
-  return { cf, releases, issuer, fetchCalls: () => calls, publicUrlFetches: () => publicFetches, providerBroken };
+  return { cf, releases, issuer, newIssuer, unreachable, fetchCalls: () => calls, publicUrlFetches: () => publicFetches, providerBroken };
 }

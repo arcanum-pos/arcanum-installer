@@ -93,6 +93,7 @@ export const PAGE = /* html */ `<!doctype html>
   ul.checks li.ok::before { content: "✓"; color: var(--success); }
   ul.checks li.bad { color: var(--destructive); } ul.checks li.bad::before { content: "✕"; }
   ul.checks li.note { color: var(--muted-foreground); } ul.checks li.note::before { content: "!"; }
+  ul.people { margin: 2px 0 0; padding-left: 1.2em; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -162,6 +163,7 @@ export const PAGE = /* html */ `<!doctype html>
       <p>Arcanum gebruikt een bestaande login-provider (Google, Microsoft, Auth0, Keycloak…). Maak daar een OAuth-client aan met:</p>
       <p>Callback-URL: <code data-callback>—</code><br>Afmeld-URL: <code data-logout>—</code></p>
       <p data-summary class="soft"></p>
+      <p data-login-installed class="soft hidden">Arcanum is geïnstalleerd. Een <strong>andere</strong> provider of client wordt eerst alleen klaargezet: je test ze met een echte aanmelding en past ze pas daarna toe (<em>Aanmelding wijzigen</em>) — zo kan niemand buitengesloten worden. Een nieuw secret of andere scopes voor dezelfde client worden meteen bewaard.</p>
       <form data-form="login-provider">
         <label for="issuer">Issuer-URL</label><input id="issuer" name="issuer" type="url" placeholder="https://accounts.google.com" required>
         <label for="clientId">Client ID</label><input id="clientId" name="clientId" type="text" required>
@@ -198,6 +200,33 @@ export const PAGE = /* html */ `<!doctype html>
       <p class="soft hidden" data-self-note>Deze update brengt een nieuwe installer mee. Die wordt eerst geïnstalleerd, over deze heen, en voert daarna de rest van de update uit. Lukt dat niet, dan verandert er niets en blijft deze installer werken. Start de nieuwe installer niet (deze pagina laadt niet meer)? Zet hem terug in het Cloudflare-dashboard: <em>Workers &amp; Pages → <span data-self-script>arcanum-installer</span> → Deployments</em> → de vorige versie → <em>Rollback</em>.</p>
       <ol class="steps" data-steps></ol>
       <div class="row"><button data-run>Installeren</button></div><p class="error" data-error></p>
+    </section>
+
+    <section id="s-change" class="card hidden">
+      <h2>Aanmelding wijzigen</h2>
+      <p class="soft" data-change-notice></p>
+      <div data-change-staged class="hidden" style="display:grid;gap:8px">
+        <p>Klaargezet: <code data-change-to></code> (client <code data-change-client></code>). Er is nog niets gewijzigd — Arcanum gebruikt nog <code data-change-from></code>.</p>
+        <p><strong>1. Callback-URL's registreren.</strong> Zet deze adressen bij de nieuwe provider als toegelaten redirect-URI's van client <code data-change-browser-client></code>:</p>
+        <ul class="people" data-change-callbacks></ul>
+        <p><strong>2. Test-aanmelding.</strong> Meld je bij de nieuwe provider aan met het account waarmee je Arcanum voortaan beheert. Zo weet je zeker dat het werkt vóór er iets verandert.</p>
+        <p data-change-test-result class="soft">Nog niet getest.</p>
+        <p><a class="button" href="auth/test-login" data-change-test>Test-aanmelding bij de nieuwe provider</a></p>
+        <p class="soft hidden" data-change-own>De test-aanmelding kan alleen op het eigen adres van de installer: <a data-change-own-link target="_blank" rel="noopener"></a> (meld je daar aan, bv. met je herstelcode).</p>
+        <p><strong>3. Toepassen.</strong> Arcanum schakelt over naar de nieuwe provider. Jij blijft meteen beheerder; alle andere leden blijven lid met hun rol, maar moeten zich één keer opnieuw aanmelden (met hetzelfde e-mailadres bij de nieuwe provider).</p>
+        <p data-change-tester></p>
+        <div data-change-resign></div>
+        <p class="error" data-change-problem></p>
+        <div class="row"><button data-change-apply disabled>Toepassen</button><button class="secondary" data-change-cancel>Annuleren</button></div>
+      </div>
+      <div data-change-applied class="hidden" style="display:grid;gap:8px">
+        <p data-change-applied-summary></p>
+        <p data-change-applied-tester></p>
+        <div data-change-applied-resign></div>
+        <p class="soft">Lukt aanmelden bij de nieuwe provider niet? Meld je hier aan met je herstelcode — Terugzetten werkt ook dan. Terugzetten herstelt de vorige provider en elk lidmaatschap zoals het was.</p>
+        <div class="row"><button data-change-finish class="hidden">Afmaken</button><button class="secondary" data-change-undo>Terugzetten</button></div>
+      </div>
+      <p class="error" data-error></p>
     </section>
 
     <details id="advanced" class="card hidden">
@@ -367,7 +396,89 @@ function render() {
   $('[data-logout-button]').classList.toggle('hidden', !!viaArcanum);
   $('#s-public').classList.toggle('hidden', !s.installed);
   if (s.installed) loadPublicAccess();
+  $('[data-login-installed]').classList.toggle('hidden', !s.installed);
+  const changing = !!(s.installed && s.loginChange && (s.loginChange.staged || s.loginChange.applied));
+  $('#s-change').classList.toggle('hidden', !changing);
+  if (changing) loadChange();
 }
+
+// "Aanmelding wijzigen": stage → test sign-in → apply, undo for 7 days (login-change.ts).
+const TEST_OUTCOMES = {
+  'ok': 'Test-aanmelding gelukt.',
+  'niet-bevestigd': 'Aangemeld, maar je e-mailadres is niet bevestigd bij de nieuwe provider — bevestig het daar en test opnieuw.',
+  'geen-sessie': 'Meld je eerst aan bij de installer, op zijn eigen adres, en start de test daar.',
+  'niets-klaargezet': 'Er staat geen nieuwe provider (meer) klaar.',
+  'provider-onbereikbaar': 'De nieuwe provider is niet bereikbaar.',
+  'verlopen': 'De test duurde te lang of werd in een ander venster gestart — probeer opnieuw.',
+  'geweigerd': 'Aanmelden bij de nieuwe provider werd geannuleerd of geweigerd.',
+  'mislukt': 'De test-aanmelding is mislukt — kijk na of de callback-URL bij de nieuwe provider geregistreerd is en probeer opnieuw.',
+  'geen-email': 'De nieuwe provider gaf geen e-mailadres terug — de client moet de scope "email" mogen vragen.',
+  'geen-beheerder': 'Dat adres staat niet in de lijst met beheerders. Meld je bij de installer aan met je account, of zet het adres eerst bij de beheerders.',
+};
+let testOutcome = '';
+const fmtDate = (iso) => new Date(iso).toLocaleString('nl-BE', { dateStyle: 'medium', timeStyle: 'short' });
+function peopleList(el, title, people) {
+  el.innerHTML = '';
+  if (!people || !people.length) return;
+  const p = document.createElement('p'); p.textContent = title + ' (' + people.length + '):'; el.append(p);
+  const ul = document.createElement('ul'); ul.className = 'people';
+  for (const x of people) { const li = document.createElement('li'); li.textContent = x.email + ' — ' + x.org + ' (' + x.role + ')'; ul.append(li); }
+  el.append(ul);
+}
+const orgsOf = (people) => people.map((x) => x.org + ' (' + x.role + ')').join(', ');
+let changeLoading = false;
+async function loadChange() {
+  if (changeLoading) return; changeLoading = true;
+  const err = $('#s-change > [data-error]');
+  try { renderChange(await api('api/login-change')); } catch (e) { err.textContent = e.message; } finally { changeLoading = false; }
+}
+function renderChange(c) {
+  const box = $('#s-change');
+  $('[data-change-notice]').textContent = testOutcome;
+  $('[data-change-staged]').classList.toggle('hidden', !c.staged);
+  $('[data-change-applied]').classList.toggle('hidden', !c.applied);
+  if (c.staged) {
+    $('[data-change-to]').textContent = c.staged.issuer; $('[data-change-client]').textContent = c.staged.clientId;
+    $('[data-change-from]').textContent = c.current ? c.current.issuer : '—'; $('[data-change-browser-client]').textContent = c.staged.browserClientId;
+    const ul = $('[data-change-callbacks]'); ul.innerHTML = '';
+    for (const u of c.callbackUrls) { const li = document.createElement('li'); const code = document.createElement('code'); code.textContent = u; li.append(code); ul.append(li); }
+    const t = c.test;
+    $('[data-change-test-result]').textContent = t
+      ? 'Getest: aangemeld als ' + t.email + ' · sub ' + t.sub + ' · e-mail bevestigd: ' + (t.emailVerified ? 'ja' : 'nee') + (t.thisSession ? '' : ' — in een andere sessie: test opnieuw om vanuit deze sessie toe te passen.')
+      : 'Nog niet getest.';
+    const viaArcanum = status && status.access && status.access.via === 'arcanum';
+    $('[data-change-test]').classList.toggle('hidden', !!viaArcanum);
+    $('[data-change-own]').classList.toggle('hidden', !viaArcanum);
+    const own = new URL(c.callbackUrls[0]).origin; $('[data-change-own-link]').href = own + '/'; $('[data-change-own-link]').textContent = own;
+    const p = c.preview;
+    $('[data-change-tester]').textContent = p && p.tester.length ? 'Meteen gekoppeld aan de nieuwe aanmelding' + (t ? ' (' + t.email + ')' : '') + ': ' + orgsOf(p.tester) + '.' : '';
+    peopleList($('[data-change-resign]'), 'Moeten zich opnieuw aanmelden', p ? p.resign : []);
+    $('[data-change-problem]').textContent = c.previewError || (p && p.problem) || '';
+    $('[data-change-apply]').disabled = !(t && t.emailVerified && t.thisSession && p && !p.problem && p.tester.length);
+  }
+  if (c.applied) {
+    const a = c.applied;
+    $('[data-change-applied-summary]').textContent = a.phase === 'done'
+      ? 'Aanmelding gewijzigd op ' + fmtDate(a.at) + ': van ' + a.from.issuer + ' naar ' + a.to.issuer + '. Terugzetten kan tot ' + fmtDate(a.undoUntil) + '.'
+      : 'De wijziging naar ' + a.to.issuer + ' is halverwege gestopt. Klik op Afmaken om ze af te werken, of zet ze terug.';
+    $('[data-change-applied-tester]').textContent = 'Gekoppeld aan ' + a.tester.email + ' (sub ' + a.tester.sub + '): ' + orgsOf(a.tester.orgs) + '.';
+    peopleList($('[data-change-applied-resign]'), 'Moeten zich opnieuw aanmelden', a.resign);
+    $('[data-change-finish]').classList.toggle('hidden', a.phase === 'done');
+  }
+  box.classList.toggle('done', !!(c.applied && c.applied.phase === 'done' && !c.staged));
+}
+async function changeAction(path, question) {
+  const err = $('#s-change > [data-error]'); err.textContent = '';
+  if (question && !confirm(question)) return;
+  for (const b of document.querySelectorAll('#s-change button')) b.disabled = true;
+  try { renderChange(await api(path, {})); testOutcome = ''; await refresh(); }
+  catch (e) { err.textContent = e.message; if (e.data && e.data.info) renderChange(e.data.info); }
+  finally { for (const b of document.querySelectorAll('#s-change button')) b.disabled = false; loadChange(); }
+}
+$('[data-change-apply]').addEventListener('click', () => changeAction('api/login-change/apply', 'Arcanum overschakelen naar de nieuwe login-provider? Alle andere leden moeten zich daarna opnieuw aanmelden.'));
+$('[data-change-finish]').addEventListener('click', () => changeAction('api/login-change/apply'));
+$('[data-change-undo]').addEventListener('click', () => changeAction('api/login-change/undo', 'De vorige login-provider en alle lidmaatschappen terugzetten?'));
+$('[data-change-cancel]').addEventListener('click', () => changeAction('api/login-change/cancel'));
 
 // "Openbare toegang verwijderen": link the installer to Arcanum, prove it
 // works by opening it there, and only then switch its own address off.
@@ -479,7 +590,17 @@ document.addEventListener('submit', async (ev) => {
   const data = Object.fromEntries(new FormData(form));
   if (form.dataset.form === 'cloudflare') data.remember = form.remember.checked;
   const button = $('button', form); button.disabled = true;
+  // Installed: another provider or client is staged first (Aanmelding wijzigen), never switched directly.
+  const staging = form.dataset.form === 'login-provider' && status && status.installed && status.login && (
+    data.issuer.trim().replace(/[/]+$/, '') !== status.login.issuer || data.clientId.trim() !== status.login.clientId || (data.authCodeClientId.trim() || null) !== status.login.authCodeClientId);
   try {
+    if (staging) {
+      const staged = await api('api/login-change/stage', data);
+      form.clientSecret.value = ''; form.authCodeClientSecret.value = '';
+      showChecks(staged.checks || []); testOutcome = ''; await refresh(); renderChange(staged);
+      $('#s-change').scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
     const result = await api('api/' + form.dataset.form, data);
     if (form.dataset.form === 'login') { show(true); await refresh(); await loadReleases(); return; }
     if (result.needsSubdomain) {
@@ -539,7 +660,9 @@ $('[data-logout-button]').addEventListener('click', async () => { await api('api
     return;
   }
   const failure = signInError(params);
-  if (failure) history.replaceState(null, '', location.pathname);
+  const tested = params.get('aanmeldtest');
+  if (tested) testOutcome = TEST_OUTCOMES[tested] || 'De test-aanmelding is mislukt.';
+  if (failure || tested) history.replaceState(null, '', location.pathname);
   try { await refresh(); show(true); await loadReleases(); } catch { show(false); $('[data-login-error]').textContent = failure; }
 })();
 </script>
