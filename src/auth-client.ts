@@ -4,7 +4,9 @@
 // lists it should have. PATCH replaces a list, so this adds to what's there:
 // the workers.dev callback and logout URL keep working next to the domain's.
 
-export class AuthClientError extends Error {}
+import { TextError } from './i18n';
+
+export class AuthClientError extends TextError {}
 
 export async function addClientUris(
   issuer: string,
@@ -16,7 +18,7 @@ export async function addClientUris(
     Accept: 'application/json',
   };
   const current = await fetch(`${issuer}/clients/self`, { headers });
-  if (!current.ok) throw new AuthClientError(`${issuer} weigert de client van deze installatie (HTTP ${current.status})`);
+  if (!current.ok) throw new AuthClientError((t) => t.authClient.refused(issuer, current.status));
   const now = (await current.json()) as { redirect_uris: string[]; post_logout_redirect_uris: string[] };
   const redirects = [...new Set([...now.redirect_uris, ...add.redirectUris])];
   const logouts = [...new Set([...now.post_logout_redirect_uris, ...add.postLogoutRedirectUris])];
@@ -29,7 +31,7 @@ export async function addClientUris(
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new AuthClientError(`${issuer} kon de adressen niet toevoegen (HTTP ${res.status}${body?.error ? `: ${body.error}` : ''})`);
+    throw new AuthClientError((t) => t.authClient.notAdded(issuer, `${res.status}${body?.error ? `: ${body.error}` : ''}`));
   }
   return { added };
 }

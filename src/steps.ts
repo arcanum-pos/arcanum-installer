@@ -10,6 +10,7 @@ import { installerUploadMetadata, secretsNeeded, uploadMetadata, type InstallCon
 import { fetchReleaseJson, type Manifest } from './releases';
 import { addClientUris } from './auth-client';
 import { INSTALLER_KEY_SECRET, publicUrl, sealValue, unsealValue, type Blueprint, type InstallerState } from './state';
+import { messageOf, type Messages } from './i18n';
 
 export interface StepDef {
   id: string;
@@ -21,44 +22,46 @@ export interface StepDef {
 // Not after "Aanmelding wijzigen" moved the sign-in to another provider.
 export const needsClientUris = (state: InstallerState) => !!state.bootstrap?.login && state.bootstrap.login.selfService !== false && !!state.customDomain;
 
-export function planSteps(blueprint: Blueprint, state?: InstallerState): StepDef[] {
+// The titles in the request's language: they're worded for every status, never stored.
+export function planSteps(blueprint: Blueprint, state: InstallerState | undefined, t: Messages): StepDef[] {
+  const s = t.steps;
   const steps: StepDef[] = [];
   // An update with a newer installer: that one first, over this one — the
   // installer that knows the new release is the one applying it.
-  if (blueprint.installer) steps.push({ id: 'installer:self', title: 'De installer zelf bijwerken' });
-  steps.push({ id: 'secrets', title: 'Geheime sleutels aanmaken' });
-  for (const db of blueprint.databases) steps.push({ id: `d1:${db.name}`, title: `Database ${db.name} aanmaken` });
-  for (const ns of blueprint.kv) steps.push({ id: `kv:${ns}`, title: `Opslag ${ns.split(':').pop()} aanmaken` });
-  for (const db of blueprint.databases) steps.push({ id: `schema:${db.name}`, title: `Database ${db.name} inrichten` });
+  if (blueprint.installer) steps.push({ id: 'installer:self', title: s.selfUpdate });
+  steps.push({ id: 'secrets', title: s.secrets });
+  for (const db of blueprint.databases) steps.push({ id: `d1:${db.name}`, title: s.d1(db.name) });
+  for (const ns of blueprint.kv) steps.push({ id: `kv:${ns}`, title: s.kv(ns.split(':').pop()!) });
+  for (const db of blueprint.databases) steps.push({ id: `schema:${db.name}`, title: s.schema(db.name) });
   for (const w of blueprint.workers) {
     if (w.assets) {
-      steps.push({ id: 'assets:session', title: 'Schermen voorbereiden' });
-      blueprint.assetChunks.forEach((chunk, i) => steps.push({ id: `assets:${chunk}`, title: `Schermen uploaden (${i + 1}/${blueprint.assetChunks.length})` }));
+      steps.push({ id: 'assets:session', title: s.assetsSession });
+      blueprint.assetChunks.forEach((chunk, i) => steps.push({ id: `assets:${chunk}`, title: s.assetsUpload(i + 1, blueprint.assetChunks.length) }));
     }
-    steps.push({ id: `worker:${w.name}`, title: `${w.name} installeren` });
+    steps.push({ id: `worker:${w.name}`, title: s.worker(w.name) });
     if (w.name === 'arcanum-backend' && blueprint.databases.some((d) => d.name === 'arcanum-backend')) {
-      steps.push({ id: 'login:reset', title: 'Aanmelding instellen' });
+      steps.push({ id: 'login:reset', title: s.loginReset });
     }
-    if (w.public_entry && state && needsClientUris(state)) steps.push({ id: 'login:uris', title: `${state.customDomain} bij de aanmelding registreren` });
+    if (w.public_entry && state && needsClientUris(state)) steps.push({ id: 'login:uris', title: s.loginUris(state.customDomain!) });
   }
-  steps.push({ id: 'verify', title: 'Controleren of alles werkt' });
+  steps.push({ id: 'verify', title: s.verify });
   return steps;
 }
 
 // Built once when a release is chosen, from its descriptors (not their code).
-export function blueprintFrom(manifest: Manifest, descriptors: WorkerDescriptor[], database: { databases: { name: string; tracked: boolean }[] }): Blueprint {
+export function blueprintFrom(manifest: Manifest, descriptors: WorkerDescriptor[], database: { databases: { name: string; tracked: boolean }[] }, t: Messages): Blueprint {
   const order = Object.keys(manifest.components);
   const byName = new Map(descriptors.map((d) => [d.name, d]));
   const seen = new Set<string>();
   const workers: Blueprint['workers'] = [];
   for (const name of order) {
     const d = byName.get(name);
-    if (!d) throw new Error(`Release mist ${name}.json`);
-    for (const b of d.bindings) if (b.type === 'service' && !seen.has(b.service)) throw new Error(`${name} verwijst naar ${b.service}, dat nog niet geïnstalleerd is`);
+    if (!d) throw new Error(t.steps.releaseMissing(`${name}.json`));
+    for (const b of d.bindings) if (b.type === 'service' && !seen.has(b.service)) throw new Error(t.steps.serviceNotYet(name, b.service));
     seen.add(name);
     workers.push({ name, public_entry: d.public_entry, assets: !!d.assets, file: `${name}.json` });
   }
-  if (workers.filter((w) => w.public_entry).length !== 1) throw new Error('Release heeft geen (of meer dan één) publieke Worker');
+  if (workers.filter((w) => w.public_entry).length !== 1) throw new Error(t.steps.publicWorkers);
   const kv = [...new Set(descriptors.flatMap((d) => d.bindings.filter((b) => b.type === 'kv_namespace').map((b) => (b as { namespace: string }).namespace)))];
   const assetWorker = workers.find((w) => w.assets);
   const assetManifest = assetWorker ? `${assetWorker.name}-assets.json` : null;
@@ -85,6 +88,7 @@ export interface StepContext {
   env: Env;
   state: InstallerState;
   cf: Cloudflare;
+  t: Messages;
 }
 
 export type StepOutcome = { status: 'done' | 'retry'; detail?: string };
@@ -107,6 +111,7 @@ async function answersOf(ctx: StepContext): Promise<Record<string, string>> {
 
 export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome> {
   const { state, cf } = ctx;
+  const s = ctx.t.steps;
   const release = state.release!;
   const accountId = state.cloudflare!.accountId;
 
@@ -118,9 +123,9 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     const target = release.blueprint.installer!;
     const descriptor = await fetchReleaseJson<WorkerDescriptor>(release.manifestUrl, release.manifest, target.file);
     const bindings = await cf.scriptBindings(accountId, target.script);
-    if (!bindings) throw new Error(`Geen Worker ${target.script} gevonden op dit account — de installer kon zichzelf niet bijwerken`);
+    if (!bindings) throw new Error(s.noInstallerScript(target.script));
     const kv = bindings.find((b) => b.type === 'kv_namespace' && b.name === 'INSTALLER_STATE')?.namespace_id;
-    if (!kv) throw new Error(`${target.script} heeft geen INSTALLER_STATE-opslag — de installer kon zichzelf niet bijwerken`);
+    if (!kv) throw new Error(s.noInstallerState(target.script));
     // Recorded first: the deployment to roll back to from the dashboard.
     const previous = await cf.currentDeployment(accountId, target.script).catch(() => null);
     const env = ctx.env as unknown as Record<string, string | undefined>;
@@ -129,17 +134,17 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     try {
       await cf.uploadScript(accountId, target.script, metadata, descriptor.modules ?? []);
     } catch (err) {
-      throw new Error(`De installer kon zichzelf niet bijwerken (${(err as Error).message}). Er is niets gewijzigd: deze installer blijft werken — probeer het opnieuw.`);
+      throw new Error(s.selfUpdateFailed(messageOf(err, ctx.t)));
     }
     state.selfUpdate = { from: ctx.env.INSTALLER_RELEASE ?? null, to: release.version, at: new Date().toISOString(), previousDeploymentId: previous?.id ?? null, previousVersionId: previous?.versionId ?? null };
-    return { status: 'done', detail: `installer ${release.version} staat klaar — hij voert de volgende stappen uit` };
+    return { status: 'done', detail: s.selfUpdated(release.version) };
   }
 
   if (id === 'login:uris') {
     const login = state.bootstrap!.login!;
     const url = `https://${state.customDomain}`;
     const { added } = await addClientUris(login.issuer, { id: login.clientId, secret: await unsealValue(ctx.env, state, login.clientSecret) }, { redirectUris: [`${url}/callback`], postLogoutRedirectUris: [url] });
-    return { status: 'done', detail: added.length ? `${added.length} adres(sen) toegevoegd bij ${new URL(login.issuer).host}` : 'stond er al' };
+    return { status: 'done', detail: added.length ? s.urisAdded(added.length, new URL(login.issuer).host) : s.urisThere };
   }
 
   if (id === 'secrets') {
@@ -157,33 +162,33 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     state.secrets = await sealValue(ctx.env, state, JSON.stringify(existing));
     // Any number that's unique within the account; 1000–9999 stays clear of hand-picked ids like 1001/1002.
     state.resources.ratelimitNamespaceId ??= String(1000 + (new DataView(randomBytes(2).buffer).getUint16(0) % 9000));
-    return { status: 'done', detail: `${added} nieuw, ${Object.keys(existing).length} in totaal` };
+    return { status: 'done', detail: s.secretsMade(added, Object.keys(existing).length) };
   }
 
   if (id.startsWith('d1:')) {
     const name = id.slice(3);
-    if (state.resources.d1[name]) return { status: 'done', detail: 'bestaat al' };
+    if (state.resources.d1[name]) return { status: 'done', detail: s.exists };
     const found = await cf.findD1(accountId, name);
     state.resources.d1[name] = found ?? (await cf.createD1(accountId, name));
-    return { status: 'done', detail: found ? 'bestond al, wordt gebruikt' : 'aangemaakt' };
+    return { status: 'done', detail: found ? s.reused : s.created };
   }
 
   if (id.startsWith('kv:')) {
     const ns = id.slice(3);
-    if (state.resources.kv[ns]) return { status: 'done', detail: 'bestaat al' };
+    if (state.resources.kv[ns]) return { status: 'done', detail: s.exists };
     const title = ns.replace(':', '-');
     const found = await cf.findKv(accountId, title);
     state.resources.kv[ns] = found ?? (await cf.createKv(accountId, title));
-    return { status: 'done', detail: found ? 'bestond al, wordt gebruikt' : 'aangemaakt' };
+    return { status: 'done', detail: found ? s.reused : s.created };
   }
 
   if (id.startsWith('schema:')) {
     const name = id.slice(7);
     const dbId = state.resources.d1[name];
-    if (!dbId) throw new Error(`Database ${name} bestaat nog niet`);
+    if (!dbId) throw new Error(s.noDatabase(name));
     const database = await fetchReleaseJson<{ databases: { name: string; schema: string; tracked: boolean; migrations: { name: string; sql: string }[] }[] }>(release.manifestUrl, release.manifest, 'database.json');
     const db = database.databases.find((d) => d.name === name);
-    if (!db?.schema) throw new Error(`Geen schema voor ${name} in de release`);
+    if (!db?.schema) throw new Error(s.noSchema(name));
     // A database that already records migrations (an update, or a re-run):
     // apply only the ones it doesn't have yet, each with its record — never
     // schema.sql, which would mark new migrations applied without running them.
@@ -193,7 +198,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
       for (const m of pending) {
         await cf.queryD1(accountId, dbId, `${m.sql.trim().replace(/;?$/, ';')}\nINSERT OR IGNORE INTO d1_migrations (name) VALUES ('${m.name.replace(/'/g, "''")}');`);
       }
-      return { status: 'done', detail: pending.length ? `${pending.length} migratie(s) toegepast: ${pending.map((m) => m.name).join(', ')}` : 'al bijgewerkt' };
+      return { status: 'done', detail: pending.length ? s.migrationsApplied(pending.length, pending.map((m) => m.name).join(', ')) : s.upToDate };
     }
     // A fresh database: schema.sql is idempotent (IF NOT EXISTS / INSERT OR
     // IGNORE) and marks every tracked migration as applied.
@@ -213,19 +218,19 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     );
     const needed = (session.buckets ?? []).flat();
     state.assets = { jwt: session.jwt, needed, startedAt: new Date().toISOString(), ...(needed.length === 0 ? { completionJwt: session.jwt } : {}) };
-    return { status: 'done', detail: needed.length === 0 ? 'alle bestanden staan er al' : `${needed.length} bestanden te uploaden` };
+    return { status: 'done', detail: needed.length === 0 ? s.allFilesThere : s.filesToUpload(needed.length) };
   }
 
   if (id.startsWith('assets:')) {
     const chunk = id.slice(7);
     const assets = state.assets;
-    if (!assets) throw new Error('Start eerst "Schermen voorbereiden"');
-    if (Date.now() - Date.parse(assets.startedAt) > ASSET_SESSION_MAX_AGE_MS) throw new Error('De uploadsessie is verlopen — voer "Schermen voorbereiden" opnieuw uit');
-    if (assets.completionJwt || assets.needed.length === 0) return { status: 'done', detail: 'niets meer te uploaden' };
+    if (!assets) throw new Error(s.prepareFirst);
+    if (Date.now() - Date.parse(assets.startedAt) > ASSET_SESSION_MAX_AGE_MS) throw new Error(s.uploadExpired);
+    if (assets.completionJwt || assets.needed.length === 0) return { status: 'done', detail: s.nothingLeft };
     const manifest = await fetchReleaseJson<{ files: Record<string, { hash: string; contentType: string; chunk: string }> }>(release.manifestUrl, release.manifest, release.blueprint.assetManifest!);
     const inChunk = new Map(Object.values(manifest.files).filter((f) => f.chunk === chunk).map((f) => [f.hash, f.contentType]));
     const todo = assets.needed.filter((h) => inChunk.has(h));
-    if (todo.length === 0) return { status: 'done', detail: 'niets in dit deel' };
+    if (todo.length === 0) return { status: 'done', detail: s.nothingInPart };
     const contents = await fetchReleaseJson<Record<string, string>>(release.manifestUrl, release.manifest, chunk);
     const result = await cf.uploadAssets(
       accountId,
@@ -234,13 +239,13 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     );
     assets.needed = assets.needed.filter((h) => !todo.includes(h));
     if (result?.jwt && assets.needed.length === 0) assets.completionJwt = result.jwt;
-    return { status: 'done', detail: `${todo.length} bestanden` };
+    return { status: 'done', detail: s.files(todo.length) };
   }
 
   if (id.startsWith('worker:')) {
     const name = id.slice(7);
     const worker = release.blueprint.workers.find((w) => w.name === name);
-    if (!worker) throw new Error(`${name} hoort niet bij deze release`);
+    if (!worker) throw new Error(s.notInRelease(name));
     const descriptor = await fetchReleaseJson<WorkerDescriptor>(release.manifestUrl, release.manifest, worker.file);
     const url = publicUrl(state)!;
     const secrets = await secretsOf(ctx);
@@ -271,7 +276,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
       currentMigrationTag: descriptor.durable_object_migrations.length ? await cf.getMigrationTag(accountId, name) : null,
       assetsJwt: worker.assets ? state.assets?.completionJwt : undefined,
     };
-    if (worker.assets && !context.assetsJwt) throw new Error('De schermen zijn nog niet volledig geüpload');
+    if (worker.assets && !context.assetsJwt) throw new Error(s.assetsIncomplete);
     const metadata = uploadMetadata(descriptor, context);
     if (linkInstaller) (metadata.bindings as unknown[]).push({ type: 'service', name: 'ARCANUM_INSTALLER_SERVICE', service: state.behindArcanum!.script });
     await cf.uploadScript(accountId, name, metadata, descriptor.modules ?? []);
@@ -284,14 +289,11 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
       } catch (err) {
         const denied = err instanceof CloudflareError && (err.status === 401 || err.status === 403);
         throw new Error(
-          `Het domein ${state.customDomain} kon niet gekoppeld worden: ${(err as Error).message}. ` +
-            (denied
-              ? 'Geef het token ook rechten op die zone (Zone: Read en Workers Routes: Edit) en probeer opnieuw.'
-              : 'Het domein moet in een zone van dit Cloudflare-account staan.')
+          s.domainFailed(state.customDomain, messageOf(err, ctx.t)) + (denied ? s.domainDenied : s.domainZone)
         );
       }
     }
-    return { status: 'done', detail: worker.public_entry ? url : 'intern (geen publiek adres)' };
+    return { status: 'done', detail: worker.public_entry ? url : s.internal };
   }
 
   if (id === 'login:reset') {
@@ -301,7 +303,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     // provider (e.g. Google's scopes) takes effect on an existing one. It's
     // only the platform-default row: org-specific providers are untouched.
     await cf.queryD1(accountId, state.resources.d1['arcanum-backend'], "DELETE FROM identity_providers WHERE org_id = 'default'");
-    return { status: 'done', detail: 'wordt bij de volgende aanmelding opnieuw ingesteld' };
+    return { status: 'done', detail: s.loginResetDone };
   }
 
   if (id === 'verify') {
@@ -310,24 +312,23 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     // seen as a 404) — the setup page checks it's live from the browser.
     const missing: string[] = [];
     for (const w of release.blueprint.workers) if (!(await cf.scriptExists(accountId, w.name))) missing.push(w.name);
-    if (missing.length) throw new Error(`Ontbreekt nog: ${missing.join(', ')}`);
+    if (missing.length) throw new Error(s.stillMissing(missing.join(', ')));
     const entry = release.blueprint.workers.find((w) => w.public_entry)!;
-    if (!(await cf.isOnWorkersDev(accountId, entry.name))) throw new Error(`${entry.name} staat niet op workers.dev — het publieke adres is uitgeschakeld`);
+    if (!(await cf.isOnWorkersDev(accountId, entry.name))) throw new Error(s.notOnWorkersDev(entry.name));
     if (state.customDomain && (await cf.customDomainService(accountId, state.customDomain)) !== entry.name) {
-      throw new Error(`${state.customDomain} is niet (meer) aan ${entry.name} gekoppeld`);
+      throw new Error(s.domainNotLinked(state.customDomain, entry.name));
     }
     const database = await fetchReleaseJson<{ databases: { name: string; tracked: boolean; migrations: unknown[] }[] }>(release.manifestUrl, release.manifest, 'database.json');
     for (const db of database.databases.filter((d) => d.tracked)) {
-      const redo = `voer "Database ${db.name} inrichten" opnieuw uit`;
       const result = (await cf.queryD1(accountId, state.resources.d1[db.name], 'SELECT COUNT(*) AS n FROM d1_migrations').catch(() => {
-        throw new Error(`Database ${db.name} is nog niet ingericht (geen migraties gevonden) — ${redo}`);
+        throw new Error(s.notSetUp(db.name));
       })) as { results?: { n: number }[] }[];
       const recorded = result?.[0]?.results?.[0]?.n ?? 0;
-      if (recorded < db.migrations.length) throw new Error(`Database ${db.name} heeft ${recorded} van de ${db.migrations.length} migraties — voer "Database ${db.name} inrichten" opnieuw uit`);
+      if (recorded < db.migrations.length) throw new Error(s.migrationsMissing(db.name, recorded, db.migrations.length));
     }
     state.installed = { version: release.version, at: new Date().toISOString() };
-    return { status: 'done', detail: `${release.blueprint.workers.length} Workers, publiek adres en databases in orde` };
+    return { status: 'done', detail: s.verified(release.blueprint.workers.length) };
   }
 
-  throw new Error(`Onbekende stap ${id}`);
+  throw new Error(ctx.t.api.unknownStep(id));
 }

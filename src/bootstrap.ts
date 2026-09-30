@@ -26,6 +26,7 @@ import { Cloudflare } from './cloudflare';
 import { randomBytes, safeEqual, sha256Hex } from './crypto';
 import { newSessionCookie, normalizeRecoveryCode } from './auth';
 import { installationStarted, isAdmin, sealValue, type InstallerState } from './state';
+import type { Messages } from './i18n';
 
 export interface BootstrapConfig {
   version: 1;
@@ -78,21 +79,21 @@ export type HandoffOutcome =
   | { ok: true; recoveryCode: string; email: string; cookie: string; firstImport: boolean }
   | { ok: false; status: number; error: string; reason: 'none' | 'used' | 'expired' | 'wrong' | 'account' };
 
-export async function handoff(env: Env, state: InstallerState, code: string, installerScript: string): Promise<HandoffOutcome> {
+export async function handoff(env: Env, state: InstallerState, code: string, installerScript: string, t: Messages): Promise<HandoffOutcome> {
   const parsed = readBootstrapConfig(env);
-  const used = { ok: false as const, status: 410, reason: 'used' as const, error: 'Deze link werd al gebruikt. Meld je aan met je account of met je herstelcode.' };
-  if (!parsed) return { ok: false, status: 404, reason: 'none', error: 'Deze installer werd niet via start.kaboutersoft.be klaargezet — er is niets over te dragen.' };
+  const used = { ok: false as const, status: 410, reason: 'used' as const, error: t.handoff.used };
+  if (!parsed) return { ok: false, status: 404, reason: 'none', error: t.handoff.none };
   if ('imported' in parsed) return used;
   const { config } = parsed;
   if (state.bootstrap?.handoffs.includes(config.handoffCodeHash)) return used;
   if (!code || !safeEqual(await sha256Hex(new TextEncoder().encode(code)), config.handoffCodeHash)) {
-    return { ok: false, status: 401, reason: 'wrong', error: 'Deze link klopt niet. Open de installer via de link van start.kaboutersoft.be.' };
+    return { ok: false, status: 401, reason: 'wrong', error: t.handoff.wrong };
   }
   if (!(Date.parse(config.handoffExpiresAt) > Date.now())) {
-    return { ok: false, status: 410, reason: 'expired', error: 'Deze link is verlopen. Start "Eigen installatie" op start.kaboutersoft.be opnieuw — wat al klaarstaat blijft bewaard.' };
+    return { ok: false, status: 410, reason: 'expired', error: t.handoff.expired };
   }
   if (state.cloudflare && installationStarted(state) && state.cloudflare.accountId !== config.accountId) {
-    return { ok: false, status: 409, reason: 'account', error: `Arcanum is al (deels) geïnstalleerd op account ${state.cloudflare.accountName} — niet op ${config.accountName}.` };
+    return { ok: false, status: 409, reason: 'account', error: t.handoff.otherAccount(state.cloudflare.accountName, config.accountName) };
   }
 
   const firstImport = !state.bootstrap;

@@ -13,6 +13,7 @@ import { INSTALLER_KEY_SECRET, installationStarted, isAdmin, loadState, publicUr
 import { bffSupportsInstaller, blueprintFrom, planSteps, runStep } from './steps';
 import { generateSecret, safeEqual } from './crypto';
 import { applyChange, changeInfo, changesIdentity, dropExpiredSnapshot, providerIdentity, readLoginProvider, undoChange } from './login-change';
+import { messageOf, textsFor, type Messages } from './i18n';
 
 const TOKEN_PERMISSIONS = [
   { key: 'workers_scripts', type: 'edit' },
@@ -68,13 +69,13 @@ export type Access = { via: 'session'; sessionId: string; email: string | null }
 // Arcanum's bff forwards /installer/* with the shared key and the user's
 // identity (it strips both from what the browser sends). A wrong key is
 // refused outright; the password session isn't looked at then.
-async function arcanumAccess(env: Env, state: InstallerState, request: Request): Promise<Access | Response | null> {
+async function arcanumAccess(env: Env, state: InstallerState, request: Request, t: Messages): Promise<Access | Response | null> {
   const key = request.headers.get('X-Installer-Key');
   if (key === null) return null;
   const expected = state.behindArcanum && state.secrets ? (JSON.parse(await unsealValue(env, state, state.secrets)) as Record<string, string>)[INSTALLER_KEY_SECRET] : undefined;
-  if (!expected || !safeEqual(key, expected)) return json({ error: 'Ongeldige sleutel van Arcanum' }, 401);
+  if (!expected || !safeEqual(key, expected)) return json({ error: t.api.badArcanumKey }, 401);
   const email = (request.headers.get('X-User-Email') ?? '').trim().toLowerCase();
-  if (!email || !isAdmin(state, email)) return json({ error: `${email || 'Dit account'} staat niet in de lijst met beheerders van deze installatie`, forbidden: true }, 403);
+  if (!email || !isAdmin(state, email)) return json({ error: t.api.notAdmin(email || t.api.thisAccount), forbidden: true }, 403);
   return { via: 'arcanum', sessionId: `arcanum:${email}`, email };
 }
 
@@ -96,9 +97,9 @@ export function installerScript(state: InstallerState, request: Request): string
   return state.behindArcanum?.script ?? 'arcanum-installer';
 }
 
-export async function status(env: Env, state: InstallerState, sessionId: string, access?: Access) {
+export async function status(env: Env, state: InstallerState, sessionId: string, access: Access | undefined, t: Messages) {
   const url = publicUrl(state);
-  const steps = state.release ? planSteps(state.release.blueprint, state).map((s) => ({ ...s, ...(state.steps[s.id] ?? { status: 'todo' }) })) : [];
+  const steps = state.release ? planSteps(state.release.blueprint, state, t).map((s) => ({ ...s, ...(state.steps[s.id] ?? { status: 'todo' }) })) : [];
   return {
     tokenTemplateUrl: TOKEN_TEMPLATE_URL,
     cloudflare: state.cloudflare
@@ -136,14 +137,16 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
 }
 
 export async function handleApi(request: Request, env: Env, path: string): Promise<Response> {
-  if (!rootSecret(env)) return json({ error: 'INSTALLER_PASSWORD (of INSTALLER_STATE_KEY) is niet ingesteld op deze Worker' }, 500);
+  // The request's language (the page sends its own as Accept-Language, i18n.ts).
+  const t = textsFor(request);
+  if (!rootSecret(env)) return json({ error: t.api.noRootSecret }, 500);
 
   // No cross-site requests, and JSON bodies only: another site must never
   // drive this API with the admin's cookie — the password session's, or
   // Arcanum's behind /installer (SameSite=Lax; this doesn't rely on that).
   if (request.method !== 'GET') {
-    if (request.headers.get('Sec-Fetch-Site') === 'cross-site') return json({ error: 'Niet toegestaan vanaf een andere site' }, 403);
-    if (!(request.headers.get('Content-Type') ?? '').includes('application/json')) return json({ error: 'Verwacht JSON' }, 415);
+    if (request.headers.get('Sec-Fetch-Site') === 'cross-site') return json({ error: t.api.crossSite }, 403);
+    if (!(request.headers.get('Content-Type') ?? '').includes('application/json')) return json({ error: t.api.expectJson }, 415);
   }
 
   const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
@@ -162,14 +165,14 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
 
   // The password (Deploy-button installers) or the recovery code (bootstrapped ones), one field.
   if (path === '/api/login' && request.method === 'POST') {
-    if (!(await checkLoginAllowed(env, ip))) return json({ error: 'Te veel mislukte pogingen — probeer het over 15 minuten opnieuw' }, 429);
+    if (!(await checkLoginAllowed(env, ip))) return json({ error: t.api.tooManyAttempts }, 429);
     const { password } = await body(request);
     const state = await loadState(env);
     const byPassword = typeof password === 'string' && passwordMatches(env, password);
     const byRecovery = !byPassword && typeof password === 'string' && (await recoveryCodeMatches(state, password));
     if (!byPassword && !byRecovery) {
       await recordLoginFailure(env, ip);
-      return json({ error: env.INSTALLER_PASSWORD ? 'Onjuist wachtwoord' : 'Onjuiste herstelcode' }, 401);
+      return json({ error: env.INSTALLER_PASSWORD ? t.api.wrongPassword : t.api.wrongRecoveryCode }, 401);
     }
     const session = await newSessionCookie(env);
     return json({ ok: true }, 200, { 'Set-Cookie': session.cookie });
@@ -177,10 +180,10 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
 
   // The bootstrapper's link: /handoff?code=… → the page posts the code here.
   if (path === '/api/handoff' && request.method === 'POST') {
-    if (!(await checkLoginAllowed(env, ip))) return json({ error: 'Te veel mislukte pogingen — probeer het over 15 minuten opnieuw' }, 429);
+    if (!(await checkLoginAllowed(env, ip))) return json({ error: t.api.tooManyAttempts }, 429);
     const { code } = await body(request);
     const state = await loadState(env);
-    const outcome = await handoff(env, state, typeof code === 'string' ? code.trim() : '', installerScript(state, request));
+    const outcome = await handoff(env, state, typeof code === 'string' ? code.trim() : '', installerScript(state, request), t);
     if (!outcome.ok) {
       if (outcome.reason === 'wrong') await recordLoginFailure(env, ip);
       return json({ error: outcome.error, reason: outcome.reason }, outcome.status);
@@ -190,12 +193,12 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
   }
 
   const state = await loadState(env);
-  const viaArcanum = await arcanumAccess(env, state, request);
+  const viaArcanum = await arcanumAccess(env, state, request, t);
   if (viaArcanum instanceof Response) return viaArcanum;
   let access: Access | null = viaArcanum;
   if (!access) {
     const id = await sessionFrom(env, request);
-    if (!id) return json({ error: 'Niet aangemeld' }, 401);
+    if (!id) return json({ error: t.api.notSignedIn }, 401);
     access = { via: 'session', sessionId: id, email: await sessionEmail(env, id) };
   }
   const sessionId = access.sessionId;
@@ -207,19 +210,19 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
     return json({ ok: true }, 200, access.via === 'session' ? { 'Set-Cookie': clearedCookie } : {});
   }
 
-  if (path === '/api/status' && request.method === 'GET') return json(await status(env, state, sessionId, access));
+  if (path === '/api/status' && request.method === 'GET') return json(await status(env, state, sessionId, access, t));
 
   try {
     if (path === '/api/cloudflare' && request.method === 'POST') {
       const { token, remember, accountId, subdomain: wantedSubdomain } = await body(request);
-      if (typeof token !== 'string' || token.trim().length < 20) return json({ error: 'Plak het API-token van Cloudflare' }, 400);
+      if (typeof token !== 'string' || token.trim().length < 20) return json({ error: t.api.pasteToken }, 400);
       const cf = cloudflareFor(env, token.trim());
       const accounts = await cf.listAccounts();
-      if (accounts.length === 0) return json({ error: 'Dit token ziet geen enkel account — geef het "Account Settings: Read"' }, 400);
+      if (accounts.length === 0) return json({ error: t.api.noAccounts }, 400);
       const account = accountId ? accounts.find((a) => a.id === accountId) : accounts.length === 1 ? accounts[0] : null;
       if (!account) return json({ needsAccount: true, accounts: accounts.map((a) => ({ id: a.id, name: a.name })) });
       if (installationStarted(state) && state.cloudflare && state.cloudflare.accountId !== account.id) {
-        return json({ error: `Arcanum is al (deels) geïnstalleerd op account ${state.cloudflare.accountName} — gebruik een token voor dat account` }, 409);
+        return json({ error: t.api.otherAccount(state.cloudflare.accountName) }, 409);
       }
       let subdomain = await cf.getWorkersSubdomain(account.id);
       if (!subdomain) {
@@ -230,12 +233,12 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
         }
         const name = wantedSubdomain.trim().toLowerCase();
         if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(name)) {
-          return json({ error: 'Gebruik alleen kleine letters, cijfers en koppeltekens (niet aan het begin of einde), max. 63 tekens' }, 400);
+          return json({ error: t.api.badSubdomain }, 400);
         }
         try {
           subdomain = await cf.registerWorkersSubdomain(account.id, name);
         } catch (err) {
-          if (err instanceof CloudflareError) return json({ error: `Dat workers.dev-subdomein kon niet geregistreerd worden: ${err.message}` }, 400);
+          if (err instanceof CloudflareError) return json({ error: t.api.subdomainFailed(err.message) }, 400);
           throw err;
         }
       }
@@ -252,7 +255,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       if (!keep) await env.INSTALLER_STATE.put(`session-token:${sessionId}`, JSON.stringify(await sealValue(env, state, token.trim())), { expirationTtl: SESSION_TOKEN_TTL_S });
       else await env.INSTALLER_STATE.delete(`session-token:${sessionId}`);
       await saveState(env, state);
-      return json(await status(env, state, sessionId, access));
+      return json(await status(env, state, sessionId, access, t));
     }
 
     if (path === '/api/login-provider' && request.method === 'POST') {
@@ -262,16 +265,16 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       // test, apply). The same provider and clients (a new secret, scopes)
       // are still saved here.
       if (state.installed && state.login && changesIdentity(providerIdentity(b), state.login)) {
-        return json({ error: 'Arcanum is al geïnstalleerd: een andere login-provider of client gaat via "Aanmelding wijzigen" (klaarzetten, test-aanmelding, toepassen) — anders kan niemand zich nog aanmelden.', useLoginChange: true }, 409);
+        return json({ error: t.api.useLoginChange, useLoginChange: true }, 409);
       }
-      const read = await readLoginProvider(env, state, b, state.login);
+      const read = await readLoginProvider(env, state, b, state.login, t);
       if (!read.ok) return json({ error: read.error, ...(read.checks ? { checks: read.checks } : {}) }, read.status);
       state.login = read.login;
       // Already installed? Re-deploy the backend with the new settings and
       // let it re-seed the login provider ("Verder installeren" applies it).
       for (const step of ['worker:arcanum-backend', 'login:reset', 'verify']) delete state.steps[step];
       await saveState(env, state);
-      return json({ ...(await status(env, state, sessionId, access)), checks: read.checks });
+      return json({ ...(await status(env, state, sessionId, access, t)), checks: read.checks });
     }
 
     // "Aanmelding wijzigen" (login-change.ts).
@@ -279,38 +282,38 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const token = await tokenFor(env, state, sessionId);
       const cf = token ? cloudflareFor(env, token) : null;
       const origin = installerOrigin(state, request);
-      if (path === '/api/login-change' && request.method === 'GET') return json(await changeInfo(env, state, sessionId, origin, cf));
-      if (!state.installed) return json({ error: 'Nog niet geïnstalleerd: kies de login-provider gewoon bij stap 2' }, 409);
+      if (path === '/api/login-change' && request.method === 'GET') return json(await changeInfo(env, state, sessionId, origin, cf, t));
+      if (!state.installed) return json({ error: t.api.notInstalledYet }, 409);
 
       if (path === '/api/login-change/stage' && request.method === 'POST') {
-        if (state.loginChange?.applied?.phase === 'started') return json({ error: 'Een vorige wijziging is halverwege gestopt — maak ze eerst af (Toepassen) of zet ze terug' }, 409);
+        if (state.loginChange?.applied?.phase === 'started') return json({ error: t.api.finishChangeFirst }, 409);
         const b = await body(request);
         const fallback = state.loginChange?.staged?.login.issuer === providerIdentity(b).issuer ? state.loginChange.staged.login : state.login;
-        const read = await readLoginProvider(env, state, b, fallback);
+        const read = await readLoginProvider(env, state, b, fallback, t);
         if (!read.ok) return json({ error: read.error, ...(read.checks ? { checks: read.checks } : {}) }, read.status);
         state.loginChange = { ...state.loginChange, staged: { login: read.login, at: new Date().toISOString() } };
         delete state.loginChange.test;
         await saveState(env, state);
-        return json({ ...(await changeInfo(env, state, sessionId, origin, cf)), checks: read.checks });
+        return json({ ...(await changeInfo(env, state, sessionId, origin, cf, t)), checks: read.checks });
       }
 
       if (path === '/api/login-change/cancel' && request.method === 'POST') {
-        if (state.loginChange?.applied?.phase === 'started') return json({ error: 'Deze wijziging is halverwege — maak ze af (Toepassen) of zet ze terug' }, 409);
+        if (state.loginChange?.applied?.phase === 'started') return json({ error: t.api.changeHalfway }, 409);
         if (state.loginChange) {
           delete state.loginChange.staged;
           delete state.loginChange.test;
         }
         await saveState(env, state);
-        return json(await changeInfo(env, state, sessionId, origin, cf));
+        return json(await changeInfo(env, state, sessionId, origin, cf, t));
       }
 
       if (path === '/api/login-change/apply' || path === '/api/login-change/undo') {
         if (request.method !== 'POST') return json({ error: 'Not found' }, 404);
-        if (!cf) return json({ error: 'Plak het Cloudflare-token opnieuw (het werd niet onthouden)', needsToken: true }, 409);
-        const ctx = { env, state, cf, sessionId };
+        if (!cf) return json({ error: t.api.tokenAgain, needsToken: true }, 409);
+        const ctx = { env, state, cf, sessionId, t };
         const outcome = path.endsWith('/apply') ? await applyChange(ctx) : await undoChange(ctx);
-        if (!outcome.ok) return json({ error: outcome.error, info: await changeInfo(env, state, sessionId, origin, cf).catch(() => null) }, outcome.status);
-        return json(await changeInfo(env, state, sessionId, origin, cf));
+        if (!outcome.ok) return json({ error: outcome.error, info: await changeInfo(env, state, sessionId, origin, cf, t).catch(() => null) }, outcome.status);
+        return json(await changeInfo(env, state, sessionId, origin, cf, t));
       }
     }
 
@@ -318,7 +321,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const { customDomain } = await body(request);
       const host = typeof customDomain === 'string' ? customDomain.trim().toLowerCase().replace(/\.$/, '') : '';
       if (host && !/^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)) {
-        return json({ error: 'Geef alleen de domeinnaam, bv. arcanum.jouwdomein.be (zonder https:// of pad)' }, 400);
+        return json({ error: t.api.badDomain }, 400);
       }
       if ((state.customDomain ?? '') !== host) {
         if (host) state.customDomain = host;
@@ -328,7 +331,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
         for (const step of ['worker:arcanum-backend', 'worker:arcanum-bff', 'login:uris', 'verify']) delete state.steps[step];
       }
       await saveState(env, state);
-      return json(await status(env, state, sessionId, access));
+      return json(await status(env, state, sessionId, access, t));
     }
 
     if (path === '/api/admins' && request.method === 'POST') {
@@ -337,12 +340,12 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
         .split(/[,;\s]+/)
         .map((e) => e.trim().toLowerCase())
         .filter(Boolean);
-      if (list.length === 0) return json({ error: 'Geef minstens één e-mailadres (of *@jouwdomein.be)' }, 400);
+      if (list.length === 0) return json({ error: t.api.noEmails }, 400);
       const bad = list.filter((e) => !/^(\*|[^@\s]+)@[^@\s]+\.[^@\s]+$/.test(e));
-      if (bad.length) return json({ error: `Geen geldig adres: ${bad.join(', ')}` }, 400);
+      if (bad.length) return json({ error: t.api.badEmails(bad.join(', ')) }, 400);
       state.admins = list.join(', ');
       await saveState(env, state);
-      return json(await status(env, state, sessionId, access));
+      return json(await status(env, state, sessionId, access, t));
     }
 
     if (path === '/api/releases' && request.method === 'GET') {
@@ -354,11 +357,11 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const { version } = await body(request);
       // Installed: only a newer version (an update — every step runs again).
       if (state.installed && compareVersions(String(version), state.installed.version) <= 0) {
-        return json({ error: `Arcanum ${state.installed.version} is geïnstalleerd — kies een nieuwere versie om bij te werken` }, 409);
+        return json({ error: t.api.notNewer(state.installed.version) }, 409);
       }
       const index = await fetchIndex(env.RELEASES_INDEX_URL);
       const entry = installable(index).find((r) => r.version === version);
-      if (!entry) return json({ error: `Release ${String(version)} bestaat niet of kan niet door deze installer geïnstalleerd worden` }, 400);
+      if (!entry) return json({ error: t.api.unknownRelease(String(version)) }, 400);
       const manifest = await fetchManifest(entry.manifest_url);
       const names = Object.keys(manifest.components);
       const descriptors = await Promise.all(names.map((n) => fetchReleaseJson<WorkerDescriptor>(entry.manifest_url, manifest, `${n}.json`)));
@@ -370,7 +373,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
         state.steps = {};
         delete state.assets;
       }
-      const blueprint = blueprintFrom(manifest, descriptors, database);
+      const blueprint = blueprintFrom(manifest, descriptors, database, t);
       // An update that brings a different installer: it goes first, over
       // this one (HOSTING_PLAN.md decision 4). A fresh install already runs
       // the installer it needs.
@@ -379,11 +382,11 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       }
       state.release = { version: manifest.version, manifestUrl: entry.manifest_url, manifest, blueprint };
       await saveState(env, state);
-      return json(await status(env, state, sessionId, access));
+      return json(await status(env, state, sessionId, access, t));
     }
 
     if (path.startsWith('/api/public-access')) {
-      if (!state.installed || !state.cloudflare) return json({ error: 'Installeer Arcanum eerst volledig' }, 409);
+      if (!state.installed || !state.cloudflare) return json({ error: t.api.installFirst }, 409);
       const token = await tokenFor(env, state, sessionId);
       const cf = token ? cloudflareFor(env, token) : null;
       const script = state.behindArcanum?.script ?? installerScript(state, request);
@@ -402,42 +405,42 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
           via: access.via,
         });
       }
-      if (!cf) return json({ error: 'Plak het Cloudflare-token opnieuw (het werd niet onthouden)', needsToken: true }, 409);
+      if (!cf) return json({ error: t.api.tokenAgain, needsToken: true }, 409);
 
       if (path === '/api/public-access/link' && request.method === 'POST') {
         const bff = state.release!.blueprint.workers.find((w) => w.public_entry)!;
         const descriptor = await fetchReleaseJson<WorkerDescriptor>(state.release!.manifestUrl, state.release!.manifest, bff.file);
-        if (!bffSupportsInstaller(descriptor)) return json({ error: `Arcanum ${state.release!.version} kan de installer nog niet doorgeven — werk eerst bij naar een nieuwere versie (stap 4)` }, 409);
+        if (!bffSupportsInstaller(descriptor)) return json({ error: t.api.bffTooOld(state.release!.version) }, 409);
         const target = installerScript(state, request);
-        if (!(await cf.scriptExists(state.cloudflare.accountId, target))) return json({ error: `Geen Worker ${target} gevonden op dit account — open de installer via zijn eigen workers.dev-adres en probeer opnieuw` }, 409);
+        if (!(await cf.scriptExists(state.cloudflare.accountId, target))) return json({ error: t.api.noInstallerWorker(target) }, 409);
         const secrets = state.secrets ? (JSON.parse(await unsealValue(env, state, state.secrets)) as Record<string, string>) : {};
         secrets[INSTALLER_KEY_SECRET] ??= generateSecret('hex32');
         state.secrets = await sealValue(env, state, JSON.stringify(secrets));
         state.behindArcanum = { script: target };
         // Re-deploy the bff with the binding and the key, right away.
-        const outcome = await runStep(`worker:${bff.name}`, { env, state, cf });
+        const outcome = await runStep(`worker:${bff.name}`, { env, state, cf, t });
         state.steps[`worker:${bff.name}`] = { status: 'done', at: new Date().toISOString(), detail: outcome.detail };
         await saveState(env, state);
-        return json(await status(env, state, sessionId, access));
+        return json(await status(env, state, sessionId, access, t));
       }
 
       if (path === '/api/public-access/remove' && request.method === 'POST') {
         // Only from a request that came through Arcanum: that's the proof
         // the installer stays reachable once its own address is gone.
-        if (!state.behindArcanum) return json({ error: 'Maak de installer eerst bereikbaar via Arcanum' }, 409);
-        if (access.via !== 'arcanum') return json({ error: `Open de installer via ${publicUrl(state)}/installer/ en schakel het openbare adres daar uit — zo weet je zeker dat hij bereikbaar blijft` }, 409);
+        if (!state.behindArcanum) return json({ error: t.api.linkFirst }, 409);
+        if (access.via !== 'arcanum') return json({ error: t.api.removeThroughArcanum(`${publicUrl(state)}/installer/`) }, 409);
         await cf.setWorkersDev(state.cloudflare.accountId, state.behindArcanum.script, false);
         state.behindArcanum.publicAccessRemoved = true;
         await saveState(env, state);
-        return json(await status(env, state, sessionId, access));
+        return json(await status(env, state, sessionId, access, t));
       }
 
       if (path === '/api/public-access/restore' && request.method === 'POST') {
-        if (!state.behindArcanum) return json({ error: 'Het openbare adres is niet uitgeschakeld' }, 409);
+        if (!state.behindArcanum) return json({ error: t.api.notRemoved }, 409);
         await cf.setWorkersDev(state.cloudflare.accountId, state.behindArcanum.script, true);
         state.behindArcanum.publicAccessRemoved = false;
         await saveState(env, state);
-        return json(await status(env, state, sessionId, access));
+        return json(await status(env, state, sessionId, access, t));
       }
     }
 
@@ -449,31 +452,32 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
     const isStep = request.method === 'POST' && (path === '/api/step' || !!stepMatch);
     if (isStep) {
       const stepId = stepMatch ? decodeURIComponent(stepMatch[1]) : (await body(request)).id;
-      if (typeof stepId !== 'string') return json({ error: 'Geef de stap (id)' }, 400);
+      if (typeof stepId !== 'string') return json({ error: t.api.giveStep }, 400);
       const id = stepId;
-      const missing = [!state.cloudflare && 'Cloudflare-token', !state.login && 'login-provider', !state.admins && 'beheerders', !state.release && 'release'].filter(Boolean);
-      if (missing.length) return json({ error: `Eerst nog: ${missing.join(', ')}` }, 409);
-      if (!planSteps(state.release!.blueprint, state).some((s) => s.id === id)) return json({ error: `Onbekende stap ${id}` }, 404);
+      const missing = [!state.cloudflare && t.api.missing.cloudflare, !state.login && t.api.missing.login, !state.admins && t.api.missing.admins, !state.release && t.api.missing.release].filter(Boolean);
+      if (missing.length) return json({ error: t.api.firstStill(missing.join(', ')) }, 409);
+      if (!planSteps(state.release!.blueprint, state, t).some((s) => s.id === id)) return json({ error: t.api.unknownStep(id) }, 404);
       // The self-update comes first; nothing of Arcanum changes until it's done.
       if (state.release!.blueprint.installer && id !== 'installer:self' && state.steps['installer:self']?.status !== 'done') {
-        return json({ error: 'Eerst moet de installer zichzelf bijwerken (de eerste stap)' }, 409);
+        return json({ error: t.api.selfUpdateFirst }, 409);
       }
       const token = await tokenFor(env, state, sessionId);
-      if (!token) return json({ error: 'Plak het Cloudflare-token opnieuw (het werd niet onthouden)', needsToken: true }, 409);
+      if (!token) return json({ error: t.api.tokenAgain, needsToken: true }, 409);
       try {
-        const outcome = await runStep(id, { env, state, cf: cloudflareFor(env, token) });
+        const outcome = await runStep(id, { env, state, cf: cloudflareFor(env, token), t });
         if (outcome.status === 'done') state.steps[id] = { status: 'done', at: new Date().toISOString(), detail: outcome.detail };
         await saveState(env, state);
         return json({ id, ...outcome });
       } catch (err) {
-        state.steps[id] = { status: 'failed', at: new Date().toISOString(), detail: (err as Error).message };
+        const detail = messageOf(err, t);
+        state.steps[id] = { status: 'failed', at: new Date().toISOString(), detail };
         await saveState(env, state);
-        return json({ id, status: 'failed', detail: (err as Error).message }, 200);
+        return json({ id, status: 'failed', detail }, 200);
       }
     }
   } catch (err) {
-    if (err instanceof CloudflareError) return json({ error: `Cloudflare: ${err.message}` }, err.status === 401 || err.status === 403 ? 400 : 502);
-    if (err instanceof ReleaseError) return json({ error: err.message }, 502);
+    if (err instanceof CloudflareError) return json({ error: t.api.cloudflare(err.message) }, err.status === 401 || err.status === 403 ? 400 : 502);
+    if (err instanceof ReleaseError) return json({ error: messageOf(err, t) }, 502);
     throw err;
   }
 

@@ -1,16 +1,30 @@
 // The setup page: one self-contained HTML document (no build step, no
-// external assets), talking to api/*. Dutch, like the rest of Arcanum. Every
+// external assets), talking to api/*. In Dutch, French or English (i18n.ts):
+// served in one language, with only that language's texts in it — the
+// NL · FR · EN picker reloads the page with ?lang=. Every
 // path is relative: the same page works on the installer's own address
 // (at / and /handoff) and behind Arcanum (at /installer/, forwarded by the bff).
 // Made by the bootstrapper, it's one screen: "Installeren", with the rest
 // (domain, own login provider, token, admins) under "Geavanceerd".
-export const PAGE = /* html */ `<!doctype html>
-<html lang="nl">
+import { MESSAGES, type Locale, type Messages } from './i18n';
+
+// The inline script's texts, as a JS object literal — every "<" escaped, so
+// no text can end the <script> early.
+const scriptTexts = (texts: Messages['script']) => JSON.stringify(texts).replace(/</g, '\\u003c');
+
+export const page = (locale: Locale) => render(locale, MESSAGES[locale].page, scriptTexts(MESSAGES[locale].script));
+
+const current = (lang: Locale, l: Locale) => (lang === l ? ' aria-current="true"' : '');
+
+// test/check-page-script.mjs evaluates this template itself, with (lang, p,
+// texts, current) — keep it the last thing in this file.
+const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ `<!doctype html>
+<html lang="${lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>arcanum · installeren</title>
+<title>${p.title}</title>
 <link rel="icon" type="image/png" href="assets/kabouter.png">
 <style>
   /* The platform's own look (arcanum-frontends src/shared/globals.css +
@@ -41,13 +55,18 @@ export const PAGE = /* html */ `<!doctype html>
   .brand img { width: 1em; height: 1em; object-fit: contain; }
   .brand span { font-family: "Montserrat", ui-sans-serif, sans-serif; font-weight: 700; letter-spacing: -0.025em; }
   header h1 { font-size: 1rem; font-weight: 600; margin: 4px 0 0; }
+  /* The language picker: NL · FR · EN, top right. */
+  .langs { justify-self: end; display: flex; gap: 6px; font-size: 12px; margin-top: -16px; color: var(--muted-foreground); }
+  .langs a { color: var(--muted-foreground); text-decoration: none; }
+  .langs a:hover { color: var(--foreground); }
+  .langs a[aria-current] { color: var(--foreground); font-weight: 600; }
   .soft { color: var(--muted-foreground); }
   p { margin: 4px 0; }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; background: var(--muted); border-radius: calc(var(--radius) * 0.6); padding: 1px 6px; word-break: break-all; }
   /* Card — rounded-xl, ring-1 ring-foreground/10, 16px spacing. */
   .card { background: var(--card); border-radius: calc(var(--radius) * 1.4); box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent); padding: 16px; display: grid; gap: 8px; }
   .card h2 { font-size: 1rem; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 8px; }
-  .done > h2::after { content: "Klaar"; font-size: 0.75rem; font-weight: 500; color: var(--success); border: 1px solid color-mix(in oklch, var(--success) 40%, transparent); border-radius: 999px; padding: 0 8px; line-height: 1.4rem; }
+  .done > h2::after { content: "${p.done}"; font-size: 0.75rem; font-weight: 500; color: var(--success); border: 1px solid color-mix(in oklch, var(--success) 40%, transparent); border-radius: 999px; padding: 0 8px; line-height: 1.4rem; }
   form { display: grid; gap: 6px; }
   label { font-weight: 500; margin-top: 6px; }
   label.check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
@@ -100,186 +119,203 @@ export const PAGE = /* html */ `<!doctype html>
 <body>
 <main>
   <header>
+    <nav class="langs" aria-label="${p.language}"><a href="?lang=nl" hreflang="nl" lang="nl" data-lang="nl" title="Nederlands"${current(lang, 'nl')}>NL</a><span aria-hidden="true">·</span><a href="?lang=fr" hreflang="fr" lang="fr" data-lang="fr" title="Français"${current(lang, 'fr')}>FR</a><span aria-hidden="true">·</span><a href="?lang=en" hreflang="en" lang="en" data-lang="en" title="English"${current(lang, 'en')}>EN</a></nav>
     <div class="brand"><img src="assets/kabouter.png" alt=""><span>arcanum</span></div>
-    <h1>Installeren</h1>
-    <p class="soft">Installeert Arcanum op je eigen Cloudflare-account. Je gegevens blijven daar.</p>
+    <h1>${p.heading}</h1>
+    <p class="soft">${p.intro}</p>
   </header>
 
   <section id="login" class="card hidden">
-    <h2>Aanmelden</h2>
+    <h2>${p.signIn}</h2>
     <p class="error" data-login-error></p>
     <div data-login-account class="hidden">
-      <p class="soft">Met het account waarmee je Arcanum installeert (<span data-login-issuer></span>).</p>
-      <a class="button" href="auth/login">Aanmelden met je account</a>
+      <p class="soft">${p.signInAccountHint}</p>
+      <a class="button" href="auth/login">${p.signInWithAccount}</a>
     </div>
-    <p data-login-handoff class="soft hidden">Deze installer staat klaar op je Cloudflare-account, maar werd nog niet overgedragen. Open hem via de link die je op start.kaboutersoft.be kreeg — of start daar "Eigen installatie" opnieuw.</p>
+    <p data-login-handoff class="soft hidden">${p.awaitingHandoff}</p>
     <form data-form="login" class="hidden">
       <p class="soft" data-login-hint></p>
-      <label for="password" data-login-label>Wachtwoord</label><input id="password" name="password" type="password" autocomplete="current-password" required><button class="secondary">Aanmelden</button><p class="error" data-error></p>
+      <label for="password" data-login-label>${p.password}</label><input id="password" name="password" type="password" autocomplete="current-password" required><button class="secondary">${p.signIn}</button><p class="error" data-error></p>
     </form>
   </section>
 
   <section id="recovery" class="card hidden">
-    <h2>Bewaar je herstelcode</h2>
-    <p>Je bent aangemeld als <strong data-recovery-email></strong>. Voortaan meld je je hier aan met dat account. Lukt dat ooit niet (bijvoorbeeld omdat de login-provider onbereikbaar is), dan kom je binnen met deze herstelcode:</p>
+    <h2>${p.recoveryTitle}</h2>
+    <p>${p.recoveryIntro}</p>
     <p class="recovery-code" data-recovery-code></p>
-    <p class="soft">Hij wordt maar één keer getoond — bewaar hem op een veilige plek, bijvoorbeeld in je wachtwoordbeheerder. Wie hem heeft, kan deze installer bedienen. De vorige herstelcode (als er een was) werkt niet meer.</p>
-    <p class="soft">Start de installer na een update ooit niet meer? Zet hem terug in het Cloudflare-dashboard: <em>Workers &amp; Pages → arcanum-installer → Deployments</em> → de vorige versie → <em>Rollback</em>.</p>
-    <label class="check"><input type="checkbox" data-recovery-saved> Ik heb de herstelcode bewaard</label>
-    <button data-recovery-continue disabled>Verder</button>
+    <p class="soft">${p.recoveryOnce}</p>
+    <p class="soft">${p.recoveryRollback}</p>
+    <label class="check"><input type="checkbox" data-recovery-saved> ${p.recoverySaved}</label>
+    <button data-recovery-continue disabled>${p.continue}</button>
   </section>
 
   <section id="denied" class="card hidden">
-    <h2>Geen toegang</h2>
+    <h2>${p.deniedTitle}</h2>
     <p data-denied></p>
-    <p class="soft">Alleen de beheerders van deze installatie (stap 3) kunnen de installer openen.</p>
+    <p class="soft">${p.deniedHint}</p>
   </section>
 
   <div id="app" class="hidden" style="display:grid;gap:16px">
     <p data-access class="soft hidden" style="text-align:center;margin:0"></p>
     <section id="s-cloudflare" class="card">
-      <h2>1. Cloudflare</h2>
-      <p>Maak een API-token met precies de nodige rechten: <a id="token-link" target="_blank" rel="noopener">token aanmaken bij Cloudflare</a> (opent met de rechten al ingevuld), kopieer het en plak het hier.</p>
+      <h2>${p.cloudflareTitle}</h2>
+      <p>${p.cloudflareIntro}</p>
       <p data-summary class="soft"></p>
       <form data-form="cloudflare">
-        <label for="token">API-token</label><input id="token" name="token" type="password" autocomplete="off" required>
-        <div data-accounts class="hidden"><label for="accountId">Account</label><select id="accountId" name="accountId"></select></div>
-        <div data-subdomain class="hidden"><label for="subdomain">Kies je workers.dev-naam</label><input id="subdomain" name="subdomain" type="text" autocomplete="off"><p class="soft">Dit account heeft nog geen workers.dev-adres. Arcanum komt dan op <code>arcanum-bff.<span data-subdomain-preview>…</span>.workers.dev</code>. De naam geldt voor het hele Cloudflare-account en is later moeilijk te wijzigen.</p></div>
-        <label class="check"><input type="checkbox" name="remember" checked> Token onthouden voor latere updates (veilig versleuteld, nooit opnieuw zichtbaar)</label>
-        <button>Controleren en bewaren</button><p class="error" data-error></p>
+        <label for="token">${p.token}</label><input id="token" name="token" type="password" autocomplete="off" required>
+        <div data-accounts class="hidden"><label for="accountId">${p.account}</label><select id="accountId" name="accountId"></select></div>
+        <div data-subdomain class="hidden"><label for="subdomain">${p.subdomain}</label><input id="subdomain" name="subdomain" type="text" autocomplete="off"><p class="soft">${p.subdomainHint}</p></div>
+        <label class="check"><input type="checkbox" name="remember" checked> ${p.rememberToken}</label>
+        <button>${p.checkAndSave}</button><p class="error" data-error></p>
       </form>
     </section>
 
     <section id="s-address" class="card">
-      <h2>Adres</h2>
-      <p class="soft">Arcanum komt op <code data-workersdev>—</code>. Heb je een domein in dit Cloudflare-account? Dan kan het ook op een eigen adres, bv. <code>arcanum.jouwdomein.be</code> — Cloudflare maakt het DNS-record en het certificaat zelf aan.</p>
+      <h2>${p.addressTitle}</h2>
+      <p class="soft">${p.addressIntro}</p>
       <p data-summary class="soft"></p>
-      <form data-form="address"><label for="customDomain">Eigen domein (optioneel)</label><input id="customDomain" name="customDomain" type="text" placeholder="arcanum.jouwdomein.be" autocomplete="off"><button>Bewaren</button><p class="error" data-error></p></form>
+      <form data-form="address"><label for="customDomain">${p.customDomain}</label><input id="customDomain" name="customDomain" type="text" placeholder="${p.customDomainPlaceholder}" autocomplete="off"><button>${p.save}</button><p class="error" data-error></p></form>
     </section>
 
     <section id="s-login" class="card">
-      <h2>2. Aanmelden bij Arcanum</h2>
-      <p data-login-default class="soft hidden">Arcanum gebruikt nu <code data-login-current></code> — je hoeft hier niets te doen. Alleen voor een eigen login-provider:</p>
-      <p>Arcanum gebruikt een bestaande login-provider (Google, Microsoft, Auth0, Keycloak…). Maak daar een OAuth-client aan met:</p>
-      <p>Callback-URL: <code data-callback>—</code><br>Afmeld-URL: <code data-logout>—</code></p>
+      <h2>${p.loginTitle}</h2>
+      <p data-login-default class="soft hidden">${p.loginDefault}</p>
+      <p>${p.loginIntro}</p>
+      <p>${p.loginUrls}</p>
       <p data-summary class="soft"></p>
-      <p data-login-installed class="soft hidden">Arcanum is geïnstalleerd. Een <strong>andere</strong> provider of client wordt eerst alleen klaargezet: je test ze met een echte aanmelding en past ze pas daarna toe (<em>Aanmelding wijzigen</em>) — zo kan niemand buitengesloten worden. Een nieuw secret of andere scopes voor dezelfde client worden meteen bewaard.</p>
+      <p data-login-installed class="soft hidden">${p.loginInstalled}</p>
       <form data-form="login-provider">
-        <label for="issuer">Issuer-URL</label><input id="issuer" name="issuer" type="url" placeholder="https://accounts.google.com" required>
-        <label for="clientId">Client ID</label><input id="clientId" name="clientId" type="text" required>
-        <label for="clientSecret">Client secret</label><input id="clientSecret" name="clientSecret" type="password" autocomplete="off">
-        <p data-google class="soft hidden">Google heeft <strong>twee</strong> OAuth-clients nodig: een client van het type <em>TVs and Limited Input devices</em> hierboven (voor aanmelden op de kassa) en een client van het type <em>Web application</em> hieronder, met de callback-URL als <em>Authorized redirect URI</em>. De scopes worden <code>openid profile email</code> (Google weigert <code>offline_access</code>).</p>
-        <label for="scopes">Scopes (optioneel)</label><input id="scopes" name="scopes" type="text" placeholder="openid profile email offline_access">
-        <label for="authCodeClientId">Aparte client voor aanmelden in de browser (optioneel)</label><input id="authCodeClientId" name="authCodeClientId" type="text" placeholder="Client ID">
-        <input id="authCodeClientSecret" name="authCodeClientSecret" type="password" autocomplete="off" placeholder="Client secret">
-        <label for="connectionName">Auth0-connectie (optioneel)</label><input id="connectionName" name="connectionName" type="text">
-        <button>Controleren en bewaren</button><p class="error" data-error></p>
+        <label for="issuer">${p.issuer}</label><input id="issuer" name="issuer" type="url" placeholder="https://accounts.google.com" required>
+        <label for="clientId">${p.clientId}</label><input id="clientId" name="clientId" type="text" required>
+        <label for="clientSecret">${p.clientSecret}</label><input id="clientSecret" name="clientSecret" type="password" autocomplete="off">
+        <p data-google class="soft hidden">${p.googleHint}</p>
+        <label for="scopes">${p.scopes}</label><input id="scopes" name="scopes" type="text" placeholder="openid profile email offline_access">
+        <label for="authCodeClientId">${p.browserClient}</label><input id="authCodeClientId" name="authCodeClientId" type="text" placeholder="${p.clientId}">
+        <input id="authCodeClientSecret" name="authCodeClientSecret" type="password" autocomplete="off" placeholder="${p.clientSecret}">
+        <label for="connectionName">${p.connection}</label><input id="connectionName" name="connectionName" type="text">
+        <button>${p.checkAndSave}</button><p class="error" data-error></p>
         <ul class="checks" data-checks></ul>
       </form>
     </section>
 
     <section id="s-admins" class="card">
-      <h2>3. Beheerders</h2>
-      <p class="soft">Alleen deze mensen kunnen op deze installatie een organisatie aanmaken of importeren. Anderen kunnen wel uitgenodigd worden. Gebruik <code>*@jouwdomein.be</code> voor een heel domein.</p>
+      <h2>${p.adminsTitle}</h2>
+      <p class="soft">${p.adminsIntro}</p>
       <p data-summary class="soft"></p>
-      <form data-form="admins"><label for="emails">E-mailadressen</label><input id="emails" name="emails" type="text" placeholder="jij@jouwdomein.be" required><button>Bewaren</button><p class="error" data-error></p></form>
+      <form data-form="admins"><label for="emails">${p.emails}</label><input id="emails" name="emails" type="text" placeholder="${p.emailsPlaceholder}" required><button>${p.save}</button><p class="error" data-error></p></form>
     </section>
 
     <section id="s-release" class="card">
-      <h2>4. Versie</h2>
+      <h2>${p.releaseTitle}</h2>
       <p data-summary class="soft"></p>
       <p data-update></p>
-      <form data-form="release"><label for="version">Versie</label><select id="version" name="version"></select><button>Kiezen</button><p class="error" data-error></p></form>
+      <form data-form="release"><label for="version">${p.version}</label><select id="version" name="version"></select><button>${p.choose}</button><p class="error" data-error></p></form>
     </section>
 
     <section id="s-install" class="card">
-      <h2>5. Installeren</h2>
-      <p data-quick class="hidden">Arcanum komt op <code data-quick-url></code>, op je Cloudflare-account <strong data-quick-account></strong>. Beheerder: <span data-quick-admins></span>. Al de rest is ingevuld — klik op Installeren.</p>
-      <div data-quick-version class="hidden" style="display:grid;gap:6px"><label for="quick-version">Versie</label><select id="quick-version"></select></div>
-      <p class="soft">Elke stap kan veilig opnieuw uitgevoerd worden — onderbroken of mislukt? Klik gewoon opnieuw.</p>
-      <p class="soft hidden" data-self-note>Deze update brengt een nieuwe installer mee. Die wordt eerst geïnstalleerd, over deze heen, en voert daarna de rest van de update uit. Lukt dat niet, dan verandert er niets en blijft deze installer werken. Start de nieuwe installer niet (deze pagina laadt niet meer)? Zet hem terug in het Cloudflare-dashboard: <em>Workers &amp; Pages → <span data-self-script>arcanum-installer</span> → Deployments</em> → de vorige versie → <em>Rollback</em>.</p>
+      <h2>${p.installTitle}</h2>
+      <p data-quick class="hidden">${p.quick}</p>
+      <div data-quick-version class="hidden" style="display:grid;gap:6px"><label for="quick-version">${p.version}</label><select id="quick-version"></select></div>
+      <p class="soft">${p.rerun}</p>
+      <p class="soft hidden" data-self-note>${p.selfNote}</p>
       <ol class="steps" data-steps></ol>
-      <div class="row"><button data-run>Installeren</button></div><p class="error" data-error></p>
+      <div class="row"><button data-run>${p.install}</button></div><p class="error" data-error></p>
     </section>
 
     <section id="s-change" class="card hidden">
-      <h2>Aanmelding wijzigen</h2>
+      <h2>${p.changeTitle}</h2>
       <p class="soft" data-change-notice></p>
       <div data-change-staged class="hidden" style="display:grid;gap:8px">
-        <p>Klaargezet: <code data-change-to></code> (client <code data-change-client></code>). Er is nog niets gewijzigd — Arcanum gebruikt nog <code data-change-from></code>.</p>
-        <p><strong>1. Callback-URL's registreren.</strong> Zet deze adressen bij de nieuwe provider als toegelaten redirect-URI's van client <code data-change-browser-client></code>:</p>
+        <p>${p.changeStaged}</p>
+        <p>${p.changeCallbacks}</p>
         <ul class="people" data-change-callbacks></ul>
-        <p><strong>2. Test-aanmelding.</strong> Meld je bij de nieuwe provider aan met het account waarmee je Arcanum voortaan beheert. Zo weet je zeker dat het werkt vóór er iets verandert.</p>
-        <p data-change-test-result class="soft">Nog niet getest.</p>
-        <p><a class="button" href="auth/test-login" data-change-test>Test-aanmelding bij de nieuwe provider</a></p>
-        <p class="soft hidden" data-change-own>De test-aanmelding kan alleen op het eigen adres van de installer: <a data-change-own-link target="_blank" rel="noopener"></a> (meld je daar aan, bv. met je herstelcode).</p>
-        <p><strong>3. Toepassen.</strong> Arcanum schakelt over naar de nieuwe provider. Jij blijft meteen beheerder; alle andere leden blijven lid met hun rol, maar moeten zich één keer opnieuw aanmelden (met hetzelfde e-mailadres bij de nieuwe provider).</p>
+        <p>${p.changeTest}</p>
+        <p data-change-test-result class="soft">${p.notTested}</p>
+        <p><a class="button" href="auth/test-login" data-change-test>${p.testButton}</a></p>
+        <p class="soft hidden" data-change-own>${p.changeOwnAddress}</p>
+        <p>${p.changeApply}</p>
         <p data-change-tester></p>
         <div data-change-resign></div>
         <p class="error" data-change-problem></p>
-        <div class="row"><button data-change-apply disabled>Toepassen</button><button class="secondary" data-change-cancel>Annuleren</button></div>
+        <div class="row"><button data-change-apply disabled>${p.apply}</button><button class="secondary" data-change-cancel>${p.cancel}</button></div>
       </div>
       <div data-change-applied class="hidden" style="display:grid;gap:8px">
         <p data-change-applied-summary></p>
         <p data-change-applied-tester></p>
         <div data-change-applied-resign></div>
-        <p class="soft">Lukt aanmelden bij de nieuwe provider niet? Meld je hier aan met je herstelcode — Terugzetten werkt ook dan. Terugzetten herstelt de vorige provider en elk lidmaatschap zoals het was.</p>
-        <div class="row"><button data-change-finish class="hidden">Afmaken</button><button class="secondary" data-change-undo>Terugzetten</button></div>
+        <p class="soft">${p.changeAppliedHint}</p>
+        <div class="row"><button data-change-finish class="hidden">${p.finish}</button><button class="secondary" data-change-undo>${p.undo}</button></div>
       </div>
       <p class="error" data-error></p>
     </section>
 
     <details id="advanced" class="card hidden">
-      <summary>Geavanceerd</summary>
-      <p class="soft">Niet nodig voor een gewone installatie: een eigen domein, een eigen login-provider, het Cloudflare-token en de beheerders.</p>
+      <summary>${p.advanced}</summary>
+      <p class="soft">${p.advancedIntro}</p>
       <div data-advanced></div>
     </details>
 
     <section id="s-done" class="card hidden">
-      <h2>Klaar</h2>
-      <p><a class="button big" data-open target="_blank" rel="noopener">Open je Arcanum</a></p>
-      <p>Arcanum draait op <a data-url target="_blank" rel="noopener"></a>.</p>
-      <p data-live class="soft">Bereikbaarheid controleren…</p>
-      <p>Meld je daar aan met een beheerdersadres en maak je organisatie aan — of importeer ze via <em>Instellingen → Gegevens</em> uit een export van je vorige installatie.</p>
+      <h2>${p.done}</h2>
+      <p><a class="button big" data-open target="_blank" rel="noopener">${p.openArcanum}</a></p>
+      <p>${p.runsAt}</p>
+      <p data-live class="soft">${p.checkingLive}</p>
+      <p>${p.doneNext}</p>
     </section>
 
     <section id="s-public" class="card hidden">
-      <h2>Openbare toegang verwijderen</h2>
-      <p class="soft">Nu Arcanum draait, kan de installer achter Arcanum: bereikbaar via <code data-installer-url>—</code> voor wie als beheerder aangemeld is, zonder wachtwoord. Daarna kan zijn eigen openbare adres uit.</p>
+      <h2>${p.publicTitle}</h2>
+      <p class="soft">${p.publicIntro}</p>
       <ol class="steps" data-public-steps>
-        <li data-public="link"><span class="icon"></span><span><span class="title">Bereikbaar via Arcanum</span> <span class="detail"></span></span></li>
-        <li data-public="open"><span class="icon"></span><span><span class="title">Geopend via Arcanum</span> <span class="detail"></span></span></li>
-        <li data-public="direct"><span class="icon"></span><span><span class="title">Eigen openbaar adres uitgeschakeld</span> <span class="detail"></span></span></li>
+        <li data-public="link"><span class="icon"></span><span><span class="title">${p.publicLinked}</span> <span class="detail"></span></span></li>
+        <li data-public="open"><span class="icon"></span><span><span class="title">${p.publicOpened}</span> <span class="detail"></span></span></li>
+        <li data-public="direct"><span class="icon"></span><span><span class="title">${p.publicDirectOff}</span> <span class="detail"></span></span></li>
       </ol>
       <div class="row">
-        <button data-public-link>Bereikbaar maken via Arcanum</button>
-        <a data-public-open class="hidden" href="#">Open de installer via Arcanum →</a>
-        <button data-public-remove class="hidden">Openbaar adres uitschakelen</button>
-        <button data-public-restore class="secondary hidden">Openbaar adres weer inschakelen</button>
+        <button data-public-link>${p.publicLink}</button>
+        <a data-public-open class="hidden" href="#">${p.publicOpen}</a>
+        <button data-public-remove class="hidden">${p.publicRemove}</button>
+        <button data-public-restore class="secondary hidden">${p.publicRestore}</button>
       </div>
       <p class="soft" data-public-note></p>
       <p class="error" data-error></p>
     </section>
 
-    <p class="row"><button class="secondary" data-logout-button>Afmelden</button></p>
+    <p class="row"><button class="secondary" data-logout-button>${p.signOut}</button></p>
   </div>
 </main>
 <footer>
   <img src="assets/kabouter.png" alt="">
-  <a href="https://kaboutersoft.be" target="_blank" rel="noopener noreferrer">Voor u geserveerd door kaboutersoft.be</a>
+  <a href="https://kaboutersoft.be" target="_blank" rel="noopener noreferrer">${p.servedBy}</a>
   <span aria-hidden="true">·</span>
-  <a href="https://github.com/arcanum-pos/arcanum-installer" target="_blank" rel="noopener noreferrer" title="Arcanum is vrije software (AGPL-3.0)">Broncode</a>
+  <a href="https://github.com/arcanum-pos/arcanum-installer" target="_blank" rel="noopener noreferrer" title="${p.freeSoftware}">${p.sourceCode}</a>
   <span aria-hidden="true">·</span>
-  <span data-installer-version title="De versie van deze installer zelf — bij elke update werkt hij eerst zichzelf bij"></span>
+  <span data-installer-version title="${p.installerVersion}"></span>
 </footer>
 <script>
 const $ = (s, el = document) => el.querySelector(s);
 let status = null;
+// This page's texts, in the language it was served in (i18n.ts); {name} placeholders.
+const M = ${texts};
+const LANG = document.documentElement.lang;
+const fmt = (text, values) => text.replace(/[{]([a-zA-Z]+)[}]/g, (_, name) => String(values[name]));
+
+// The language: ?lang= or the browser's (the server's choice), unless one was
+// picked before in this browser (NL · FR · EN) — then back with that one.
+const LOCALE_KEY = 'arcanum-installer-locale';
+const pageParams = new URLSearchParams(location.search);
+let picked = null; try { picked = localStorage.getItem(LOCALE_KEY); } catch {}
+const switching = !pageParams.has('lang') && ['nl', 'fr', 'en'].includes(picked) && picked !== LANG;
+if (switching) { pageParams.set('lang', picked); location.replace('?' + pageParams.toString()); }
+for (const a of document.querySelectorAll('[data-lang]')) a.addEventListener('click', () => { try { localStorage.setItem(LOCALE_KEY, a.dataset.lang); } catch {} });
+// Kept in the address when the page tidies it up.
+const keepLang = pageParams.has('lang') ? '?lang=' + encodeURIComponent(pageParams.get('lang')) : '';
 
 async function api(path, body) {
-  const res = await fetch(path, body === undefined ? { credentials: 'same-origin' } : { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  // The API answers in this page's language.
+  const res = await fetch(path, body === undefined ? { credentials: 'same-origin', headers: { 'Accept-Language': LANG } } : { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'Accept-Language': LANG }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && path !== 'api/login') { show(false); throw new Error('Niet aangemeld'); }
+  if (res.status === 401 && path !== 'api/login') { show(false); throw new Error(M.notSignedIn); }
   if (res.status === 403 && data.forbidden) { denied(data.error); throw new Error(data.error); }
   if (!res.ok) throw Object.assign(new Error(data.error || ('HTTP ' + res.status)), { data });
   return data;
@@ -291,29 +327,28 @@ function show(loggedIn) { $('#login').classList.toggle('hidden', loggedIn); $('#
 // The ways in this installer has: its password (Deploy button), or — made
 // by the bootstrapper — the admin's account and the recovery code.
 async function loadLoginOptions() {
-  let o = null; try { o = await (await fetch('api/login-options', { credentials: 'same-origin' })).json(); } catch { return; }
+  let o = null; try { o = await (await fetch('api/login-options', { credentials: 'same-origin', headers: { 'Accept-Language': LANG } })).json(); } catch { return; }
   $('[data-login-account]').classList.toggle('hidden', !o.account);
   if (o.account) $('[data-login-issuer]').textContent = new URL(o.account.issuer).host;
   $('[data-login-handoff]').classList.toggle('hidden', !o.awaitingHandoff);
   const form = $('form[data-form="login"]'); form.classList.toggle('hidden', !o.password && !o.recoveryCode);
-  $('[data-login-label]').textContent = o.password && o.recoveryCode ? 'Wachtwoord of herstelcode' : o.password ? 'Wachtwoord' : 'Herstelcode';
-  $('[data-login-hint]').textContent = o.password ? 'Het wachtwoord dat je koos bij het installeren van deze installer (INSTALLER_PASSWORD).' : 'Lukt aanmelden met je account niet? Gebruik de herstelcode die je bij de start kreeg.';
+  $('[data-login-label]').textContent = o.password && o.recoveryCode ? M.passwordOrRecoveryCode : o.password ? M.password : M.recoveryCode;
+  $('[data-login-hint]').textContent = o.password ? M.passwordHint : M.recoveryCodeHint;
   $('#password').autocomplete = o.password ? 'current-password' : 'off';
 }
 
 // Why signing in with an account didn't work (oidc.ts sends ?fout=).
 const SIGN_IN_ERRORS = {
-  'geen-beheerder': ' staat niet in de lijst met beheerders van deze installatie.',
-  'niet-bevestigd': 'Je e-mailadres is nog niet bevestigd bij de login-provider — bevestig het en probeer opnieuw.',
-  'aanmelden-verlopen': 'Het aanmelden duurde te lang of werd in een ander venster gestart — probeer opnieuw.',
-  'aanmelden-geweigerd': 'Aanmelden werd geannuleerd of geweigerd.',
-  'aanmelden-mislukt': 'Aanmelden is mislukt — probeer opnieuw.',
-  'provider-onbereikbaar': 'De login-provider is niet bereikbaar. Gebruik je herstelcode.',
-  'geen-account-aanmelding': 'Deze installer kent geen aanmelding met een account.',
+  'niet-bevestigd': M.signInNotVerified,
+  'aanmelden-verlopen': M.signInExpired,
+  'aanmelden-geweigerd': M.signInRefused,
+  'aanmelden-mislukt': M.signInFailedRetry,
+  'provider-onbereikbaar': M.signInProviderDown,
+  'geen-account-aanmelding': M.signInNoAccount,
 };
 function signInError(params) {
   const reason = params.get('fout'); if (!reason) return '';
-  return reason === 'geen-beheerder' ? (params.get('email') || 'Dit account') + SIGN_IN_ERRORS[reason] : (SIGN_IN_ERRORS[reason] || 'Aanmelden is mislukt.');
+  return reason === 'geen-beheerder' ? fmt(M.signInNotAdmin, { email: params.get('email') || M.thisAccount }) : (SIGN_IN_ERRORS[reason] || M.signInFailed);
 }
 
 function showRecovery(r) {
@@ -324,7 +359,7 @@ $('[data-recovery-saved]').addEventListener('change', (ev) => { $('[data-recover
 $('[data-recovery-continue]').addEventListener('click', async () => { $('[data-recovery-code]').textContent = ''; await refresh(); show(true); await loadReleases(); });
 
 // Made by the bootstrapper: one screen. The detailed cards move under "Geavanceerd".
-const ADVANCED = { 's-address': 'Eigen domein', 's-login': 'Eigen login-provider', 's-cloudflare': 'Cloudflare-token', 's-admins': 'Beheerders' };
+const ADVANCED = { 's-address': M.advancedAddress, 's-login': M.advancedLogin, 's-cloudflare': M.advancedCloudflare, 's-admins': M.advancedAdmins };
 let arranged = false;
 function arrange(s) {
   const quick = !!s.bootstrapped;
@@ -336,7 +371,7 @@ function arrange(s) {
   if (!quick || arranged) return;
   arranged = true;
   for (const [id, title] of Object.entries(ADVANCED)) { const el = $('#' + id); $('h2', el).textContent = title; $('[data-advanced]').append(el); }
-  $('#s-install h2').textContent = 'Installeren';
+  $('#s-install h2').textContent = M.install;
   $('[data-run]').classList.add('big');
 }
 
@@ -345,16 +380,16 @@ function render() {
   arrange(s);
   // Which release this installer itself came from (INSTALLER_RELEASE): after
   // an update it shows the new one — the proof it updated itself.
-  $('[data-installer-version]').textContent = 'Installer ' + (s.installer && s.installer.release ? s.installer.release : '(zonder releasenummer)');
+  $('[data-installer-version]').textContent = fmt(M.installerRelease, { release: s.installer && s.installer.release ? s.installer.release : M.noReleaseNumber });
   $('#token-link').href = s.tokenTemplateUrl;
   const set = (id, done, summary) => { const el = $(id); el.classList.toggle('done', !!done); $('[data-summary]', el) && ($('[data-summary]', el).textContent = summary || ''); };
-  set('#s-cloudflare', s.cloudflare && s.cloudflare.tokenAvailable, s.cloudflare ? 'Account: ' + s.cloudflare.accountName + ' · adres: ' + (s.address ? s.address.publicUrl : '') + (s.cloudflare.tokenAvailable ? '' : ' · token opnieuw nodig') : '');
-  $('[data-workersdev]').textContent = s.address ? s.address.workersDevUrl : '(eerst stap 1)';
-  set('#s-address', false, s.address && s.address.customDomain ? 'Adres: ' + s.address.publicUrl + ' (workers.dev blijft ook werken)' : '');
+  set('#s-cloudflare', s.cloudflare && s.cloudflare.tokenAvailable, s.cloudflare ? fmt(M.cloudflareSummary, { account: s.cloudflare.accountName, url: s.address ? s.address.publicUrl : '' }) + (s.cloudflare.tokenAvailable ? '' : M.tokenNeeded) : '');
+  $('[data-workersdev]').textContent = s.address ? s.address.workersDevUrl : M.stepOneFirst;
+  set('#s-address', false, s.address && s.address.customDomain ? fmt(M.addressSummary, { url: s.address.publicUrl }) : '');
   if (s.address && s.address.customDomain) $('#customDomain').value ||= s.address.customDomain;
-  $('[data-callback]').textContent = s.address ? s.address.callbackUrl : '(eerst stap 1)';
-  $('[data-logout]').textContent = s.address ? s.address.logoutUrl : '(eerst stap 1)';
-  set('#s-login', s.login, s.login ? 'Issuer: ' + s.login.issuer + ' · client: ' + s.login.clientId : '');
+  $('[data-callback]').textContent = s.address ? s.address.callbackUrl : M.stepOneFirst;
+  $('[data-logout]').textContent = s.address ? s.address.logoutUrl : M.stepOneFirst;
+  set('#s-login', s.login, s.login ? fmt(M.loginSummary, { issuer: s.login.issuer, client: s.login.clientId }) : '');
   if (s.login) $('[data-login-current]').textContent = new URL(s.login.issuer).host;
   if (s.bootstrapped) {
     $('[data-quick-url]').textContent = s.address ? s.address.publicUrl : '';
@@ -362,15 +397,15 @@ function render() {
     $('[data-quick-admins]').textContent = s.admins || '';
   }
   if (s.login) {
-    $('#issuer').value ||= s.login.issuer; $('#clientId').value ||= s.login.clientId; $('#clientSecret').placeholder = '(bewaard — leeg laten om te behouden)';
+    $('#issuer').value ||= s.login.issuer; $('#clientId').value ||= s.login.clientId; $('#clientSecret').placeholder = M.secretKept;
     $('#scopes').value ||= s.login.scopes || ''; $('#authCodeClientId').value ||= s.login.authCodeClientId || '';
-    if (s.login.authCodeClientSecretSet) $('#authCodeClientSecret').placeholder = '(bewaard — leeg laten om te behouden)';
+    if (s.login.authCodeClientSecretSet) $('#authCodeClientSecret').placeholder = M.secretKept;
   }
   googleHint();
   set('#s-admins', s.admins, s.admins ? s.admins : '');
   if (s.admins) $('#emails').value ||= s.admins;
-  set('#s-release', s.release, s.release ? 'Arcanum ' + s.release.version + (s.installed && s.installed.version !== s.release.version ? ' (bijwerken van ' + s.installed.version + ')' : '') : '');
-  $('#s-release button').textContent = s.installed ? 'Bijwerken naar deze versie' : 'Kiezen';
+  set('#s-release', s.release, s.release ? fmt(M.arcanumVersion, { version: s.release.version }) + (s.installed && s.installed.version !== s.release.version ? fmt(M.updatingFrom, { version: s.installed.version }) : '') : '');
+  $('#s-release button').textContent = s.installed ? M.updateToThis : M.choose;
   const list = $('[data-steps]'); list.innerHTML = '';
   for (const step of s.steps) {
     const li = document.createElement('li'); li.className = step.status; li.dataset.id = step.id;
@@ -384,7 +419,7 @@ function render() {
   const chosen = s.bootstrapped ? $('#quick-version').value : (s.release && s.release.version);
   const updating = s.installed && chosen && s.installed.version !== chosen;
   const sameRelease = s.release && chosen === s.release.version;
-  $('[data-run]').textContent = updating ? 'Bijwerken naar ' + chosen : sameRelease && s.steps.some(x => x.status === 'done') && !s.installed ? 'Verder installeren' : 'Installeren';
+  $('[data-run]').textContent = updating ? fmt(M.updateTo, { version: chosen }) : sameRelease && s.steps.some(x => x.status === 'done') && !s.installed ? M.continueInstall : M.install;
   const selfStep = s.steps.some(x => x.id === 'installer:self');
   $('[data-self-note]').classList.toggle('hidden', !selfStep);
   set('#s-install', s.installed, '');
@@ -392,7 +427,7 @@ function render() {
   if (s.installed) { $('[data-url]').href = s.address.publicUrl; $('[data-url]').textContent = s.address.publicUrl; $('[data-open]').href = s.address.publicUrl + '/console'; probe(); }
   const viaArcanum = s.access && s.access.via === 'arcanum';
   $('[data-access]').classList.toggle('hidden', !(s.access && s.access.email));
-  if (s.access && s.access.email) $('[data-access]').textContent = (viaArcanum ? 'Aangemeld via Arcanum als ' : 'Aangemeld als ') + s.access.email;
+  if (s.access && s.access.email) $('[data-access]').textContent = fmt(viaArcanum ? M.signedInViaArcanum : M.signedInAs, { email: s.access.email });
   $('[data-logout-button]').classList.toggle('hidden', !!viaArcanum);
   $('#s-public').classList.toggle('hidden', !s.installed);
   if (s.installed) loadPublicAccess();
@@ -404,23 +439,23 @@ function render() {
 
 // "Aanmelding wijzigen": stage → test sign-in → apply, undo for 7 days (login-change.ts).
 const TEST_OUTCOMES = {
-  'ok': 'Test-aanmelding gelukt.',
-  'niet-bevestigd': 'Aangemeld, maar je e-mailadres is niet bevestigd bij de nieuwe provider — bevestig het daar en test opnieuw.',
-  'geen-sessie': 'Meld je eerst aan bij de installer, op zijn eigen adres, en start de test daar.',
-  'niets-klaargezet': 'Er staat geen nieuwe provider (meer) klaar.',
-  'provider-onbereikbaar': 'De nieuwe provider is niet bereikbaar.',
-  'verlopen': 'De test duurde te lang of werd in een ander venster gestart — probeer opnieuw.',
-  'geweigerd': 'Aanmelden bij de nieuwe provider werd geannuleerd of geweigerd.',
-  'mislukt': 'De test-aanmelding is mislukt — kijk na of de callback-URL bij de nieuwe provider geregistreerd is en probeer opnieuw.',
-  'geen-email': 'De nieuwe provider gaf geen e-mailadres terug — de client moet de scope "email" mogen vragen.',
-  'geen-beheerder': 'Dat adres staat niet in de lijst met beheerders. Meld je bij de installer aan met je account, of zet het adres eerst bij de beheerders.',
+  'ok': M.testOk,
+  'niet-bevestigd': M.testNotVerified,
+  'geen-sessie': M.testNoSession,
+  'niets-klaargezet': M.testNothingStaged,
+  'provider-onbereikbaar': M.testProviderDown,
+  'verlopen': M.testExpired,
+  'geweigerd': M.testRefused,
+  'mislukt': M.testFailedCallback,
+  'geen-email': M.testNoEmail,
+  'geen-beheerder': M.testNotAdmin,
 };
 let testOutcome = '';
-const fmtDate = (iso) => new Date(iso).toLocaleString('nl-BE', { dateStyle: 'medium', timeStyle: 'short' });
+const fmtDate = (iso) => new Date(iso).toLocaleString(M.dateLocale, { dateStyle: 'medium', timeStyle: 'short' });
 function peopleList(el, title, people) {
   el.innerHTML = '';
   if (!people || !people.length) return;
-  const p = document.createElement('p'); p.textContent = title + ' (' + people.length + '):'; el.append(p);
+  const p = document.createElement('p'); p.textContent = fmt(M.people, { title, count: people.length }); el.append(p);
   const ul = document.createElement('ul'); ul.className = 'people';
   for (const x of people) { const li = document.createElement('li'); li.textContent = x.email + ' — ' + x.org + ' (' + x.role + ')'; ul.append(li); }
   el.append(ul);
@@ -444,25 +479,25 @@ function renderChange(c) {
     for (const u of c.callbackUrls) { const li = document.createElement('li'); const code = document.createElement('code'); code.textContent = u; li.append(code); ul.append(li); }
     const t = c.test;
     $('[data-change-test-result]').textContent = t
-      ? 'Getest: aangemeld als ' + t.email + ' · sub ' + t.sub + ' · e-mail bevestigd: ' + (t.emailVerified ? 'ja' : 'nee') + (t.thisSession ? '' : ' — in een andere sessie: test opnieuw om vanuit deze sessie toe te passen.')
-      : 'Nog niet getest.';
+      ? fmt(M.tested, { email: t.email, sub: t.sub, verified: t.emailVerified ? M.yes : M.no }) + (t.thisSession ? '' : M.otherSession)
+      : M.notTested;
     const viaArcanum = status && status.access && status.access.via === 'arcanum';
     $('[data-change-test]').classList.toggle('hidden', !!viaArcanum);
     $('[data-change-own]').classList.toggle('hidden', !viaArcanum);
     const own = new URL(c.callbackUrls[0]).origin; $('[data-change-own-link]').href = own + '/'; $('[data-change-own-link]').textContent = own;
     const p = c.preview;
-    $('[data-change-tester]').textContent = p && p.tester.length ? 'Meteen gekoppeld aan de nieuwe aanmelding' + (t ? ' (' + t.email + ')' : '') + ': ' + orgsOf(p.tester) + '.' : '';
-    peopleList($('[data-change-resign]'), 'Moeten zich opnieuw aanmelden', p ? p.resign : []);
+    $('[data-change-tester]').textContent = p && p.tester.length ? fmt(M.boundNow, { who: t ? ' (' + t.email + ')' : '', orgs: orgsOf(p.tester) }) : '';
+    peopleList($('[data-change-resign]'), M.mustSignInAgain, p ? p.resign : []);
     $('[data-change-problem]').textContent = c.previewError || (p && p.problem) || '';
     $('[data-change-apply]').disabled = !(t && t.emailVerified && t.thisSession && p && !p.problem && p.tester.length);
   }
   if (c.applied) {
     const a = c.applied;
     $('[data-change-applied-summary]').textContent = a.phase === 'done'
-      ? 'Aanmelding gewijzigd op ' + fmtDate(a.at) + ': van ' + a.from.issuer + ' naar ' + a.to.issuer + '. Terugzetten kan tot ' + fmtDate(a.undoUntil) + '.'
-      : 'De wijziging naar ' + a.to.issuer + ' is halverwege gestopt. Klik op Afmaken om ze af te werken, of zet ze terug.';
-    $('[data-change-applied-tester]').textContent = 'Gekoppeld aan ' + a.tester.email + ' (sub ' + a.tester.sub + '): ' + orgsOf(a.tester.orgs) + '.';
-    peopleList($('[data-change-applied-resign]'), 'Moeten zich opnieuw aanmelden', a.resign);
+      ? fmt(M.changeDone, { at: fmtDate(a.at), from: a.from.issuer, to: a.to.issuer, until: fmtDate(a.undoUntil) })
+      : fmt(M.changeHalfway, { to: a.to.issuer });
+    $('[data-change-applied-tester]').textContent = fmt(M.boundTo, { email: a.tester.email, sub: a.tester.sub, orgs: orgsOf(a.tester.orgs) });
+    peopleList($('[data-change-applied-resign]'), M.mustSignInAgain, a.resign);
     $('[data-change-finish]').classList.toggle('hidden', a.phase === 'done');
   }
   box.classList.toggle('done', !!(c.applied && c.applied.phase === 'done' && !c.staged));
@@ -475,9 +510,9 @@ async function changeAction(path, question) {
   catch (e) { err.textContent = e.message; if (e.data && e.data.info) renderChange(e.data.info); }
   finally { for (const b of document.querySelectorAll('#s-change button')) b.disabled = false; loadChange(); }
 }
-$('[data-change-apply]').addEventListener('click', () => changeAction('api/login-change/apply', 'Arcanum overschakelen naar de nieuwe login-provider? Alle andere leden moeten zich daarna opnieuw aanmelden.'));
+$('[data-change-apply]').addEventListener('click', () => changeAction('api/login-change/apply', M.confirmApply));
 $('[data-change-finish]').addEventListener('click', () => changeAction('api/login-change/apply'));
-$('[data-change-undo]').addEventListener('click', () => changeAction('api/login-change/undo', 'De vorige login-provider en alle lidmaatschappen terugzetten?'));
+$('[data-change-undo]').addEventListener('click', () => changeAction('api/login-change/undo', M.confirmUndo));
 $('[data-change-cancel]').addEventListener('click', () => changeAction('api/login-change/cancel'));
 
 // "Openbare toegang verwijderen": link the installer to Arcanum, prove it
@@ -491,9 +526,9 @@ async function loadPublicAccess() {
     const via = p.via === 'arcanum';
     const mark = (id, state, detail) => { const li = $('[data-public="' + id + '"]', box); li.className = state; $('.detail', li).textContent = detail ? '— ' + detail : ''; };
     $('[data-installer-url]').textContent = p.installerUrl;
-    mark('link', p.linked ? 'done' : 'todo', p.linked ? '' : (p.supported ? '' : 'deze versie van Arcanum kan dat nog niet — werk eerst bij (stap 4)'));
-    mark('open', via ? 'done' : 'todo', via ? '' : (p.linked ? 'open ' + p.installerUrl + ' en ga daar verder' : ''));
-    mark('direct', p.directEnabled === false ? 'done' : 'todo', p.directEnabled === null ? 'onbekend (Cloudflare-token nodig)' : p.directEnabled ? p.directUrl + ' is nog openbaar' : '');
+    mark('link', p.linked ? 'done' : 'todo', p.linked ? '' : (p.supported ? '' : M.publicUnsupported));
+    mark('open', via ? 'done' : 'todo', via ? '' : (p.linked ? fmt(M.publicOpenThere, { url: p.installerUrl }) : ''));
+    mark('direct', p.directEnabled === false ? 'done' : 'todo', p.directEnabled === null ? M.publicUnknown : p.directEnabled ? fmt(M.publicStillOn, { url: p.directUrl }) : '');
     $('[data-public-link]').classList.toggle('hidden', p.linked);
     $('[data-public-link]').disabled = !p.supported;
     const open = $('[data-public-open]'); open.href = p.installerUrl; open.classList.toggle('hidden', !p.linked || via);
@@ -501,7 +536,7 @@ async function loadPublicAccess() {
     $('[data-public-restore]').classList.toggle('hidden', !(via && p.directEnabled === false));
     box.classList.toggle('done', p.linked && p.directEnabled === false);
     $('[data-public-note]').textContent = p.directEnabled === false
-      ? 'De installer is alleen nog bereikbaar via Arcanum. Werk je de installer zelf bij (een nieuwe versie van je kopie), dan zet Cloudflare zijn openbare adres weer aan — schakel het dan hier opnieuw uit. Het wachtwoord (INSTALLER_PASSWORD) blijft als noodtoegang op de Worker staan.'
+      ? M.publicNote
       : '';
   } catch (e) { err.textContent = e.message; } finally { publicLoading = false; }
 }
@@ -520,11 +555,11 @@ let probing = false;
 function probe(attempt = 0) {
   if (probing || !status.probeUrl) return; probing = true;
   const img = new Image();
-  img.onload = () => { probing = false; $('[data-live]').textContent = '✓ Arcanum is bereikbaar vanuit je browser.'; };
+  img.onload = () => { probing = false; $('[data-live]').textContent = M.liveOk; };
   img.onerror = () => {
     probing = false;
-    if (attempt >= 24) { $('[data-live]').textContent = 'Arcanum antwoordt nog niet vanuit je browser. Een nieuw workers.dev-adres kan enkele minuten nodig hebben — probeer het adres hierboven straks opnieuw.'; return; }
-    $('[data-live]').textContent = 'Wachten tot het adres bereikbaar is… (Cloudflare zet het klaar)';
+    if (attempt >= 24) { $('[data-live]').textContent = M.liveNotYet; return; }
+    $('[data-live]').textContent = M.liveWaiting;
     setTimeout(() => probe(attempt + 1), 5000);
   };
   img.src = status.probeUrl + '?check=' + Date.now();
@@ -560,13 +595,13 @@ async function loadReleases() {
     const newer = r.installed ? r.releases.map((x) => x.version).filter((v) => newerThan(v, r.installed)).sort((a, b) => (newerThan(a, b) ? -1 : 1)) : [];
     for (const rel of r.releases) {
       const o = document.createElement('option'); o.value = rel.version;
-      const tag = rel.version === r.installed ? ' — geïnstalleerd' : newer.includes(rel.version) ? ' — nieuwer' : rel.version === r.latest ? ' — nieuwste' : '';
-      o.textContent = 'Arcanum ' + rel.version + (rel.prerelease ? ' (voorlopige versie)' : '') + tag; sel.append(o);
+      const tag = rel.version === r.installed ? M.releaseInstalled : newer.includes(rel.version) ? M.releaseNewer : rel.version === r.latest ? M.releaseLatest : '';
+      o.textContent = fmt(M.arcanumVersion, { version: rel.version }) + (rel.prerelease ? M.prerelease : '') + tag; sel.append(o);
     }
     // Installed: preselect the newest version above it; otherwise the chosen one.
     if (newer.length) sel.value = newer[0];
     else if (status && status.release) sel.value = status.release.version;
-    $('[data-update]').textContent = newer.length ? 'Nieuwere versie beschikbaar: Arcanum ' + newer[0] + ' — kies ze en klik op "Bijwerken naar deze versie".' : '';
+    $('[data-update]').textContent = newer.length ? fmt(M.newerAvailable, { version: newer[0] }) : '';
     if (status) render();
   } catch (e) { $('#s-release [data-error]').textContent = e.message; $('#s-install [data-error]').textContent = e.message; }
 }
@@ -577,7 +612,7 @@ function fillVersions(sel, r) {
   for (const rel of r.releases) {
     if (r.installed && newerThan(r.installed, rel.version)) continue;
     const o = document.createElement('option'); o.value = rel.version;
-    o.textContent = 'Arcanum ' + rel.version + (rel.prerelease ? ' (voorlopige versie)' : '') + (rel.version === r.installed ? ' — geïnstalleerd' : ''); sel.append(o);
+    o.textContent = fmt(M.arcanumVersion, { version: rel.version }) + (rel.prerelease ? M.prerelease : '') + (rel.version === r.installed ? M.releaseInstalled : ''); sel.append(o);
   }
   sel.value = keep && [...sel.options].some(o => o.value === keep) ? keep : (sel.options[0] ? sel.options[0].value : '');
 }
@@ -608,11 +643,11 @@ document.addEventListener('submit', async (ev) => {
       if (!form.subdomain.value) form.subdomain.value = result.suggestion;
       $('[data-subdomain-preview]').textContent = form.subdomain.value;
       form.subdomain.oninput = () => { $('[data-subdomain-preview]').textContent = form.subdomain.value || '…'; };
-      err.textContent = 'Kies een workers.dev-naam en bevestig opnieuw.'; return;
+      err.textContent = M.chooseSubdomain; return;
     }
     if (result.needsAccount) {
       const sel = $('#accountId'); sel.innerHTML = ''; for (const a of result.accounts) { const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; sel.append(o); }
-      $('[data-accounts]', form).classList.remove('hidden'); err.textContent = 'Kies het account en bevestig opnieuw.'; return;
+      $('[data-accounts]', form).classList.remove('hidden'); err.textContent = M.chooseAccount; return;
     }
     status = result; render();
     if (result.checks) showChecks(result.checks);
@@ -628,7 +663,7 @@ async function runAll() {
     // One screen: choose the version picked right here first (a fresh install, or an update).
     if (status.bootstrapped) {
       const version = $('#quick-version').value;
-      if (!version) throw new Error('Geen versie beschikbaar — probeer straks opnieuw.');
+      if (!version) throw new Error(M.noVersion);
       if (!status.release || status.release.version !== version) { status = await api('api/release', { version }); render(); }
     }
     for (const step of status.steps) {
@@ -637,8 +672,8 @@ async function runAll() {
         const li = $('[data-id="' + CSS.escape(step.id) + '"]'); if (li) li.className = 'running';
         const r = await api('api/step', { id: step.id });
         if (r.status === 'done') break;
-        if (r.status === 'retry' && attempt < 20) { if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + ' (opnieuw over 6 s)'; } await new Promise(res => setTimeout(res, 6000)); continue; }
-        await refresh(); throw new Error(step.title + ': ' + r.detail);
+        if (r.status === 'retry' && attempt < 20) { if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
+        await refresh(); throw new Error(fmt(M.stepFailed, { title: step.title, detail: r.detail }));
       }
       // The new installer takes over from the next request: give Cloudflare a moment.
       if (step.id === 'installer:self') await new Promise(res => setTimeout(res, 3000));
@@ -651,18 +686,19 @@ $('[data-run]').addEventListener('click', runAll);
 $('[data-logout-button]').addEventListener('click', async () => { await api('api/logout', {}); show(false); });
 
 (async () => {
+  if (switching) return; // reloading in the picked language
   const params = new URLSearchParams(location.search);
   // The bootstrapper's link: hand the code over once, then show the recovery code.
   if (location.pathname.endsWith('/handoff')) {
     const code = params.get('code') || '';
-    history.replaceState(null, '', './');
+    history.replaceState(null, '', './' + keepLang);
     try { showRecovery(await api('api/handoff', { code })); } catch (e) { show(false); $('[data-login-error]').textContent = e.message; }
     return;
   }
   const failure = signInError(params);
   const tested = params.get('aanmeldtest');
-  if (tested) testOutcome = TEST_OUTCOMES[tested] || 'De test-aanmelding is mislukt.';
-  if (failure || tested) history.replaceState(null, '', location.pathname);
+  if (tested) testOutcome = TEST_OUTCOMES[tested] || M.testFailed;
+  if (failure || tested) history.replaceState(null, '', location.pathname + keepLang);
   try { await refresh(); show(true); await loadReleases(); } catch { show(false); $('[data-login-error]').textContent = failure; }
 })();
 </script>

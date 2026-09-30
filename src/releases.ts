@@ -2,6 +2,7 @@
 // releases.json index, a release's manifest, and its files — every file
 // checked against the size and sha256 in the manifest before use.
 import { sha256Hex } from './crypto';
+import { TextError } from './i18n';
 
 export const SUPPORTED_FORMAT_VERSION = 1;
 
@@ -33,18 +34,18 @@ export interface Manifest {
   files: Record<string, { size: number; sha256: string }>;
 }
 
-export class ReleaseError extends Error {}
+export class ReleaseError extends TextError {}
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
-  if (!res.ok) throw new ReleaseError(`Kon ${url} niet ophalen (HTTP ${res.status})`);
+  if (!res.ok) throw new ReleaseError((t) => t.release.fetchFailed(url, res.status));
   return (await res.json()) as T;
 }
 
 export async function fetchIndex(indexUrl: string): Promise<ReleaseIndex> {
   // Not from Cloudflare's cache: a release published minutes ago must show.
   const index = await getJson<ReleaseIndex>(indexUrl, { cache: 'no-store' });
-  if (index?.format !== 'arcanum-releases-index' || !Array.isArray(index.releases)) throw new ReleaseError('releases.json heeft een onbekend formaat');
+  if (index?.format !== 'arcanum-releases-index' || !Array.isArray(index.releases)) throw new ReleaseError((t) => t.release.indexFormat);
   return index;
 }
 
@@ -63,9 +64,9 @@ export function installable(index: ReleaseIndex): ReleaseIndexEntry[] {
 
 export async function fetchManifest(manifestUrl: string): Promise<Manifest> {
   const manifest = await getJson<Manifest>(manifestUrl);
-  if (manifest?.format !== 'arcanum-release') throw new ReleaseError('Dit is geen Arcanum-release');
+  if (manifest?.format !== 'arcanum-release') throw new ReleaseError((t) => t.release.notARelease);
   if (manifest.format_version !== SUPPORTED_FORMAT_VERSION) {
-    throw new ReleaseError(`Release ${manifest.version} gebruikt formaat ${manifest.format_version}; deze installer kent formaat ${SUPPORTED_FORMAT_VERSION} — werk de installer bij`);
+    throw new ReleaseError((t) => t.release.format(manifest.version, manifest.format_version, SUPPORTED_FORMAT_VERSION));
   }
   return manifest;
 }
@@ -73,13 +74,13 @@ export async function fetchManifest(manifestUrl: string): Promise<Manifest> {
 // A release file, verified against the manifest — never used unverified.
 export async function fetchReleaseFile(manifestUrl: string, manifest: Manifest, name: string): Promise<ArrayBuffer> {
   const expected = manifest.files[name];
-  if (!expected) throw new ReleaseError(`${name} hoort niet bij release ${manifest.version}`);
+  if (!expected) throw new ReleaseError((t) => t.release.notInRelease(name, manifest.version));
   const url = manifestUrl.replace(/manifest\.json$/, encodeURIComponent(name));
   const res = await fetch(url);
-  if (!res.ok) throw new ReleaseError(`Kon ${name} niet ophalen (HTTP ${res.status})`);
+  if (!res.ok) throw new ReleaseError((t) => t.release.fetchFailed(name, res.status));
   const data = await res.arrayBuffer();
   if (data.byteLength !== expected.size || (await sha256Hex(data)) !== expected.sha256) {
-    throw new ReleaseError(`${name} komt niet overeen met de controlesom in het manifest — download afgebroken`);
+    throw new ReleaseError((t) => t.release.checksum(name));
   }
   return data;
 }

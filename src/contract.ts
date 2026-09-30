@@ -1,6 +1,7 @@
 // From a release's Worker descriptor (arcanum-releases scripts/lib.mjs
 // describeWorker) + this installation's answers and resources to the
 // metadata of a Cloudflare script upload. Pure — tested in test/contract.test.ts.
+import { TextError } from './i18n';
 
 export interface EnvSpec {
   kind: 'secret' | 'var';
@@ -49,7 +50,7 @@ export interface InstallContext {
   assetsJwt?: string;
 }
 
-export class ContractError extends Error {}
+export class ContractError extends TextError {}
 
 type ApiBinding = Record<string, unknown> & { type: string; name: string };
 
@@ -67,24 +68,24 @@ function envBinding(name: string, spec: EnvSpec, ctx: InstallContext): ApiBindin
       return text(new URL(ctx.issuerUrl).host);
     case 'generate': {
       const value = ctx.secrets[name];
-      if (!value) throw new ContractError(`Geen gegenereerde waarde voor ${name}`);
+      if (!value) throw new ContractError((t) => t.contract.noGenerated(name));
       return text(value);
     }
     case 'shared': {
       const value = ctx.secrets[spec.key ?? name];
-      if (!value) throw new ContractError(`Geen gedeelde waarde ${spec.key} voor ${name}`);
+      if (!value) throw new ContractError((t) => t.contract.noShared(String(spec.key), name));
       return text(value);
     }
     case 'install': {
       const value = ctx.answers[spec.question ?? name];
-      if (value === undefined || value === '') throw new ContractError(`Nog geen antwoord op ${spec.question} (${name})`);
+      if (value === undefined || value === '') throw new ContractError((t) => t.contract.noAnswer(String(spec.question), name));
       return text(value);
     }
     case 'optional':
     case 'zone_id':
       return ctx.optional[name] ? text(ctx.optional[name]) : null;
     default:
-      throw new ContractError(`${name}: onbekende bron "${(spec as EnvSpec).source}" — werk de installer bij`);
+      throw new ContractError((t) => t.contract.unknownSource(name, String((spec as EnvSpec).source)));
   }
 }
 
@@ -92,12 +93,12 @@ function resourceBinding(b: DescriptorBinding, ctx: InstallContext): ApiBinding 
   switch (b.type) {
     case 'd1': {
       const id = ctx.resources.d1[b.database];
-      if (!id) throw new ContractError(`Database ${b.database} bestaat nog niet`);
+      if (!id) throw new ContractError((t) => t.contract.noDatabase(b.database));
       return { type: 'd1', name: b.name, id };
     }
     case 'kv_namespace': {
       const id = ctx.resources.kv[b.namespace];
-      if (!id) throw new ContractError(`KV-namespace ${b.namespace} bestaat nog niet`);
+      if (!id) throw new ContractError((t) => t.contract.noKv(b.namespace));
       return { type: 'kv_namespace', name: b.name, namespace_id: id };
     }
     case 'durable_object_namespace':
@@ -111,7 +112,7 @@ function resourceBinding(b: DescriptorBinding, ctx: InstallContext): ApiBinding 
     case 'version_metadata':
       return { type: 'version_metadata', name: b.name };
     default:
-      throw new ContractError(`Onbekend bindingtype ${(b as { type: string }).type} — werk de installer bij`);
+      throw new ContractError((t) => t.contract.unknownBinding((b as { type: string }).type));
   }
 }
 
@@ -123,14 +124,14 @@ export function netClasses(migrations: WorkerDescriptor['durable_object_migratio
   for (const step of migrations) {
     for (const key of Object.keys(step)) {
       if (!['tag', 'new_classes', 'new_sqlite_classes', 'renamed_classes', 'deleted_classes'].includes(key)) {
-        throw new ContractError(`Durable Object-migratie "${key}" (tag ${step.tag}) wordt door de installer nog niet ondersteund`);
+        throw new ContractError((t) => t.contract.migrationUnsupported(key, step.tag));
       }
     }
     for (const c of list(step.new_classes)) classes.set(String(c), 'kv');
     for (const c of list(step.new_sqlite_classes)) classes.set(String(c), 'sqlite');
     for (const r of list(step.renamed_classes) as { from: string; to: string }[]) {
       const storage = classes.get(r.from);
-      if (!storage) throw new ContractError(`Migratie ${step.tag} hernoemt ${r.from}, dat niet bestaat`);
+      if (!storage) throw new ContractError((t) => t.contract.renamesMissing(step.tag, r.from));
       classes.delete(r.from);
       classes.set(r.to, storage);
     }
@@ -193,7 +194,7 @@ export function uploadMetadata(descriptor: WorkerDescriptor, ctx: InstallContext
   const migrations = migrationsPayload(descriptor.durable_object_migrations, ctx.currentMigrationTag);
   if (migrations) metadata.migrations = migrations;
   if (descriptor.assets) {
-    if (!ctx.assetsJwt) throw new ContractError(`${descriptor.name}: de bestanden zijn nog niet geüpload`);
+    if (!ctx.assetsJwt) throw new ContractError((t) => t.contract.assetsNotUploaded(descriptor.name));
     metadata.assets = { jwt: ctx.assetsJwt, config: descriptor.assets.config };
   }
   return metadata;
@@ -226,7 +227,7 @@ export interface InstallerUploadContext {
 
 export function installerUploadMetadata(descriptor: WorkerDescriptor, ctx: InstallerUploadContext): Record<string, unknown> {
   const bindings: ApiBinding[] = descriptor.bindings.map((b) => {
-    if (b.type !== 'kv_namespace') throw new ContractError(`De installer van deze release heeft een ${b.type}-binding — werk de installer met de hand bij`);
+    if (b.type !== 'kv_namespace') throw new ContractError((t) => t.contract.installerBinding(b.type));
     return { type: 'kv_namespace', name: b.name, namespace_id: ctx.kvNamespaceId };
   });
   for (const [name, spec] of Object.entries(descriptor.env)) {
@@ -235,7 +236,7 @@ export function installerUploadMetadata(descriptor: WorkerDescriptor, ctx: Insta
     else if (spec.source === 'keep' || spec.source === 'bootstrap') {
       const value = ctx.secrets[name];
       if (value) bindings.push({ type: 'secret_text', name, text: value });
-    } else if (spec.source !== 'optional') throw new ContractError(`${name}: onbekende bron "${spec.source}" voor de installer`);
+    } else if (spec.source !== 'optional') throw new ContractError((t) => t.contract.installerSource(name, String(spec.source)));
   }
   const metadata: Record<string, unknown> = {
     main_module: descriptor.main_module,

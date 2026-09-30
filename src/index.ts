@@ -5,7 +5,8 @@
 // and updates them — itself first. See README.md and HOSTING_PLAN.md.
 import type { Env } from './env';
 import { handleApi } from './api';
-import { PAGE } from './ui';
+import { page } from './ui';
+import { localeOf, MESSAGES } from './i18n';
 import { loadState, publicUrl, rootSecret } from './state';
 import { CALLBACK_PATH, finishSignIn, startSignIn } from './oidc';
 import { finishTest, startTest, TEST_CALLBACK_PATH } from './login-change';
@@ -32,6 +33,7 @@ const SECURITY_HEADERS = {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const locale = localeOf(request);
     if (url.pathname.startsWith('/api/')) {
       const res = await handleApi(request, env, url.pathname);
       for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
@@ -42,18 +44,19 @@ export default {
       return new Response(asset.body, { headers: { 'Content-Type': asset.type, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' } });
     }
     // Signing in with an admin's account (bootstrapped installers).
-    if (url.pathname.startsWith('/auth/') && !rootSecret(env)) return new Response('INSTALLER_STATE_KEY ontbreekt', { status: 500 });
+    if (url.pathname.startsWith('/auth/') && !rootSecret(env)) return new Response(MESSAGES[locale].api.noStateKey, { status: 500 });
     if (url.pathname === '/auth/login' && request.method === 'GET') return startSignIn(request, env);
     if (url.pathname === CALLBACK_PATH && request.method === 'GET') return finishSignIn(request, env);
     // "Aanmelding wijzigen": the test sign-in at a staged provider.
     if (url.pathname === '/auth/test-login' && request.method === 'GET') return startTest(request, env);
     if (url.pathname === TEST_CALLBACK_PATH && request.method === 'GET') return finishTest(request, env);
     // The page itself — also at /handoff, the bootstrapper's link (its script posts the code).
+    // In the language of ?lang= (the page's picker) or the browser (i18n.ts).
     if ((url.pathname === '/' || url.pathname === '/handoff') && request.method === 'GET') {
       // The page may load one image from the installation itself (the live check).
       const installation = publicUrl(await loadState(env));
       const csp = installation ? SECURITY_HEADERS['Content-Security-Policy'].replace("img-src 'self'", `img-src 'self' ${installation}`) : SECURITY_HEADERS['Content-Security-Policy'];
-      return new Response(PAGE, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY_HEADERS, 'Content-Security-Policy': csp } });
+      return new Response(page(locale), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Content-Language': locale, 'Cache-Control': 'no-store', ...SECURITY_HEADERS, 'Content-Security-Policy': csp } });
     }
     return new Response('Not found', { status: 404 });
   },

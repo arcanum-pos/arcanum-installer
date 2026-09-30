@@ -132,6 +132,18 @@ The recovery code works whatever the provider: sign in with it on the
 installer's own address to undo when neither provider works. That's why
 applying needs the installer's own address switched on.
 
+## Languages
+
+Dutch, French and English: the page follows the browser's language, or the
+NL · FR · EN picker in its header (remembered in the browser as
+`arcanum-installer-locale`, and carried as `?lang=`). The page holds only
+its own language's texts and sends that language as `Accept-Language` on
+every API call, so errors, step titles and step details come back in it
+(the bff forwards the header at `/installer/*`). The texts are in
+`src/messages/{nl,fr,en}.ts` — nl is the source; `test/messages.test.ts`
+keeps the other two in step. Messages from Cloudflare or a login provider
+are passed through untranslated, inside a translated sentence.
+
 ## With the Deploy button
 
 ## Development

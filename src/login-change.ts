@@ -46,6 +46,7 @@ import { checkClients, type ClientCheck } from './idp-check';
 import { claimsOf, discovery, pkceChallenge, random, sameIssuer } from './oidc';
 import { isAdmin, loadState, publicUrl, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState, type LoginSettings } from './state';
 import { runStep } from './steps';
+import { messageOf, type Messages } from './i18n';
 
 export const TEST_CALLBACK_PATH = '/auth/test-callback';
 const TEST_PENDING_COOKIE = 'arcanum_installer_test';
@@ -75,7 +76,8 @@ export async function readLoginProvider(
   env: Env,
   state: InstallerState,
   b: Fields,
-  current: LoginSettings | undefined
+  current: LoginSettings | undefined,
+  t: Messages
 ): Promise<{ ok: true; login: LoginSettings; checks: ClientCheck[] } | { ok: false; status: number; error: string; checks?: ClientCheck[] }> {
   const refuse = (error: string, checks?: ClientCheck[]) => ({ ok: false as const, status: 400, error, checks });
   const { issuer, clientId, authCodeClientId } = providerIdentity(b);
@@ -84,21 +86,21 @@ export async function readLoginProvider(
   const isGoogle = /^https:\/\/accounts\.google\.com$/.test(issuer);
   // Google rejects the platform's default `offline_access` scope.
   const scopes = (typeof b.scopes === 'string' && b.scopes.trim().replace(/\s+/g, ' ')) || (isGoogle ? 'openid profile email' : undefined);
-  if (scopes && !scopes.split(' ').includes('openid')) return refuse('De scopes moeten minstens "openid" bevatten');
+  if (scopes && !scopes.split(' ').includes('openid')) return refuse(t.change.scopesOpenid);
   const authCodeClientSecret = typeof b.authCodeClientSecret === 'string' ? b.authCodeClientSecret.trim() : '';
   const same = current && current.issuer === issuer ? current : undefined;
   const keepSecret = !clientSecret && same?.clientId === clientId ? same.clientSecret : undefined;
   const keepAuthCodeSecret = authCodeClientId && !authCodeClientSecret && same?.authCodeClientId === authCodeClientId ? same.authCodeClientSecret : undefined;
-  if (authCodeClientId && !authCodeClientSecret && !keepAuthCodeSecret) return refuse('Geef ook het secret van de aparte browser-client');
-  if (!/^https:\/\/[^/]+/.test(issuer)) return refuse('De issuer-URL moet met https:// beginnen');
-  if (!clientId) return refuse('Client ID ontbreekt');
-  if (!clientSecret && !keepSecret) return refuse('Client secret ontbreekt');
+  if (authCodeClientId && !authCodeClientSecret && !keepAuthCodeSecret) return refuse(t.change.browserSecret);
+  if (!/^https:\/\/[^/]+/.test(issuer)) return refuse(t.change.issuerHttps);
+  if (!clientId) return refuse(t.change.noClientId);
+  if (!clientSecret && !keepSecret) return refuse(t.change.noClientSecret);
   // The same check the platform does at login: discovery must work and
   // offer the device login the kassa uses.
   const res = await fetch(`${issuer}/.well-known/openid-configuration`).catch(() => null);
   const doc = res?.ok ? ((await res.json().catch(() => null)) as Record<string, unknown> | null) : null;
-  if (!doc || typeof doc.authorization_endpoint !== 'string') return refuse(`Geen geldige OpenID-configuratie op ${issuer}/.well-known/openid-configuration`);
-  if (typeof doc.device_authorization_endpoint !== 'string') return refuse('Deze login-provider ondersteunt geen apparaat-aanmelding (device authorization) — die is nodig voor de kassa');
+  if (!doc || typeof doc.authorization_endpoint !== 'string') return refuse(t.change.noDiscovery(`${issuer}/.well-known/openid-configuration`));
+  if (typeof doc.device_authorization_endpoint !== 'string') return refuse(t.change.noDeviceFlow);
   // Test the clients with the provider before keeping anything.
   const kassaSecret = clientSecret || (await unsealValue(env, state, keepSecret!));
   const browserSecret = authCodeClientSecret || (keepAuthCodeSecret ? await unsealValue(env, state, keepAuthCodeSecret) : '');
@@ -112,7 +114,7 @@ export async function readLoginProvider(
           clientSecret: kassaSecret,
           scopes: scopes ?? 'openid profile email offline_access',
           authCode: authCodeClientId ? { clientId: authCodeClientId, clientSecret: browserSecret, redirectUri: `${publicUrl(state) ?? issuer}/callback` } : undefined,
-        })
+        }, t)
       : [];
   const refused = checks.filter((c) => c.blocking);
   if (refused.length) return refuse(refused.map((c) => c.message).join(' '), checks);
@@ -203,19 +205,19 @@ interface Plan {
 
 // Who is who, for a tester known by these e-mail addresses (the installer
 // session's and the one the new provider gave).
-function planFor(rows: MembershipRow[], testerEmails: string[]): Plan {
+function planFor(rows: MembershipRow[], testerEmails: string[], t: Messages): Plan {
   const emails = new Set(testerEmails.map((e) => e.trim().toLowerCase()).filter(Boolean));
   const tester = rows.filter((r) => emails.has(r.invited_email.trim().toLowerCase()));
   const resign = rows.filter((r) => r.status === 'active' && !tester.includes(r));
-  const shown = [...emails].join(' of ');
+  const shown = [...emails].join(t.change.or);
   let problem: string | null = null;
   const perOrg = new Map<string, number>();
   for (const r of tester) perOrg.set(r.org_id, (perOrg.get(r.org_id) ?? 0) + 1);
   const doubled = tester.find((r) => (perOrg.get(r.org_id) ?? 0) > 1);
   if (tester.length === 0) {
-    problem = `Er is in Arcanum geen lidmaatschap voor ${shown}. Wie de wijziging doet, moet lid zijn van een organisatie (anders kan niemand er na de wijziging meteen in) — nodig jezelf eerst uit in de console, of test met het adres waarmee je lid bent.`;
+    problem = t.change.noMembership(shown);
   } else if (doubled) {
-    problem = `${doubled.org_name ?? doubled.org_id} heeft twee lidmaatschappen voor ${shown} — verwijder er eerst één in de console.`;
+    problem = t.change.twoMemberships(doubled.org_name ?? doubled.org_id, shown);
   }
   return { tester, resign, problem };
 }
@@ -334,6 +336,7 @@ export interface ChangeContext {
   state: InstallerState;
   cf: Cloudflare;
   sessionId: string;
+  t: Messages;
 }
 
 type Outcome = { ok: true } | { ok: false; status: number; error: string };
@@ -344,22 +347,22 @@ const refuse = (error: string, status = 409): Outcome => ({ ok: false, status, e
 // (and admin list), then its seeded 'default' provider row cleared.
 async function redeployLogin(ctx: ChangeContext) {
   for (const id of ['worker:arcanum-backend', 'login:reset']) {
-    const outcome = await runStep(id, { env: ctx.env, state: ctx.state, cf: ctx.cf });
+    const outcome = await runStep(id, { env: ctx.env, state: ctx.state, cf: ctx.cf, t: ctx.t });
     ctx.state.steps[id] = { status: 'done', at: new Date().toISOString(), detail: outcome.detail };
   }
 }
 
-function preconditions(state: InstallerState): string | null {
-  if (!state.installed || !state.release || !state.cloudflare || !backendDb(state)) return 'Installeer Arcanum eerst volledig';
+function preconditions(state: InstallerState, t: Messages): string | null {
+  if (!state.installed || !state.release || !state.cloudflare || !backendDb(state)) return t.change.installFirst;
   // The recovery code only works on the installer's own address — it must be
   // reachable when the old provider isn't (or the new one doesn't work).
-  if (state.behindArcanum?.publicAccessRemoved) return 'Zet eerst het eigen openbare adres van de installer weer aan (Openbare toegang) — daar werkt de herstelcode als noodtoegang als aanmelden na de wijziging niet lukt.';
+  if (state.behindArcanum?.publicAccessRemoved) return t.change.publicAccessOff;
   return null;
 }
 
 export async function applyChange(ctx: ChangeContext): Promise<Outcome & { resign?: Person[] }> {
-  const { env, state } = ctx;
-  const blocked = preconditions(state);
+  const { env, state, t } = ctx;
+  const blocked = preconditions(state, t);
   if (blocked) return refuse(blocked);
   const change = (state.loginChange ??= {});
   const staged = change.staged;
@@ -369,15 +372,15 @@ export async function applyChange(ctx: ChangeContext): Promise<Outcome & { resig
     // A switch that stopped half way: finish it with the snapshot already
     // taken — never a new one, which could capture half-changed data.
     snapshot = JSON.parse(await unsealValue(env, state, change.applied.snapshot));
-    if (!staged) return refuse('De klaargezette provider ontbreekt — gebruik Terugzetten');
+    if (!staged) return refuse(t.change.stagedGone);
   } else {
-    if (!staged) return refuse('Zet eerst een nieuwe login-provider klaar');
+    if (!staged) return refuse(t.change.stageFirst);
     const test = change.test;
-    if (!test || test.stagedAt !== staged.at) return refuse('Doe eerst de test-aanmelding bij de nieuwe provider');
-    if (test.sessionId !== ctx.sessionId) return refuse('Pas de wijziging toe vanuit dezelfde sessie waarin je de test-aanmelding deed');
-    if (!test.emailVerified) return refuse(`Het e-mailadres ${test.email} is niet bevestigd bij de nieuwe provider — bevestig het daar en test opnieuw`);
+    if (!test || test.stagedAt !== staged.at) return refuse(t.change.testFirst);
+    if (test.sessionId !== ctx.sessionId) return refuse(t.change.sameSession);
+    if (!test.emailVerified) return refuse(t.change.notVerified(test.email));
     const rows = await readMemberships(ctx.cf, state);
-    const plan = planFor(rows, [test.sessionEmail ?? test.email, test.email]);
+    const plan = planFor(rows, [test.sessionEmail ?? test.email, test.email], t);
     if (plan.problem) return refuse(plan.problem);
     snapshot = { rows, testerIds: plan.tester.map((r) => r.id), resignIds: plan.resign.map((r) => r.id), tester: { email: test.email, sub: test.sub, issuer: staged.login.issuer } };
     const at = new Date();
@@ -410,7 +413,7 @@ export async function applyChange(ctx: ChangeContext): Promise<Outcome & { resig
     ]);
   } catch (err) {
     await saveState(env, state);
-    return refuse(`Toepassen is halverwege gestopt: ${(err as Error).message}. Klik opnieuw op Toepassen om af te maken, of op Terugzetten.`, 502);
+    return refuse(t.change.applyHalfway(messageOf(err, t)), 502);
   }
   // This page's own sign-in follows (bootstrapped installers).
   if (state.bootstrap) {
@@ -425,10 +428,10 @@ export async function applyChange(ctx: ChangeContext): Promise<Outcome & { resig
 }
 
 export async function undoChange(ctx: ChangeContext): Promise<Outcome> {
-  const { env, state } = ctx;
+  const { env, state, t } = ctx;
   const applied = state.loginChange?.applied;
-  if (!applied) return refuse('Er is geen wijziging om terug te zetten');
-  if (!state.installed || !state.cloudflare || !backendDb(state)) return refuse('Installeer Arcanum eerst volledig');
+  if (!applied) return refuse(t.change.nothingToUndo);
+  if (!state.installed || !state.cloudflare || !backendDb(state)) return refuse(t.change.installFirst);
   const snapshot: Snapshot = JSON.parse(await unsealValue(env, state, applied.snapshot));
   try {
     state.login = applied.previous.login;
@@ -438,7 +441,7 @@ export async function undoChange(ctx: ChangeContext): Promise<Outcome> {
     await ctx.cf.queryD1(accountId, backendDb(state), UNDO_RESTORE_SQL, [JSON.stringify(snapshot.rows.map(({ id, user_sub, issuer, status, invited_email, accepted_at }) => ({ id, user_sub, issuer, status, invited_email, accepted_at })))]);
   } catch (err) {
     await saveState(env, state);
-    return refuse(`Terugzetten is halverwege gestopt: ${(err as Error).message}. Klik opnieuw op Terugzetten om af te maken.`, 502);
+    return refuse(t.change.undoHalfway(messageOf(err, t)), 502);
   }
   if (state.bootstrap && applied.previous.signIn) state.bootstrap.login = applied.previous.signIn;
   delete state.loginChange;
@@ -458,7 +461,7 @@ export function dropExpiredSnapshot(state: InstallerState, now = Date.now()): bo
 // ---------------------------------------------------------------------------
 // What the page shows (GET /api/login-change).
 
-export async function changeInfo(env: Env, state: InstallerState, sessionId: string, installerOrigin: string, cf: Cloudflare | null) {
+export async function changeInfo(env: Env, state: InstallerState, sessionId: string, installerOrigin: string, cf: Cloudflare | null, t: Messages) {
   const change = state.loginChange ?? {};
   const staged = change.staged;
   const url = publicUrl(state);
@@ -472,14 +475,14 @@ export async function changeInfo(env: Env, state: InstallerState, sessionId: str
   let preview: { tester: Person[]; resign: Person[]; problem: string | null } | null = null;
   let previewError: string | null = null;
   if (staged && state.installed && backendDb(state)) {
-    if (!cf) previewError = 'Plak het Cloudflare-token opnieuw om te zien wie zich opnieuw moet aanmelden';
+    if (!cf) previewError = t.change.previewToken;
     else {
       try {
         const rows = await readMemberships(cf, state);
-        const plan = planFor(rows, test ? [test.sessionEmail ?? test.email, test.email] : [(await sessionEmail(env, sessionId)) ?? '']);
+        const plan = planFor(rows, test ? [test.sessionEmail ?? test.email, test.email] : [(await sessionEmail(env, sessionId)) ?? ''], t);
         preview = { tester: plan.tester.map(person), resign: plan.resign.map(person), problem: test ? plan.problem : null };
       } catch (err) {
-        previewError = `De leden konden niet gelezen worden: ${(err as Error).message}`;
+        previewError = t.change.membersUnreadable(messageOf(err, t));
       }
     }
   }
