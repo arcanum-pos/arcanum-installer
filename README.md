@@ -6,12 +6,10 @@ lives there and nowhere else. It deploys the five Arcanum Workers from a
 published release ([arcanum-releases](https://github.com/arcanum-pos/arcanum-releases)),
 creates their databases and storage, and generates every secret.
 
-The easy way: sign in at **https://start.kaboutersoft.be**, choose
+To install: sign in at **https://start.kaboutersoft.be**, choose
 **Eigen installatie** and paste a Cloudflare API token — the bootstrapper
-puts this installer on your account and hands it over (below). The Deploy
-button is still there for doing it by hand.
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/arcanum-pos/arcanum-installer)
+puts this installer on your account and hands it over (below). That's the
+only supported way to install it.
 
 ## From start.kaboutersoft.be (bootstrapped)
 
@@ -40,8 +38,8 @@ Two secrets on the Worker (plus its KV `INSTALLER_STATE`, title
 
 - `INSTALLER_STATE_KEY` — random, set on the first upload and **never
   changed** (a re-run of the bootstrapper keeps it with `keep_bindings`):
-  the root of the key that seals the state, like `INSTALLER_PASSWORD` for a
-  Deploy-button installer (the password wins when both are set).
+  the root of the key that seals the state (`INSTALLER_PASSWORD`, used in
+  local development, wins when both are set).
 - `BOOTSTRAP_CONFIG` — JSON:
 
   ```json
@@ -143,8 +141,6 @@ every API call, so errors, step titles and step details come back in it
 `src/messages/{nl,fr,en}.ts` — nl is the source; `test/messages.test.ts`
 keeps the other two in step. Messages from Cloudflare or a login provider
 are passed through untranslated, inside a translated sentence.
-
-## With the Deploy button
 
 ## Development
 
