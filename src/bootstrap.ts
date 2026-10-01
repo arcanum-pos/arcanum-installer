@@ -109,7 +109,7 @@ export async function handoff(env: Env, state: InstallerState, code: string, ins
     ? { issuer: config.login.issuer.replace(/\/+$/, ''), clientId: config.login.clientId, clientSecret: await sealValue(env, state, config.login.clientSecret) }
     : state.bootstrap?.login;
   // Arcanum's own login provider starts as the same client — unless this
-  // installer already has one (a Deploy-button installer, or "Geavanceerd").
+  // installer already has one (set under "Geavanceerd").
   if (login && !state.login) {
     state.login = { issuer: login.issuer, clientId: login.clientId, clientSecret: login.clientSecret, authorizationEndpoint: `${login.issuer}/authorize` };
   }

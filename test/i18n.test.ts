@@ -3,9 +3,9 @@
 // in the language the page asks for (Accept-Language). Machine fields stay.
 import { env, SELF } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { newSessionCookie } from '../src/auth';
 import { installFakes, TOKEN, type Fakes } from './fakes';
 
-const PASSWORD = 'test-installer-password';
 let fakes: Fakes;
 let cookie = '';
 
@@ -33,8 +33,12 @@ async function call(lang: string | null, method: string, path: string, body?: un
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
+async function signIn() {
+  cookie = (await newSessionCookie(env as never)).cookie.split(';')[0];
+}
+
 async function configure() {
-  expect((await call(null, 'POST', '/api/login', { password: PASSWORD })).status).toBe(200);
+  await signIn();
   expect((await call(null, 'POST', '/api/cloudflare', { token: TOKEN })).status).toBe(200);
   expect((await call(null, 'POST', '/api/login-provider', { issuer: 'https://login.test/', clientId: 'arcanum-client', clientSecret: 'idp-client-secret-value-xyz' })).status).toBe(200);
   expect((await call(null, 'POST', '/api/admins', { emails: 'bert@scouts.test' })).status).toBe(200);
@@ -86,12 +90,12 @@ describe('the setup page', () => {
 
 describe('the API', () => {
   it('words its errors in the language asked for', async () => {
-    expect((await call(null, 'POST', '/api/login', { password: 'fout' })).body.error).toBe('Onjuist wachtwoord');
-    expect((await call('fr-BE', 'POST', '/api/login', { password: 'fout' })).body.error).toBe('Mot de passe incorrect');
-    expect((await call('en-GB', 'POST', '/api/login', { password: 'fout' })).body.error).toBe('Wrong password');
+    expect((await call(null, 'POST', '/api/login', { recoveryCode: 'fout' })).body.error).toBe('Onjuiste herstelcode');
+    expect((await call('fr-BE', 'POST', '/api/login', { recoveryCode: 'fout' })).body.error).toBe('Code de récupération incorrect');
+    expect((await call('en-GB', 'POST', '/api/login', { recoveryCode: 'fout' })).body.error).toBe('Wrong recovery code');
     expect((await call('fr', 'GET', '/api/status')).body.error).toBe('Non connecté');
 
-    await call(null, 'POST', '/api/login', { password: PASSWORD });
+    await signIn();
     expect((await call('fr', 'POST', '/api/admins', { emails: '' })).body.error).toBe('Indiquez au moins une adresse e-mail (ou *@votredomaine.be)');
     expect((await call('en', 'POST', '/api/admins', { emails: 'geen-adres' })).body.error).toBe('Not a valid address: geen-adres');
     // A login provider's refusal: the provider's own words, inside a translated sentence.

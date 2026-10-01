@@ -29,7 +29,9 @@ only supported way to install it.
    with the recovery code if that ever can't be reached.
 4. One screen: **Installeren** (the latest release, everything else filled
    in). **Geavanceerd** has your own domain, your own login provider, the
-   token and the admins. When it's done: **Open je Arcanum**.
+   token, the admins and the installer's own address. When it's done:
+   **Open je Arcanum** — which also moves the installer behind Arcanum
+   (below).
 
 ### The contract with the bootstrapper
 
@@ -38,8 +40,7 @@ Two secrets on the Worker (plus its KV `INSTALLER_STATE`, title
 
 - `INSTALLER_STATE_KEY` — random, set on the first upload and **never
   changed** (a re-run of the bootstrapper keeps it with `keep_bindings`):
-  the root of the key that seals the state (`INSTALLER_PASSWORD`, used in
-  local development, wins when both are set).
+  the root of the key that seals the state.
 - `BOOTSTRAP_CONFIG` — JSON:
 
   ```json
@@ -74,6 +75,37 @@ provider the installer already has, nor anything installed.
 
 Signing in with an account: authorization code + PKCE with the client
 above; only addresses on the admin list, with `email_verified: true`.
+
+## Behind Arcanum — by itself
+
+Once Arcanum is installed, the installer lives at
+`https://<arcanum>/installer/`: the bff forwards it for anyone signed in to
+Arcanum whose address is on the admin list (with a shared key,
+`INSTALLER_INTERNAL_KEY`). Nobody has to do anything for that:
+
+1. **Linked when the bff is deployed.** The first bff of a release that can
+   forward `/installer/*` gets a service binding to this installer and the
+   key — on a fresh install, or with the next update of an older one.
+2. **Its own address goes off on the first visit through Arcanum.**
+   *Open je Arcanum* on the installer's own address goes to
+   `/login?returnTo=/installer/?naar=console`: sign in, the installer (now
+   through Arcanum) switches its own workers.dev address off
+   (`POST /api/public-access/close`, refused unless the request came
+   through Arcanum — that request is the proof it stays reachable), then
+   on to the console. Afterwards *Open je Arcanum* simply opens the console,
+   and any later visit through Arcanum closes the address again if
+   something switched it back on (the bootstrapper run again). A
+   self-update through Arcanum leaves it off.
+3. **Geavanceerd → Toegang tot de installer** switches it back on
+   (`POST /api/public-access/open`) — then it stays on until it's switched
+   off there again (through Arcanum).
+4. **Aanmelding wijzigen** needs it (the test sign-in and the recovery code
+   only work there): staging a change switches it on, and it stays on until
+   the change can no longer be undone or is cancelled.
+
+With the own address off and Arcanum's sign-in broken, the way back in is
+the bootstrapper: *Eigen installatie* again re-uploads this installer onto
+its own address with a new handoff link (and recovery code).
 
 ## Updates — the installer first
 
@@ -147,7 +179,7 @@ are passed through untranslated, inside a translated sentence.
 ```sh
 npm ci
 npm test          # end-to-end against a fake Cloudflare API, a fake release and a fake login provider
-npx wrangler dev  # needs a .dev.vars with INSTALLER_PASSWORD
+npx wrangler dev  # needs a .dev.vars with INSTALLER_STATE_KEY and BOOTSTRAP_CONFIG (.dev.vars.example)
 ```
 
 ## License

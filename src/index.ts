@@ -1,6 +1,5 @@
 // arcanum-installer — on the account that will host Arcanum, uploaded there
-// by the bootstrapper (start.kaboutersoft.be, handed over via /handoff) or
-// with the "Deploy to Cloudflare" button. Its setup page installs the five
+// by the bootstrapper (start.kaboutersoft.be, handed over via /handoff). Its setup page installs the five
 // Arcanum Workers from a published release (arcanum-pos/arcanum-releases),
 // and updates them — itself first. See README.md and HOSTING_PLAN.md.
 import type { Env } from './env';
@@ -43,7 +42,7 @@ export default {
     if (asset && request.method === 'GET') {
       return new Response(asset.body, { headers: { 'Content-Type': asset.type, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' } });
     }
-    // Signing in with an admin's account (bootstrapped installers).
+    // Signing in with an admin's account.
     if (url.pathname.startsWith('/auth/') && !rootSecret(env)) return new Response(MESSAGES[locale].api.noStateKey, { status: 500 });
     if (url.pathname === '/auth/login' && request.method === 'GET') return startSignIn(request, env);
     if (url.pathname === CALLBACK_PATH && request.method === 'GET') return finishSignIn(request, env);

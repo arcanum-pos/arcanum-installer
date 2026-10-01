@@ -3,15 +3,15 @@
 // Nothing here ever returns the Cloudflare token, the client secret or a
 // generated secret — only whether they're set.
 import type { Env } from './env';
-import { checkLoginAllowed, clearedCookie, newSessionCookie, passwordMatches, recordLoginFailure, recoveryCodeMatches, sessionEmail, sessionFrom } from './auth';
+import { checkLoginAllowed, clearedCookie, newSessionCookie, recordLoginFailure, recoveryCodeMatches, sessionEmail, sessionFrom } from './auth';
 import { handoff, isBootstrapped } from './bootstrap';
 import { canSignInWithAccount } from './oidc';
 import { Cloudflare, CloudflareError } from './cloudflare';
 import type { WorkerDescriptor } from './contract';
 import { compareVersions, fetchIndex, fetchManifest, fetchReleaseJson, installable, ReleaseError } from './releases';
-import { INSTALLER_KEY_SECRET, installationStarted, isAdmin, loadState, publicUrl, rootSecret, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
-import { bffSupportsInstaller, blueprintFrom, planSteps, runStep } from './steps';
-import { generateSecret, safeEqual } from './crypto';
+import { directShouldClose, INSTALLER_KEY_SECRET, installationStarted, isAdmin, loadState, loginChangeActive, publicUrl, rootSecret, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
+import { blueprintFrom, planSteps, runStep } from './steps';
+import { safeEqual } from './crypto';
 import { applyChange, changeInfo, changesIdentity, dropExpiredSnapshot, providerIdentity, readLoginProvider, undoChange } from './login-change';
 import { messageOf, textsFor, type Messages } from './i18n';
 
@@ -62,13 +62,13 @@ function cloudflareFor(env: Env, token: string) {
 }
 
 // How this request was let in: a session on the installer's own address
-// (password, recovery code, handoff or account sign-in — with who, when
+// (recovery code, handoff or account sign-in — with who, when
 // known), or forwarded by Arcanum's bff for a logged-in admin.
 export type Access = { via: 'session'; sessionId: string; email: string | null } | { via: 'arcanum'; sessionId: string; email: string };
 
 // Arcanum's bff forwards /installer/* with the shared key and the user's
 // identity (it strips both from what the browser sends). A wrong key is
-// refused outright; the password session isn't looked at then.
+// refused outright; the session cookie isn't looked at then.
 async function arcanumAccess(env: Env, state: InstallerState, request: Request, t: Messages): Promise<Access | Response | null> {
   const key = request.headers.get('X-Installer-Key');
   if (key === null) return null;
@@ -124,7 +124,7 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
     installed: state.installed ?? null,
     probeUrl: url && state.probePath ? `${url}${state.probePath}` : null,
     access: access ? { via: access.via, email: access.email } : null,
-    // Made by the bootstrapper: the page is one screen ("Installeren", the rest under "Geavanceerd").
+    // Who the bootstrapper set it up for, and the provider admins sign in to this page with.
     bootstrapped: state.bootstrap ? { owner: state.bootstrap.owner.email, issuer: state.bootstrap.login?.issuer ?? null } : null,
     installer: { release: env.INSTALLER_RELEASE ?? null, selfUpdate: state.selfUpdate ?? null },
     // "Aanmelding wijzigen": a staged provider, or a change that can still be undone.
@@ -132,17 +132,19 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
       staged: state.loginChange?.staged ? { issuer: state.loginChange.staged.login.issuer } : null,
       applied: state.loginChange?.applied ? { at: state.loginChange.applied.at, undoUntil: state.loginChange.applied.undoUntil, phase: state.loginChange.applied.phase } : null,
     },
-    behindArcanum: state.behindArcanum ? { installerUrl: url ? `${url}/installer/` : null, publicAccessRemoved: !!state.behindArcanum.publicAccessRemoved } : null,
+    behindArcanum: state.behindArcanum
+      ? { installerUrl: url ? `${url}/installer/` : null, publicAccessRemoved: !!state.behindArcanum.publicAccessRemoved, keptOpen: !!state.behindArcanum.keptOpen }
+      : null,
   };
 }
 
 export async function handleApi(request: Request, env: Env, path: string): Promise<Response> {
   // The request's language (the page sends its own as Accept-Language, i18n.ts).
   const t = textsFor(request);
-  if (!rootSecret(env)) return json({ error: t.api.noRootSecret }, 500);
+  if (!rootSecret(env)) return json({ error: t.api.noStateKey }, 500);
 
   // No cross-site requests, and JSON bodies only: another site must never
-  // drive this API with the admin's cookie — the password session's, or
+  // drive this API with the admin's cookie — the installer session's, or
   // Arcanum's behind /installer (SameSite=Lax; this doesn't rely on that).
   if (request.method !== 'GET') {
     if (request.headers.get('Sec-Fetch-Site') === 'cross-site') return json({ error: t.api.crossSite }, 403);
@@ -155,7 +157,6 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
   if (path === '/api/login-options' && request.method === 'GET') {
     const state = await loadState(env);
     return json({
-      password: !!env.INSTALLER_PASSWORD,
       recoveryCode: !!state.bootstrap?.recoveryHash,
       account: canSignInWithAccount(state) ? { issuer: state.bootstrap!.login!.issuer } : null,
       // Uploaded by the bootstrapper, not handed over yet: only its link gets in.
@@ -163,16 +164,14 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
     });
   }
 
-  // The password (Deploy-button installers) or the recovery code (bootstrapped ones), one field.
+  // The recovery code: the way in when signing in with an account can't.
   if (path === '/api/login' && request.method === 'POST') {
     if (!(await checkLoginAllowed(env, ip))) return json({ error: t.api.tooManyAttempts }, 429);
-    const { password } = await body(request);
+    const { recoveryCode } = await body(request);
     const state = await loadState(env);
-    const byPassword = typeof password === 'string' && passwordMatches(env, password);
-    const byRecovery = !byPassword && typeof password === 'string' && (await recoveryCodeMatches(state, password));
-    if (!byPassword && !byRecovery) {
+    if (typeof recoveryCode !== 'string' || !(await recoveryCodeMatches(state, recoveryCode))) {
       await recordLoginFailure(env, ip);
-      return json({ error: env.INSTALLER_PASSWORD ? t.api.wrongPassword : t.api.wrongRecoveryCode }, 401);
+      return json({ error: t.api.wrongRecoveryCode }, 401);
     }
     const session = await newSessionCookie(env);
     return json({ ok: true }, 200, { 'Set-Cookie': session.cookie });
@@ -291,6 +290,14 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
         const fallback = state.loginChange?.staged?.login.issuer === providerIdentity(b).issuer ? state.loginChange.staged.login : state.login;
         const read = await readLoginProvider(env, state, b, fallback, t);
         if (!read.ok) return json({ error: read.error, ...(read.checks ? { checks: read.checks } : {}) }, read.status);
+        // The test sign-in and the recovery code need the installer's own
+        // address: open it again for the change (closed again afterwards,
+        // the next time it's opened through Arcanum).
+        if (state.behindArcanum?.publicAccessRemoved) {
+          if (!cf) return json({ error: t.api.tokenAgain, needsToken: true }, 409);
+          await cf.setWorkersDev(state.cloudflare!.accountId, state.behindArcanum.script, true);
+          state.behindArcanum.publicAccessRemoved = false;
+        }
         state.loginChange = { ...state.loginChange, staged: { login: read.login, at: new Date().toISOString() } };
         delete state.loginChange.test;
         await saveState(env, state);
@@ -385,6 +392,13 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       return json(await status(env, state, sessionId, access, t));
     }
 
+    // The installer's own address. It moves behind Arcanum by itself: the
+    // bff is linked when it's deployed (steps.ts), and the first request
+    // that comes through Arcanum — "Open je Arcanum" passes by — closes
+    // the own address (POST close, from the page). That request is the
+    // proof the installer stays reachable. Geavanceerd can open it again
+    // ("kept open" until closed there); a login change opens it for as long
+    // as it lasts (state.ts directShouldClose).
     if (path.startsWith('/api/public-access')) {
       if (!state.installed || !state.cloudflare) return json({ error: t.api.installFirst }, 409);
       const token = await tokenFor(env, state, sessionId);
@@ -393,52 +407,37 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const directUrl = `https://${script}.${state.cloudflare.subdomain}.workers.dev`;
 
       if (path === '/api/public-access' && request.method === 'GET') {
-        const bff = state.release!.blueprint.workers.find((w) => w.public_entry)!;
-        const descriptor = await fetchReleaseJson<WorkerDescriptor>(state.release!.manifestUrl, state.release!.manifest, bff.file);
         return json({
-          supported: bffSupportsInstaller(descriptor),
           linked: !!state.behindArcanum,
           installerUrl: `${publicUrl(state)}/installer/`,
           directUrl,
-          // Live from Cloudflare: re-deploying the installer turns it back on.
+          // Live from Cloudflare: a re-upload of the installer (the bootstrapper again) turns it back on.
           directEnabled: cf ? await cf.isOnWorkersDev(state.cloudflare.accountId, script).catch(() => null) : null,
+          keptOpen: !!state.behindArcanum?.keptOpen,
+          loginChange: loginChangeActive(state),
+          shouldClose: directShouldClose(state),
           via: access.via,
         });
       }
+      if (!state.behindArcanum) return json({ error: t.api.notLinked }, 409);
       if (!cf) return json({ error: t.api.tokenAgain, needsToken: true }, 409);
 
-      if (path === '/api/public-access/link' && request.method === 'POST') {
-        const bff = state.release!.blueprint.workers.find((w) => w.public_entry)!;
-        const descriptor = await fetchReleaseJson<WorkerDescriptor>(state.release!.manifestUrl, state.release!.manifest, bff.file);
-        if (!bffSupportsInstaller(descriptor)) return json({ error: t.api.bffTooOld(state.release!.version) }, 409);
-        const target = installerScript(state, request);
-        if (!(await cf.scriptExists(state.cloudflare.accountId, target))) return json({ error: t.api.noInstallerWorker(target) }, 409);
-        const secrets = state.secrets ? (JSON.parse(await unsealValue(env, state, state.secrets)) as Record<string, string>) : {};
-        secrets[INSTALLER_KEY_SECRET] ??= generateSecret('hex32');
-        state.secrets = await sealValue(env, state, JSON.stringify(secrets));
-        state.behindArcanum = { script: target };
-        // Re-deploy the bff with the binding and the key, right away.
-        const outcome = await runStep(`worker:${bff.name}`, { env, state, cf, t });
-        state.steps[`worker:${bff.name}`] = { status: 'done', at: new Date().toISOString(), detail: outcome.detail };
-        await saveState(env, state);
-        return json(await status(env, state, sessionId, access, t));
-      }
-
-      if (path === '/api/public-access/remove' && request.method === 'POST') {
+      if (path === '/api/public-access/close' && request.method === 'POST') {
         // Only from a request that came through Arcanum: that's the proof
         // the installer stays reachable once its own address is gone.
-        if (!state.behindArcanum) return json({ error: t.api.linkFirst }, 409);
-        if (access.via !== 'arcanum') return json({ error: t.api.removeThroughArcanum(`${publicUrl(state)}/installer/`) }, 409);
+        if (access.via !== 'arcanum') return json({ error: t.api.closeThroughArcanum(`${publicUrl(state)}/installer/`) }, 409);
+        if (loginChangeActive(state)) return json({ error: t.api.closeAfterLoginChange }, 409);
         await cf.setWorkersDev(state.cloudflare.accountId, state.behindArcanum.script, false);
         state.behindArcanum.publicAccessRemoved = true;
+        delete state.behindArcanum.keptOpen;
         await saveState(env, state);
         return json(await status(env, state, sessionId, access, t));
       }
 
-      if (path === '/api/public-access/restore' && request.method === 'POST') {
-        if (!state.behindArcanum) return json({ error: t.api.notRemoved }, 409);
+      if (path === '/api/public-access/open' && request.method === 'POST') {
         await cf.setWorkersDev(state.cloudflare.accountId, state.behindArcanum.script, true);
         state.behindArcanum.publicAccessRemoved = false;
+        state.behindArcanum.keptOpen = true;
         await saveState(env, state);
         return json(await status(env, state, sessionId, access, t));
       }
@@ -464,7 +463,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const token = await tokenFor(env, state, sessionId);
       if (!token) return json({ error: t.api.tokenAgain, needsToken: true }, 409);
       try {
-        const outcome = await runStep(id, { env, state, cf: cloudflareFor(env, token), t });
+        const outcome = await runStep(id, { env, state, cf: cloudflareFor(env, token), t, installerScript: installerScript(state, request), viaArcanum: access.via === 'arcanum' });
         if (outcome.status === 'done') state.steps[id] = { status: 'done', at: new Date().toISOString(), detail: outcome.detail };
         await saveState(env, state);
         return json({ id, ...outcome });

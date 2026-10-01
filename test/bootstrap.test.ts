@@ -3,7 +3,7 @@
 // account (OIDC against a fake issuer) or the recovery code, the one-screen
 // install, the custom domain registered at the login provider, and the
 // self-update before an update. The Worker runs with its bootstrapped
-// secrets (INSTALLER_STATE_KEY + BOOTSTRAP_CONFIG, no INSTALLER_PASSWORD).
+// secrets (INSTALLER_STATE_KEY + BOOTSTRAP_CONFIG).
 import { env } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../src/index';
@@ -41,7 +41,7 @@ let workerEnv: Record<string, unknown> = {};
 const bodies: string[] = [];
 
 async function useConfig(config: string | undefined, extra: Record<string, unknown> = {}) {
-  workerEnv = { ...env, INSTALLER_PASSWORD: undefined, INSTALLER_STATE_KEY: STATE_KEY, BOOTSTRAP_CONFIG: config, ...extra };
+  workerEnv = { ...env, INSTALLER_STATE_KEY: STATE_KEY, BOOTSTRAP_CONFIG: config, ...extra };
 }
 
 beforeEach(async () => {
@@ -185,8 +185,8 @@ describe('the handoff', () => {
     expect(after.admins).toBe(`iemand@scouts.test, ${OWNER.email}`);
     // A new recovery code; the first one no longer works.
     expect(second.body.recoveryCode).not.toBe(first.body.recoveryCode);
-    expect((await call('POST', '/api/login', { password: first.body.recoveryCode }, { cookie: null })).status).toBe(401);
-    expect((await call('POST', '/api/login', { password: second.body.recoveryCode }, { cookie: null })).status).toBe(200);
+    expect((await call('POST', '/api/login', { recoveryCode: first.body.recoveryCode }, { cookie: null })).status).toBe(401);
+    expect((await call('POST', '/api/login', { recoveryCode: second.body.recoveryCode }, { cookie: null })).status).toBe(200);
     // A config with another client never replaces the login provider it has.
     const code3 = 'third-handoff-code-0123456789abcdefghijklmnopq';
     await useConfig(await bootstrapConfig({ login: { issuer: 'https://login.test', clientId: 'arc_other', clientSecret: 'other-secret' } }, code3));
@@ -196,14 +196,14 @@ describe('the handoff', () => {
 });
 
 describe('signing in', () => {
-  it('with the recovery code (any case, with or without dashes) — never with a password on a bootstrapped installer', async () => {
+  it('with the recovery code (any case, with or without dashes)', async () => {
     const { recoveryCode } = (await handoff()).body;
     const options = (await call('GET', '/api/login-options', undefined, { cookie: null })).body;
-    expect(options).toEqual({ password: false, recoveryCode: true, account: { issuer: 'https://login.test' }, awaitingHandoff: false });
-    expect((await call('POST', '/api/login', { password: 'WRONG-CODE-0000-0000-0000' }, { cookie: null })).status).toBe(401);
+    expect(options).toEqual({ recoveryCode: true, account: { issuer: 'https://login.test' }, awaitingHandoff: false });
+    expect((await call('POST', '/api/login', { recoveryCode: 'WRONG-CODE-0000-0000-0000' }, { cookie: null })).status).toBe(401);
     expect((await call('POST', '/api/login', { password: 'test-installer-password' }, { cookie: null })).status).toBe(401);
     cookie = '';
-    const ok = await call('POST', '/api/login', { password: recoveryCode.toLowerCase().replace(/-/g, ' ') });
+    const ok = await call('POST', '/api/login', { recoveryCode: recoveryCode.toLowerCase().replace(/-/g, ' ') });
     expect(ok.status).toBe(200);
     expect((await call('GET', '/api/status')).status).toBe(200);
   });
@@ -218,7 +218,7 @@ describe('signing in', () => {
   });
 
   it('before the handoff, only the link gets in', async () => {
-    expect((await call('GET', '/api/login-options', undefined, { cookie: null })).body).toEqual({ password: false, recoveryCode: false, account: null, awaitingHandoff: true });
+    expect((await call('GET', '/api/login-options', undefined, { cookie: null })).body).toEqual({ recoveryCode: false, account: null, awaitingHandoff: true });
   });
 
   async function signIn(claims: Record<string, unknown>, opts: { cookie?: string } = {}) {

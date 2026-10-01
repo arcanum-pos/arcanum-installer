@@ -4,8 +4,8 @@
 // NL · FR · EN picker reloads the page with ?lang=. Every
 // path is relative: the same page works on the installer's own address
 // (at / and /handoff) and behind Arcanum (at /installer/, forwarded by the bff).
-// Made by the bootstrapper, it's one screen: "Installeren", with the rest
-// (domain, own login provider, token, admins) under "Geavanceerd".
+// One screen: "Installeren", with the rest (domain, own login provider,
+// token, admins, the installer's own address) under "Geavanceerd".
 import { MESSAGES, type Locale, type Messages } from './i18n';
 
 // The inline script's texts, as a JS object literal — every "<" escaped, so
@@ -135,7 +135,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
     <p data-login-handoff class="soft hidden">${p.awaitingHandoff}</p>
     <form data-form="login" class="hidden">
       <p class="soft" data-login-hint></p>
-      <label for="password" data-login-label>${p.password}</label><input id="password" name="password" type="password" autocomplete="current-password" required><button class="secondary">${p.signIn}</button><p class="error" data-error></p>
+      <label for="recoveryCode" data-login-label></label><input id="recoveryCode" name="recoveryCode" type="password" autocomplete="off" required><button class="secondary">${p.signIn}</button><p class="error" data-error></p>
     </form>
   </section>
 
@@ -147,6 +147,10 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
     <p class="soft">${p.recoveryRollback}</p>
     <label class="check"><input type="checkbox" data-recovery-saved> ${p.recoverySaved}</label>
     <button data-recovery-continue disabled>${p.continue}</button>
+  </section>
+
+  <section id="moving" class="card hidden">
+    <p class="soft" style="margin:0;text-align:center">${p.publicMoving}</p>
   </section>
 
   <section id="denied" class="card hidden">
@@ -179,7 +183,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
 
     <section id="s-login" class="card">
       <h2>${p.loginTitle}</h2>
-      <p data-login-default class="soft hidden">${p.loginDefault}</p>
+      <p data-login-default class="soft">${p.loginDefault}</p>
       <p>${p.loginIntro}</p>
       <p>${p.loginUrls}</p>
       <p data-summary class="soft"></p>
@@ -205,17 +209,10 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       <form data-form="admins"><label for="emails">${p.emails}</label><input id="emails" name="emails" type="text" placeholder="${p.emailsPlaceholder}" required><button>${p.save}</button><p class="error" data-error></p></form>
     </section>
 
-    <section id="s-release" class="card">
-      <h2>${p.releaseTitle}</h2>
-      <p data-summary class="soft"></p>
-      <p data-update></p>
-      <form data-form="release"><label for="version">${p.version}</label><select id="version" name="version"></select><button>${p.choose}</button><p class="error" data-error></p></form>
-    </section>
-
     <section id="s-install" class="card">
       <h2>${p.installTitle}</h2>
-      <p data-quick class="hidden">${p.quick}</p>
-      <div data-quick-version class="hidden" style="display:grid;gap:6px"><label for="quick-version">${p.version}</label><select id="quick-version"></select></div>
+      <p data-quick>${p.quick}</p>
+      <div data-quick-version style="display:grid;gap:6px"><label for="quick-version">${p.version}</label><select id="quick-version"></select></div>
       <p class="soft">${p.rerun}</p>
       <p class="soft hidden" data-self-note>${p.selfNote}</p>
       <ol class="steps" data-steps></ol>
@@ -249,7 +246,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       <p class="error" data-error></p>
     </section>
 
-    <details id="advanced" class="card hidden">
+    <details id="advanced" class="card">
       <summary>${p.advanced}</summary>
       <p class="soft">${p.advancedIntro}</p>
       <div data-advanced></div>
@@ -266,18 +263,11 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
     <section id="s-public" class="card hidden">
       <h2>${p.publicTitle}</h2>
       <p class="soft">${p.publicIntro}</p>
-      <ol class="steps" data-public-steps>
-        <li data-public="link"><span class="icon"></span><span><span class="title">${p.publicLinked}</span> <span class="detail"></span></span></li>
-        <li data-public="open"><span class="icon"></span><span><span class="title">${p.publicOpened}</span> <span class="detail"></span></span></li>
-        <li data-public="direct"><span class="icon"></span><span><span class="title">${p.publicDirectOff}</span> <span class="detail"></span></span></li>
-      </ol>
+      <p data-public-state></p>
       <div class="row">
-        <button data-public-link>${p.publicLink}</button>
-        <a data-public-open class="hidden" href="#">${p.publicOpen}</a>
-        <button data-public-remove class="hidden">${p.publicRemove}</button>
-        <button data-public-restore class="secondary hidden">${p.publicRestore}</button>
+        <button data-public-open class="secondary hidden">${p.publicOpen}</button>
+        <button data-public-close class="hidden">${p.publicClose}</button>
       </div>
-      <p class="soft" data-public-note></p>
       <p class="error" data-error></p>
     </section>
 
@@ -324,17 +314,15 @@ async function api(path, body) {
 function denied(message) { $('#denied').classList.remove('hidden'); $('[data-denied]').textContent = message; $('#login').classList.add('hidden'); $('#app').classList.add('hidden'); }
 function show(loggedIn) { $('#login').classList.toggle('hidden', loggedIn); $('#app').classList.toggle('hidden', !loggedIn); $('#recovery').classList.add('hidden'); if (!loggedIn) loadLoginOptions(); }
 
-// The ways in this installer has: its password (Deploy button), or — made
-// by the bootstrapper — the admin's account and the recovery code.
+// The ways in: the admin's account, and the recovery code.
 async function loadLoginOptions() {
   let o = null; try { o = await (await fetch('api/login-options', { credentials: 'same-origin', headers: { 'Accept-Language': LANG } })).json(); } catch { return; }
   $('[data-login-account]').classList.toggle('hidden', !o.account);
   if (o.account) $('[data-login-issuer]').textContent = new URL(o.account.issuer).host;
   $('[data-login-handoff]').classList.toggle('hidden', !o.awaitingHandoff);
-  const form = $('form[data-form="login"]'); form.classList.toggle('hidden', !o.password && !o.recoveryCode);
-  $('[data-login-label]').textContent = o.password && o.recoveryCode ? M.passwordOrRecoveryCode : o.password ? M.password : M.recoveryCode;
-  $('[data-login-hint]').textContent = o.password ? M.passwordHint : M.recoveryCodeHint;
-  $('#password').autocomplete = o.password ? 'current-password' : 'off';
+  $('form[data-form="login"]').classList.toggle('hidden', !o.recoveryCode);
+  $('[data-login-label]').textContent = M.recoveryCode;
+  $('[data-login-hint]').textContent = M.recoveryCodeHint;
 }
 
 // Why signing in with an account didn't work (oidc.ts sends ?fout=).
@@ -358,26 +346,14 @@ function showRecovery(r) {
 $('[data-recovery-saved]').addEventListener('change', (ev) => { $('[data-recovery-continue]').disabled = !ev.target.checked; });
 $('[data-recovery-continue]').addEventListener('click', async () => { $('[data-recovery-code]').textContent = ''; await refresh(); show(true); await loadReleases(); });
 
-// Made by the bootstrapper: one screen. The detailed cards move under "Geavanceerd".
-const ADVANCED = { 's-address': M.advancedAddress, 's-login': M.advancedLogin, 's-cloudflare': M.advancedCloudflare, 's-admins': M.advancedAdmins };
-let arranged = false;
-function arrange(s) {
-  const quick = !!s.bootstrapped;
-  $('#advanced').classList.toggle('hidden', !quick);
-  $('#s-release').classList.toggle('hidden', quick);
-  $('[data-quick]').classList.toggle('hidden', !quick);
-  $('[data-quick-version]').classList.toggle('hidden', !quick);
-  $('[data-login-default]').classList.toggle('hidden', !quick);
-  if (!quick || arranged) return;
-  arranged = true;
-  for (const [id, title] of Object.entries(ADVANCED)) { const el = $('#' + id); $('h2', el).textContent = title; $('[data-advanced]').append(el); }
-  $('#s-install h2').textContent = M.install;
-  $('[data-run]').classList.add('big');
-}
+// One screen: the detailed cards under "Geavanceerd" (a new title, or their own).
+const ADVANCED = { 's-address': M.advancedAddress, 's-login': M.advancedLogin, 's-cloudflare': M.advancedCloudflare, 's-admins': M.advancedAdmins, 's-public': null };
+for (const [id, title] of Object.entries(ADVANCED)) { const el = $('#' + id); if (title) $('h2', el).textContent = title; $('[data-advanced]').append(el); }
+$('#s-install h2').textContent = M.install;
+$('[data-run]').classList.add('big');
 
 function render() {
   const s = status;
-  arrange(s);
   // Which release this installer itself came from (INSTALLER_RELEASE): after
   // an update it shows the new one — the proof it updated itself.
   $('[data-installer-version]').textContent = fmt(M.installerRelease, { release: s.installer && s.installer.release ? s.installer.release : M.noReleaseNumber });
@@ -391,11 +367,9 @@ function render() {
   $('[data-logout]').textContent = s.address ? s.address.logoutUrl : M.stepOneFirst;
   set('#s-login', s.login, s.login ? fmt(M.loginSummary, { issuer: s.login.issuer, client: s.login.clientId }) : '');
   if (s.login) $('[data-login-current]').textContent = new URL(s.login.issuer).host;
-  if (s.bootstrapped) {
-    $('[data-quick-url]').textContent = s.address ? s.address.publicUrl : '';
-    $('[data-quick-account]').textContent = s.cloudflare ? s.cloudflare.accountName : '';
-    $('[data-quick-admins]').textContent = s.admins || '';
-  }
+  $('[data-quick-url]').textContent = s.address ? s.address.publicUrl : '';
+  $('[data-quick-account]').textContent = s.cloudflare ? s.cloudflare.accountName : '';
+  $('[data-quick-admins]').textContent = s.admins || '';
   if (s.login) {
     $('#issuer').value ||= s.login.issuer; $('#clientId').value ||= s.login.clientId; $('#clientSecret').placeholder = M.secretKept;
     $('#scopes').value ||= s.login.scopes || ''; $('#authCodeClientId').value ||= s.login.authCodeClientId || '';
@@ -404,8 +378,6 @@ function render() {
   googleHint();
   set('#s-admins', s.admins, s.admins ? s.admins : '');
   if (s.admins) $('#emails').value ||= s.admins;
-  set('#s-release', s.release, s.release ? fmt(M.arcanumVersion, { version: s.release.version }) + (s.installed && s.installed.version !== s.release.version ? fmt(M.updatingFrom, { version: s.installed.version }) : '') : '');
-  $('#s-release button').textContent = s.installed ? M.updateToThis : M.choose;
   const list = $('[data-steps]'); list.innerHTML = '';
   for (const step of s.steps) {
     const li = document.createElement('li'); li.className = step.status; li.dataset.id = step.id;
@@ -413,10 +385,10 @@ function render() {
     $('.title', li).textContent = step.title; $('.detail', li).textContent = step.detail ? '— ' + step.detail : '';
     list.append(li);
   }
-  // One screen: the version is chosen right here, when Installeren is clicked.
-  const ready = s.cloudflare && s.login && s.admins && (s.release || s.bootstrapped);
+  // The version is chosen right here, when Installeren is clicked.
+  const ready = s.cloudflare && s.login && s.admins;
   $('[data-run]').disabled = !ready || running;
-  const chosen = s.bootstrapped ? $('#quick-version').value : (s.release && s.release.version);
+  const chosen = $('#quick-version').value;
   const updating = s.installed && chosen && s.installed.version !== chosen;
   const sameRelease = s.release && chosen === s.release.version;
   $('[data-run]').textContent = updating ? fmt(M.updateTo, { version: chosen }) : sameRelease && s.steps.some(x => x.status === 'done') && !s.installed ? M.continueInstall : M.install;
@@ -424,7 +396,7 @@ function render() {
   $('[data-self-note]').classList.toggle('hidden', !selfStep);
   set('#s-install', s.installed, '');
   $('#s-done').classList.toggle('hidden', !s.installed);
-  if (s.installed) { $('[data-url]').href = s.address.publicUrl; $('[data-url]').textContent = s.address.publicUrl; $('[data-open]').href = s.address.publicUrl + '/console'; probe(); }
+  if (s.installed) { $('[data-url]').href = s.address.publicUrl; $('[data-url]').textContent = s.address.publicUrl; openLink(); probe(); }
   const viaArcanum = s.access && s.access.via === 'arcanum';
   $('[data-access]').classList.toggle('hidden', !(s.access && s.access.email));
   if (s.access && s.access.email) $('[data-access]').textContent = fmt(viaArcanum ? M.signedInViaArcanum : M.signedInAs, { email: s.access.email });
@@ -515,38 +487,64 @@ $('[data-change-finish]').addEventListener('click', () => changeAction('api/logi
 $('[data-change-undo]').addEventListener('click', () => changeAction('api/login-change/undo', M.confirmUndo));
 $('[data-change-cancel]').addEventListener('click', () => changeAction('api/login-change/cancel'));
 
-// "Openbare toegang verwijderen": link the installer to Arcanum, prove it
-// works by opening it there, and only then switch its own address off.
+// The installer's own address. Linked to Arcanum when the bff is deployed;
+// its own address goes off with the first visit through Arcanum — which is
+// where "Open je Arcanum" passes by (?naar=console), on its way to the
+// console. Geavanceerd can switch it back on, and off again (through Arcanum).
+let publicAccess = null;
 let publicLoading = false;
+const viaArcanum = () => !!(status && status.access && status.access.via === 'arcanum');
+// To be closed, and this is the visit that can do it.
+const closeNow = (p) => p && p.linked && p.shouldClose && p.directEnabled === true && p.via === 'arcanum';
 async function loadPublicAccess() {
   if (publicLoading) return; publicLoading = true;
   const box = $('#s-public'); const err = $('[data-error]', box);
   try {
-    const p = await api('api/public-access');
-    const via = p.via === 'arcanum';
-    const mark = (id, state, detail) => { const li = $('[data-public="' + id + '"]', box); li.className = state; $('.detail', li).textContent = detail ? '— ' + detail : ''; };
+    let p = await api('api/public-access');
+    // Opened through Arcanum: its own address goes off now (nothing to click).
+    if (closeNow(p)) { status = await api('api/public-access/close', {}); p = await api('api/public-access'); }
+    publicAccess = p;
     $('[data-installer-url]').textContent = p.installerUrl;
-    mark('link', p.linked ? 'done' : 'todo', p.linked ? '' : (p.supported ? '' : M.publicUnsupported));
-    mark('open', via ? 'done' : 'todo', via ? '' : (p.linked ? fmt(M.publicOpenThere, { url: p.installerUrl }) : ''));
-    mark('direct', p.directEnabled === false ? 'done' : 'todo', p.directEnabled === null ? M.publicUnknown : p.directEnabled ? fmt(M.publicStillOn, { url: p.directUrl }) : '');
-    $('[data-public-link]').classList.toggle('hidden', p.linked);
-    $('[data-public-link]').disabled = !p.supported;
-    const open = $('[data-public-open]'); open.href = p.installerUrl; open.classList.toggle('hidden', !p.linked || via);
-    $('[data-public-remove]').classList.toggle('hidden', !(via && p.directEnabled !== false));
-    $('[data-public-restore]').classList.toggle('hidden', !(via && p.directEnabled === false));
+    const why = p.loginChange ? M.publicLoginChange : p.keptOpen ? M.publicKeptOpen : M.publicWillClose;
+    $('[data-public-state]').textContent = !p.linked ? M.publicNotLinked
+      : p.directEnabled === null ? M.publicUnknown
+      : p.directEnabled === false ? fmt(M.publicClosed, { url: p.directUrl })
+      : fmt(M.publicIsOpen, { url: p.directUrl }) + why + (p.via !== 'arcanum' && !p.loginChange ? fmt(M.publicThroughArcanum, { url: p.installerUrl }) : '');
+    $('[data-public-open]').classList.toggle('hidden', !(p.linked && p.directEnabled === false));
+    $('[data-public-close]').classList.toggle('hidden', !(p.linked && p.directEnabled === true && p.via === 'arcanum' && !p.loginChange));
     box.classList.toggle('done', p.linked && p.directEnabled === false);
-    $('[data-public-note]').textContent = p.directEnabled === false
-      ? M.publicNote
-      : '';
+    openLink();
   } catch (e) { err.textContent = e.message; } finally { publicLoading = false; }
 }
 async function publicAction(path) {
   const err = $('#s-public [data-error]'); err.textContent = '';
   try { status = await api(path, {}); render(); } catch (e) { err.textContent = e.message; }
 }
-$('[data-public-link]').addEventListener('click', () => publicAction('api/public-access/link'));
-$('[data-public-remove]').addEventListener('click', () => publicAction('api/public-access/remove'));
-$('[data-public-restore]').addEventListener('click', () => publicAction('api/public-access/restore'));
+$('[data-public-open]').addEventListener('click', () => publicAction('api/public-access/open'));
+$('[data-public-close]').addEventListener('click', () => publicAction('api/public-access/close'));
+
+// "Open je Arcanum": the console — on the installer's own address, while
+// that's still to be closed, by way of the installer behind Arcanum (sign
+// in, close, on to the console), in this tab: this page stops working here.
+function openLink() {
+  const a = $('[data-open]'); const url = status && status.address ? status.address.publicUrl : '';
+  const p = publicAccess;
+  const passBy = !viaArcanum() && p && p.linked && p.shouldClose && p.directEnabled !== false;
+  a.href = passBy ? url + '/login?returnTo=' + encodeURIComponent('/installer/?naar=console') : url + '/console';
+  if (passBy) a.removeAttribute('target'); else a.target = '_blank';
+}
+
+// Arrived from "Open je Arcanum" (through Arcanum): close the own address,
+// then on to the console — whatever happens, the console is where this goes.
+async function moveAndOpenConsole() {
+  $('#moving').classList.remove('hidden');
+  try {
+    status = await api('api/status');
+    const p = await api('api/public-access');
+    if (closeNow(p)) await api('api/public-access/close', {});
+  } catch {}
+  location.replace(new URL('../console', location.href).toString());
+}
 
 // Live check from the browser: load one real asset of the installation
 // (bff → frontends). The installer itself can't fetch its own account's
@@ -589,21 +587,9 @@ function newerThan(a, b) {
 
 async function loadReleases() {
   try {
-    const r = await api('api/releases');
-    fillVersions($('#quick-version'), r);
-    const sel = $('#version'); sel.innerHTML = '';
-    const newer = r.installed ? r.releases.map((x) => x.version).filter((v) => newerThan(v, r.installed)).sort((a, b) => (newerThan(a, b) ? -1 : 1)) : [];
-    for (const rel of r.releases) {
-      const o = document.createElement('option'); o.value = rel.version;
-      const tag = rel.version === r.installed ? M.releaseInstalled : newer.includes(rel.version) ? M.releaseNewer : rel.version === r.latest ? M.releaseLatest : '';
-      o.textContent = fmt(M.arcanumVersion, { version: rel.version }) + (rel.prerelease ? M.prerelease : '') + tag; sel.append(o);
-    }
-    // Installed: preselect the newest version above it; otherwise the chosen one.
-    if (newer.length) sel.value = newer[0];
-    else if (status && status.release) sel.value = status.release.version;
-    $('[data-update]').textContent = newer.length ? fmt(M.newerAvailable, { version: newer[0] }) : '';
+    fillVersions($('#quick-version'), await api('api/releases'));
     if (status) render();
-  } catch (e) { $('#s-release [data-error]').textContent = e.message; $('#s-install [data-error]').textContent = e.message; }
+  } catch (e) { $('#s-install [data-error]').textContent = e.message; }
 }
 
 // The one-screen version choice: the newest release (or the newest above the installed one).
@@ -660,12 +646,10 @@ let running = false;
 async function runAll() {
   running = true; render(); const err = $('#s-install [data-error]'); err.textContent = '';
   try {
-    // One screen: choose the version picked right here first (a fresh install, or an update).
-    if (status.bootstrapped) {
-      const version = $('#quick-version').value;
-      if (!version) throw new Error(M.noVersion);
-      if (!status.release || status.release.version !== version) { status = await api('api/release', { version }); render(); }
-    }
+    // The version picked right here first (a fresh install, or an update).
+    const version = $('#quick-version').value;
+    if (!version) throw new Error(M.noVersion);
+    if (!status.release || status.release.version !== version) { status = await api('api/release', { version }); render(); }
     for (const step of status.steps) {
       if (step.status === 'done') continue;
       for (let attempt = 0; ; attempt++) {
@@ -695,6 +679,7 @@ $('[data-logout-button]').addEventListener('click', async () => { await api('api
     try { showRecovery(await api('api/handoff', { code })); } catch (e) { show(false); $('[data-login-error]').textContent = e.message; }
     return;
   }
+  if (params.get('naar') === 'console') return moveAndOpenConsole();
   const failure = signInError(params);
   const tested = params.get('aanmeldtest');
   if (tested) testOutcome = TEST_OUTCOMES[tested] || M.testFailed;

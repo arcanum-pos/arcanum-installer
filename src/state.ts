@@ -96,12 +96,13 @@ export interface InstallerState {
   // loads it to see the installation is live end to end.
   probePath?: string;
   installed?: { version: string; at: string };
-  // After install, the installer can move behind Arcanum: the bff gets a
-  // service binding to this Worker (`script`) and forwards /installer/* for
+  // The installer behind Arcanum: the bff gets a service binding to this
+  // Worker (`script`) when it's deployed and forwards /installer/* for
   // logged-in admins, with a shared key (INSTALLER_INTERNAL_KEY in
   // `secrets`). `publicAccessRemoved`: its own workers.dev address was
-  // switched off from there.
-  behindArcanum?: { script: string; publicAccessRemoved?: boolean };
+  // switched off (through Arcanum). `keptOpen`: switched back on under
+  // Geavanceerd — stays on until it's closed there.
+  behindArcanum?: { script: string; publicAccessRemoved?: boolean; keptOpen?: boolean };
   // Made by the bootstrapper (bootstrap.ts): who set it up, the OAuth client
   // at its login provider that admins sign in to this page with (oidc.ts —
   // also the one Arcanum starts with), the handoff codes already used, and
@@ -134,11 +135,9 @@ export async function saveState(env: Env, state: InstallerState): Promise<void> 
 }
 
 // The root of every key the installer derives (sealing, session cookies):
-// the Deploy button's password, or the bootstrapper's random state key. The
-// password wins when both are set — an installer made with the Deploy
-// button keeps reading its state after the bootstrapper took it over.
+// the bootstrapper's random state key.
 export function rootSecret(env: Env): string {
-  return env.INSTALLER_PASSWORD || env.INSTALLER_STATE_KEY || '';
+  return env.INSTALLER_STATE_KEY || '';
 }
 
 export const sealValue = (env: Env, state: InstallerState, value: string) => seal(value, rootSecret(env), state.salt);
@@ -154,6 +153,14 @@ export function publicUrl(state: InstallerState): string | null {
   if (!state.cloudflare) return null;
   return state.customDomain ? `https://${state.customDomain}` : workersDevUrl(state);
 }
+
+// "Aanmelding wijzigen" under way: staged, or applied and still undoable.
+// The test sign-in and the recovery code need the installer's own address.
+export const loginChangeActive = (state: InstallerState) => !!(state.loginChange?.staged || state.loginChange?.applied);
+
+// Whether the installer's own address should be off: linked to Arcanum,
+// not kept open on purpose, no login change under way.
+export const directShouldClose = (state: InstallerState) => !!state.behindArcanum && !state.behindArcanum.keptOpen && !loginChangeActive(state);
 
 // Once anything exists on the account, the account and address are locked:
 // changing them would orphan what's there.

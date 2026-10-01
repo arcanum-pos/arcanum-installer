@@ -9,7 +9,7 @@ import { generateSecret, randomBytes } from './crypto';
 import { installerUploadMetadata, secretsNeeded, uploadMetadata, type InstallContext, type WorkerDescriptor } from './contract';
 import { fetchReleaseJson, type Manifest } from './releases';
 import { addClientUris } from './auth-client';
-import { INSTALLER_KEY_SECRET, publicUrl, sealValue, unsealValue, type Blueprint, type InstallerState } from './state';
+import { directShouldClose, INSTALLER_KEY_SECRET, publicUrl, sealValue, unsealValue, type Blueprint, type InstallerState } from './state';
 import { messageOf, type Messages } from './i18n';
 
 export interface StepDef {
@@ -89,6 +89,11 @@ export interface StepContext {
   state: InstallerState;
   cf: Cloudflare;
   t: Messages;
+  // This installer's own Worker name (api.ts installerScript): what the bff
+  // is linked to. Without it the bff is deployed as it was.
+  installerScript?: string;
+  // The step was asked for through Arcanum (so the own address may go off).
+  viaArcanum?: boolean;
 }
 
 export type StepOutcome = { status: 'done' | 'retry'; detail?: string };
@@ -137,6 +142,11 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
       throw new Error(s.selfUpdateFailed(messageOf(err, ctx.t)));
     }
     state.selfUpdate = { from: ctx.env.INSTALLER_RELEASE ?? null, to: release.version, at: new Date().toISOString(), previousDeploymentId: previous?.id ?? null, previousVersionId: previous?.versionId ?? null };
+    // Behind Arcanum: the upload may have switched the own address back on.
+    if (ctx.viaArcanum && directShouldClose(state)) {
+      await cf.setWorkersDev(accountId, target.script, false);
+      state.behindArcanum!.publicAccessRemoved = true;
+    }
     return { status: 'done', detail: s.selfUpdated(release.version) };
   }
 
@@ -249,6 +259,13 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     const descriptor = await fetchReleaseJson<WorkerDescriptor>(release.manifestUrl, release.manifest, worker.file);
     const url = publicUrl(state)!;
     const secrets = await secretsOf(ctx);
+    // The installer moves behind Arcanum by itself: the first bff that can
+    // forward /installer/* is linked to this installer, with a new shared key.
+    if (worker.public_entry && !state.behindArcanum && bffSupportsInstaller(descriptor) && ctx.installerScript && (await cf.scriptExists(accountId, ctx.installerScript))) {
+      secrets[INSTALLER_KEY_SECRET] ??= generateSecret('hex32');
+      state.secrets = await sealValue(ctx.env, state, JSON.stringify(secrets));
+      state.behindArcanum = { script: ctx.installerScript };
+    }
     // Behind Arcanum: the bff forwards /installer/* to this installer.
     const linkInstaller = worker.public_entry && !!state.behindArcanum && bffSupportsInstaller(descriptor);
     const context: InstallContext = {

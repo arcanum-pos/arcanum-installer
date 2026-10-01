@@ -1,3 +1,10 @@
-# Protects the installer's setup page (its workers.dev URL is public).
-# The Deploy to Cloudflare button asks for it. Choose a long, unique value.
-INSTALLER_PASSWORD=
+# Local development (npx wrangler dev). On a real account the bootstrapper
+# sets both of these.
+#
+# The root of the key that seals the installer's state: any long random
+# value, never changed afterwards (e.g. openssl rand -hex 32).
+INSTALLER_STATE_KEY=
+# The handoff, so you can sign in: README.md "The contract with the
+# bootstrapper" has the JSON. Put the SHA-256 of a code of your choice in
+# handoffCodeHash, then open http://localhost:8787/handoff?code=<that code>.
+BOOTSTRAP_CONFIG=

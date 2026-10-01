@@ -11,7 +11,7 @@ export default defineConfig({
         // The fake Cloudflare API runs the backend's membership queries here (test/fakes.ts).
         d1Databases: ['TEST_BACKEND_DB'],
         bindings: {
-          INSTALLER_PASSWORD: 'test-installer-password',
+          INSTALLER_STATE_KEY: 'test-installer-state-key-0123456789abcdef',
           // Served by the fakes in test/fakes.ts — nothing reaches the network.
           RELEASES_INDEX_URL: 'https://releases.test/releases.json',
           CLOUDFLARE_API_BASE: 'https://cf.test/client/v4',

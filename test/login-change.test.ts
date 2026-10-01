@@ -7,7 +7,7 @@
 import { env } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../src/index';
-import { INSTANCE_CLIENT, installFakes, PUBLIC_URL, SUBDOMAIN, TOKEN, type Fakes } from './fakes';
+import { INSTANCE_CLIENT, installFakes, NEXT_VERSION, PUBLIC_URL, SUBDOMAIN, TOKEN, type Fakes } from './fakes';
 
 const ORIGIN = `https://arcanum-installer.${SUBDOMAIN}.workers.dev`;
 const STATE_KEY = 'test-state-key-0123456789abcdef0123456789abcdef';
@@ -27,13 +27,13 @@ let recoveryCode = '';
 let workerEnv: Record<string, unknown> = {};
 const db = () => env.TEST_BACKEND_DB;
 
-async function call(method: string, path: string, body?: unknown, opts: { cookie?: string | null } = {}) {
+async function call(method: string, path: string, body?: unknown, opts: { cookie?: string | null; headers?: Record<string, string> } = {}) {
   const sent = opts.cookie === undefined ? cookie : opts.cookie;
   const res = await worker.fetch(
     new Request(`${ORIGIN}${path}`, {
       method,
       redirect: 'manual',
-      headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(sent ? { Cookie: sent } : {}) },
+      headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(sent ? { Cookie: sent } : {}), ...opts.headers },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }),
     workerEnv as never
@@ -91,7 +91,6 @@ beforeEach(async () => {
   cookie = '';
   workerEnv = {
     ...env,
-    INSTALLER_PASSWORD: undefined,
     INSTALLER_STATE_KEY: STATE_KEY,
     BOOTSTRAP_CONFIG: JSON.stringify({
       version: 1,
@@ -222,7 +221,7 @@ describe('stage and test sign-in', () => {
   it('a session that does not know who it is (the recovery code) may only test as an address on the admin list', async () => {
     await stage();
     cookie = '';
-    expect((await call('POST', '/api/login', { password: recoveryCode })).status).toBe(200);
+    expect((await call('POST', '/api/login', { recoveryCode: recoveryCode })).status).toBe(200);
     expect((await testSignIn(JAN_NEW)).back).toBe('/?aanmeldtest=geen-beheerder');
     expect((await testSignIn({ sub: 'nieuw-sub-jan', email: OWNER.email, email_verified: true })).back).toBe('/?aanmeldtest=ok');
   });
@@ -237,7 +236,7 @@ describe('apply', () => {
     expect(early.status).toBe(409);
     expect(early.body.error).toMatch(/test-aanmelding/);
     await testSignIn(JAN_NEW);
-    const other = await call('POST', '/api/login-change/apply', {}, { cookie: (await call('POST', '/api/login', { password: recoveryCode }, { cookie: null })).setCookie[0].split(';')[0] });
+    const other = await call('POST', '/api/login-change/apply', {}, { cookie: (await call('POST', '/api/login', { recoveryCode: recoveryCode }, { cookie: null })).setCookie[0].split(';')[0] });
     expect(other.status).toBe(409);
     expect(other.body.error).toMatch(/dezelfde sessie/);
   });
@@ -395,11 +394,38 @@ describe('undo', () => {
     // Signing in with an account can't work now…
     expect((await call('GET', '/auth/login', undefined, { cookie: null })).headers.get('Location')).toBe('/?fout=provider-onbereikbaar');
     // …the recovery code can.
-    expect((await call('POST', '/api/login', { password: recoveryCode })).status).toBe(200);
+    expect((await call('POST', '/api/login', { recoveryCode: recoveryCode })).status).toBe(200);
     const info = await call('GET', '/api/login-change');
     expect(info.body.applied.resign).toEqual([{ email: 'piet@example.test', role: 'cashier', org: 'Scouts Elewijt' }]);
     expect((await call('POST', '/api/login-change/undo', {})).status).toBe(200);
     expect(await rows()).toEqual(before);
     expect(binding('arcanum-backend', 'DEFAULT_IDP_ISSUER_URL').text).toBe('https://login.test');
+  });
+});
+
+describe("the installer's own address during a change", () => {
+  it('staging switches it back on; it stays on while the change is under way, and closing waits for it', async () => {
+    // A release whose bff forwards /installer/*: the installer is linked when the bff is deployed.
+    fakes.releases.offerUpdate = true;
+    await call('POST', '/api/release', { version: NEXT_VERSION });
+    await runAll();
+    await seedMemberships();
+    expect(binding('arcanum-bff', 'ARCANUM_INSTALLER_SERVICE').service).toBe('arcanum-installer');
+    const via = { cookie: null, headers: { 'X-Installer-Key': binding('arcanum-bff', 'INSTALLER_INTERNAL_KEY').text, 'X-User-Email': OWNER.email } };
+    fakes.cf.workersDev.set('arcanum-installer', true);
+    expect((await call('POST', '/api/public-access/close', {}, via)).status).toBe(200);
+    expect(fakes.cf.workersDev.get('arcanum-installer')).toBe(false);
+
+    const staged = await call('POST', '/api/login-change/stage', NEW_PROVIDER, via);
+    expect(staged.status, JSON.stringify(staged.body)).toBe(200);
+    expect(fakes.cf.workersDev.get('arcanum-installer')).toBe(true);
+    expect((await call('GET', '/api/public-access', undefined, via)).body).toMatchObject({ directEnabled: true, loginChange: true, shouldClose: false });
+    const close = await call('POST', '/api/public-access/close', {}, via);
+    expect(close.status).toBe(409);
+    expect(close.body.error).toMatch(/aanmelding/);
+    expect(fakes.cf.workersDev.get('arcanum-installer')).toBe(true);
+
+    await call('POST', '/api/login-change/cancel', {}, via);
+    expect((await call('GET', '/api/public-access', undefined, via)).body).toMatchObject({ loginChange: false, shouldClose: true });
   });
 });

@@ -1,10 +1,10 @@
-// Sessions for the setup page. The installer's workers.dev URL is public,
-// and it holds a powerful Cloudflare token — so: constant-time password and
-// recovery-code checks, a lockout after repeated failures, and a signed,
-// short-lived, HttpOnly session cookie (SameSite=Strict, so no other site
-// can drive the API). Ways in: the Deploy button's INSTALLER_PASSWORD, or —
-// on a bootstrapped installer — signing in with an admin's account
-// (oidc.ts), the handoff (bootstrap.ts) or the recovery code.
+// Sessions for the setup page on the installer's own address. That address
+// is public until the installer moves behind Arcanum, and it holds a
+// powerful Cloudflare token — so: a constant-time recovery-code check, a
+// lockout after repeated failures, and a signed, short-lived, HttpOnly
+// session cookie (SameSite=Strict, so no other site can drive the API).
+// Ways in: signing in with an admin's account (oidc.ts), the handoff
+// (bootstrap.ts) or the recovery code.
 import type { Env } from './env';
 import { hmac, randomBytes, safeEqual, sha256Hex, toHex } from './crypto';
 import { rootSecret, type InstallerState } from './state';
@@ -23,10 +23,6 @@ export async function recordLoginFailure(env: Env, ip: string): Promise<void> {
   const key = `login-failures:${ip}`;
   const failures = Number((await env.INSTALLER_STATE.get(key)) ?? 0);
   await env.INSTALLER_STATE.put(key, String(failures + 1), { expirationTtl: LOCKOUT_S });
-}
-
-export function passwordMatches(env: Env, password: string): boolean {
-  return !!env.INSTALLER_PASSWORD && safeEqual(password, env.INSTALLER_PASSWORD);
 }
 
 // "ABCD-EFGH-…", however it's typed back (case, spaces, dashes).
