@@ -162,7 +162,7 @@ export default {
     publicClosed: 'Sa propre adresse {url} est désactivée : l’installateur n’est accessible que via Arcanum.',
     publicIsOpen: 'Sa propre adresse {url} est active.',
     publicWillClose: ' Elle se désactive d’elle-même dès que vous ouvrez l’installateur via Arcanum (Ouvrir votre Arcanum).',
-    publicKeptOpen: ' Vous l’avez réactivée — elle reste active jusqu’à ce que vous la désactiviez ici.',
+    publicKeptOpen: ' Vous l’avez réactivée — elle reste active jusqu’à ce que vous cliquiez à nouveau sur Ouvrir votre Arcanum, ou que vous la désactiviez ici.',
     publicLoginChange: ' Elle reste active tant qu’un nouveau fournisseur de connexion est préparé (ou qu’une modification est à moitié faite) : la connexion de test ne fonctionne que là.',
     publicThroughArcanum: ' La désactivation ne se fait que via Arcanum : {url}',
     publicNotLinked: 'Pas encore lié à Arcanum — cela se fait automatiquement à la prochaine mise à jour.',

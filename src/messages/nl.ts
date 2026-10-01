@@ -175,7 +175,7 @@ const nl = {
     publicClosed: 'Het eigen adres {url} staat uit: de installer is alleen bereikbaar via Arcanum.',
     publicIsOpen: 'Het eigen adres {url} staat aan.',
     publicWillClose: ' Het gaat vanzelf uit zodra je de installer via Arcanum opent (Open je Arcanum).',
-    publicKeptOpen: ' Je zette het zelf weer aan — het blijft aan tot je het hier uitschakelt.',
+    publicKeptOpen: ' Je zette het zelf weer aan — het blijft aan tot je weer op Open je Arcanum klikt, of het hier uitschakelt.',
     publicLoginChange: ' Het blijft aan zolang een nieuwe login-provider klaarstaat (of een wijziging halverwege is): de test-aanmelding werkt alleen daar.',
     publicThroughArcanum: ' Uitschakelen kan alleen via Arcanum: {url}',
     publicNotLinked: 'Nog niet gekoppeld aan Arcanum — dat gebeurt vanzelf bij de volgende update.',

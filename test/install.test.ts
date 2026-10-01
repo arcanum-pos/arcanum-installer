@@ -726,7 +726,7 @@ describe("behind Arcanum (the installer's own address)", () => {
 
     const key = installerKey();
     const before = await call('GET', '/api/public-access', undefined, false, viaArcanum(key));
-    expect(before.body).toMatchObject({ linked: true, directUrl: DIRECT, directEnabled: true, shouldClose: true, keptOpen: false, loginChange: false, via: 'arcanum' });
+    expect(before.body).toMatchObject({ linked: true, directUrl: DIRECT, directEnabled: true, shouldClose: true, closable: true, keptOpen: false, loginChange: false, via: 'arcanum' });
     const closed = await call('POST', '/api/public-access/close', {}, false, viaArcanum(key));
     expect(closed.status, JSON.stringify(closed.body)).toBe(200);
     expect(closed.body.behindArcanum).toMatchObject({ publicAccessRemoved: true, keptOpen: false });
@@ -736,8 +736,8 @@ describe("behind Arcanum (the installer's own address)", () => {
     const opened = await call('POST', '/api/public-access/open', {}, false, viaArcanum(key));
     expect(opened.body.behindArcanum).toMatchObject({ publicAccessRemoved: false, keptOpen: true });
     expect(fakes.cf.workersDev.get('my-installer')).toBe(true);
-    // Kept open on purpose: nothing closes it by itself any more.
-    expect((await call('GET', '/api/public-access', undefined, false, viaArcanum(key))).body).toMatchObject({ directEnabled: true, shouldClose: false, keptOpen: true });
+    // Kept open on purpose: a visit through Arcanum leaves it on — only "Open je Arcanum" (closable) still closes it.
+    expect((await call('GET', '/api/public-access', undefined, false, viaArcanum(key))).body).toMatchObject({ directEnabled: true, shouldClose: false, closable: true, keptOpen: true });
     await call('POST', '/api/public-access/close', {}, false, viaArcanum(key));
     expect(fakes.cf.workersDev.get('my-installer')).toBe(false);
     expect((await call('GET', '/api/public-access', undefined, false, viaArcanum(key))).body).toMatchObject({ shouldClose: true, keptOpen: false });
@@ -776,6 +776,9 @@ describe("behind Arcanum (the installer's own address)", () => {
     // Decided when it's clicked, from the state right then (not whatever the page loaded earlier).
     expect(html).toContain("$('[data-open]').addEventListener('click', async (ev) => {");
     expect(html).toContain("try { p = await api('api/public-access'); } catch {}");
+    // "Open je Arcanum" closes it even when it was switched back on by hand.
+    expect(html).toContain("const passesBy = (p) => !!(p && p.closable && p.directEnabled !== false);");
+    expect(html).toContain("if (p.closable && p.directEnabled === true && p.via === 'arcanum') await api('api/public-access/close', {});");
     expect(html).toContain("params.get('naar') === 'console'");
     expect(html).toContain("new URL('../console', location.href)");
   });

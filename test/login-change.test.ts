@@ -419,7 +419,7 @@ describe("the installer's own address during a change", () => {
     const staged = await call('POST', '/api/login-change/stage', NEW_PROVIDER, via);
     expect(staged.status, JSON.stringify(staged.body)).toBe(200);
     expect(fakes.cf.workersDev.get('arcanum-installer')).toBe(true);
-    expect((await call('GET', '/api/public-access', undefined, via)).body).toMatchObject({ directEnabled: true, loginChange: true, shouldClose: false });
+    expect((await call('GET', '/api/public-access', undefined, via)).body).toMatchObject({ directEnabled: true, loginChange: true, shouldClose: false, closable: false });
     const close = await call('POST', '/api/public-access/close', {}, via);
     expect(close.status).toBe(409);
     expect(close.body.error).toMatch(/aanmelding/);

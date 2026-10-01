@@ -545,7 +545,7 @@ $('[data-public-close]').addEventListener('click', () => publicAction('api/publi
 // in, close, on to the console) — decided when it's clicked, from the
 // state right then, and in this tab: this page stops working here.
 const passByUrl = (url) => url + '/login?returnTo=' + encodeURIComponent('/installer/?naar=console');
-const passesBy = (p) => !!(p && p.linked && p.shouldClose && p.directEnabled !== false);
+const passesBy = (p) => !!(p && p.closable && p.directEnabled !== false);
 function openLink() {
   const a = $('[data-open]'); const url = status && status.address ? status.address.publicUrl : '';
   const own = !viaArcanum();
@@ -567,8 +567,9 @@ async function moveAndOpenConsole() {
   $('#moving').classList.remove('hidden');
   try {
     status = await api('api/status');
+    // Asked for by "Open je Arcanum": closed even when it was switched back on by hand.
     const p = await api('api/public-access');
-    if (closeNow(p)) await api('api/public-access/close', {});
+    if (p.closable && p.directEnabled === true && p.via === 'arcanum') await api('api/public-access/close', {});
   } catch (e) { console.error('Could not close the own address of the installer:', e); }
   location.replace(new URL('../console', location.href).toString());
 }

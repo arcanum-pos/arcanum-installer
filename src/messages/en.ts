@@ -162,7 +162,7 @@ export default {
     publicClosed: 'Its own address {url} is off: the installer can only be reached through Arcanum.',
     publicIsOpen: 'Its own address {url} is on.',
     publicWillClose: ' It switches off by itself as soon as you open the installer through Arcanum (Open your Arcanum).',
-    publicKeptOpen: ' You switched it back on — it stays on until you switch it off here.',
+    publicKeptOpen: ' You switched it back on — it stays on until you click Open your Arcanum again, or switch it off here.',
     publicLoginChange: ' It stays on while a new login provider is staged (or a change stopped half way): the test sign-in only works there.',
     publicThroughArcanum: ' Switching it off only works through Arcanum: {url}',
     publicNotLinked: 'Not linked to Arcanum yet — that happens by itself with the next update.',

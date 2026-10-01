@@ -97,8 +97,9 @@ Arcanum whose address is on the admin list (with a shared key,
    something switched it back on (the bootstrapper run again). A
    self-update through Arcanum leaves it off.
 3. **Geavanceerd → Toegang tot de installer** switches it back on
-   (`POST /api/public-access/open`) — then it stays on until it's switched
-   off there again (through Arcanum).
+   (`POST /api/public-access/open`) — then visits through Arcanum leave it
+   on, until the next *Open je Arcanum* (which always closes it, `closable`)
+   or until it's switched off there again (through Arcanum).
 4. **Aanmelding wijzigen** needs it (the test sign-in only works there):
    staging a change switches it on, and it stays on while a provider is
    staged or a switch stopped half way. Once applied (or cancelled), the

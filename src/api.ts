@@ -397,8 +397,8 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
     // that comes through Arcanum — "Open je Arcanum" passes by — closes
     // the own address (POST close, from the page). That request is the
     // proof the installer stays reachable. Geavanceerd can open it again
-    // ("kept open" until closed there); a login change opens it for as long
-    // as it lasts (state.ts directShouldClose).
+    // ("kept open" — until the next "Open je Arcanum", or closed there); a
+    // login change opens it for as long as it lasts (state.ts directShouldClose).
     if (path.startsWith('/api/public-access')) {
       if (!state.installed || !state.cloudflare) return json({ error: t.api.installFirst }, 409);
       const token = await tokenFor(env, state, sessionId);
@@ -415,7 +415,10 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
           directEnabled: cf ? await cf.isOnWorkersDev(state.cloudflare.accountId, script).catch(() => null) : null,
           keptOpen: !!state.behindArcanum?.keptOpen,
           loginChange: loginChangeActive(state),
+          // Closed by itself on a visit through Arcanum…
           shouldClose: directShouldClose(state),
+          // …and in any case by "Open je Arcanum" (also when it was switched back on by hand).
+          closable: !!state.behindArcanum && !loginChangeActive(state),
           via: access.via,
         });
       }
