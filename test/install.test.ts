@@ -758,6 +758,13 @@ describe("behind Arcanum (the installer's own address)", () => {
     expect(fakes.cf.workersDev.get('my-installer')).toBe(false);
   });
 
+  it('the page folds the install steps away (a progress line while it runs)', async () => {
+    const html = await (await SELF.fetch('https://installer.test/')).text();
+    expect(html).toMatch(/<details data-steps-box>\s*<summary class="soft">Details van de installatie<\/summary>[\s\S]*<ol class="steps" data-steps><\/ol>\s*<\/details>/);
+    expect(html).not.toMatch(/<details data-steps-box open/);
+    expect(html).toContain('<p class="soft hidden" data-progress></p>');
+  });
+
   it('the page passes "Open je Arcanum" by the installer behind Arcanum while its own address is still to be closed', async () => {
     const html = await (await SELF.fetch('https://installer.test/')).text();
     expect(html).toContain("'/login?returnTo=' + encodeURIComponent('/installer/?naar=console')");

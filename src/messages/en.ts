@@ -53,6 +53,7 @@ export default {
     installTitle: '5. Installation',
     quick: 'Arcanum will be at <code data-quick-url></code>, on your Cloudflare account <strong data-quick-account></strong>. Administrator: <span data-quick-admins></span>. Everything else is filled in — click Install.',
     rerun: 'Every step can safely be run again — interrupted or failed? Just click again.',
+    stepsDetails: 'Installation details',
     selfNote: 'This update brings a new installer. It is installed first, over this one, and then carries out the rest of the update. If that fails, nothing changes and this installer keeps working. New installer won’t start (this page no longer loads)? Roll it back in the Cloudflare dashboard: <em>Workers &amp; Pages → <span data-self-script>arcanum-installer</span> → Deployments</em> → the previous version → <em>Rollback</em>.',
     install: 'Install',
     changeTitle: 'Change sign-in',
@@ -151,6 +152,7 @@ export default {
     chooseAccount: 'Choose the account and confirm again.',
     noVersion: 'No version available — try again later.',
     retryIn: ' (again in 6 s)',
+    progress: 'Step {n} of {total}: {title}…',
     stepFailed: '{title}: {detail}',
     // The installer's own address (Geavanceerd → Toegang tot de installer).
     publicUnknown: 'Whether the installer’s own address is on can’t be seen without a Cloudflare token.',

@@ -88,6 +88,9 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   .recovery-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.35rem; font-weight: 600; letter-spacing: 0.06em; text-align: center; background: var(--muted); border-radius: var(--radius); padding: 12px; margin: 8px 0; user-select: all; }
   details.card > summary { font-weight: 600; cursor: pointer; }
   details.card[open] > summary { margin-bottom: 8px; }
+  /* The install's steps, one by one: there when wanted, folded away by default. */
+  details[data-steps-box] > summary { cursor: pointer; }
+  details[data-steps-box][open] > summary { margin-bottom: 8px; }
   details.card > div { display: grid; gap: 16px; }
   .error { color: var(--destructive); font-weight: 500; margin: 2px 0 0; }
   .error:empty { display: none; }
@@ -213,10 +216,15 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       <h2>${p.installTitle}</h2>
       <p data-quick>${p.quick}</p>
       <div data-quick-version style="display:grid;gap:6px"><label for="quick-version">${p.version}</label><select id="quick-version"></select></div>
-      <p class="soft">${p.rerun}</p>
-      <p class="soft hidden" data-self-note>${p.selfNote}</p>
-      <ol class="steps" data-steps></ol>
-      <div class="row"><button data-run>${p.install}</button></div><p class="error" data-error></p>
+      <div class="row"><button data-run>${p.install}</button></div>
+      <p class="soft hidden" data-progress></p>
+      <p class="error" data-error></p>
+      <details data-steps-box>
+        <summary class="soft">${p.stepsDetails}</summary>
+        <p class="soft">${p.rerun}</p>
+        <p class="soft hidden" data-self-note>${p.selfNote}</p>
+        <ol class="steps" data-steps></ol>
+      </details>
     </section>
 
     <section id="s-change" class="card hidden">
@@ -642,6 +650,9 @@ document.addEventListener('submit', async (ev) => {
   } catch (e) { err.textContent = e.message; if (e.data && e.data.checks) showChecks(e.data.checks); } finally { button.disabled = false; }
 });
 
+// While installing: which step it's on (the steps themselves are folded away).
+function progress(text) { const el = $('[data-progress]'); el.textContent = text; el.classList.toggle('hidden', !text); }
+
 let running = false;
 async function runAll() {
   running = true; render(); const err = $('#s-install [data-error]'); err.textContent = '';
@@ -650,13 +661,16 @@ async function runAll() {
     const version = $('#quick-version').value;
     if (!version) throw new Error(M.noVersion);
     if (!status.release || status.release.version !== version) { status = await api('api/release', { version }); render(); }
-    for (const step of status.steps) {
+    const total = status.steps.length;
+    for (const [i, step] of status.steps.entries()) {
       if (step.status === 'done') continue;
+      const at = fmt(M.progress, { n: i + 1, total, title: step.title });
+      progress(at);
       for (let attempt = 0; ; attempt++) {
         const li = $('[data-id="' + CSS.escape(step.id) + '"]'); if (li) li.className = 'running';
         const r = await api('api/step', { id: step.id });
         if (r.status === 'done') break;
-        if (r.status === 'retry' && attempt < 20) { if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
+        if (r.status === 'retry' && attempt < 20) { progress(at + ' — ' + r.detail + M.retryIn); if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
         await refresh(); throw new Error(fmt(M.stepFailed, { title: step.title, detail: r.detail }));
       }
       // The new installer takes over from the next request: give Cloudflare a moment.
@@ -664,7 +678,7 @@ async function runAll() {
       await refresh();
     }
   } catch (e) { err.textContent = e.message; if (e.data && e.data.needsToken) $('#token').focus(); }
-  finally { running = false; await refresh().catch(() => {}); }
+  finally { running = false; progress(''); await refresh().catch(() => {}); }
 }
 $('[data-run]').addEventListener('click', runAll);
 $('[data-logout-button]').addEventListener('click', async () => { await api('api/logout', {}); show(false); });

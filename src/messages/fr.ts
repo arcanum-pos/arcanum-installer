@@ -53,6 +53,7 @@ export default {
     installTitle: '5. Installation',
     quick: 'Arcanum sera sur <code data-quick-url></code>, sur votre compte Cloudflare <strong data-quick-account></strong>. Administrateur : <span data-quick-admins></span>. Tout le reste est rempli — cliquez sur Installer.',
     rerun: 'Chaque étape peut être relancée sans risque — interrompue ou échouée ? Cliquez simplement à nouveau.',
+    stepsDetails: 'Détails de l’installation',
     selfNote: 'Cette mise à jour apporte un nouvel installateur. Il est d’abord installé, par-dessus celui-ci, puis exécute le reste de la mise à jour. Si cela échoue, rien ne change et cet installateur continue de fonctionner. Le nouvel installateur ne démarre pas (cette page ne se charge plus) ? Rétablissez-le dans le tableau de bord Cloudflare : <em>Workers &amp; Pages → <span data-self-script>arcanum-installer</span> → Deployments</em> → la version précédente → <em>Rollback</em>.',
     install: 'Installer',
     changeTitle: 'Modifier la connexion',
@@ -151,6 +152,7 @@ export default {
     chooseAccount: 'Choisissez le compte et confirmez à nouveau.',
     noVersion: 'Aucune version disponible — réessayez plus tard.',
     retryIn: ' (nouvel essai dans 6 s)',
+    progress: 'Étape {n} sur {total} : {title}…',
     stepFailed: '{title} : {detail}',
     // The installer's own address (Geavanceerd → Toegang tot de installer).
     publicUnknown: 'Sans jeton Cloudflare, impossible de voir si l’adresse propre de l’installateur est active.',

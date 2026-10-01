@@ -63,6 +63,7 @@ const nl = {
     installTitle: '5. Installeren',
     quick: 'Arcanum komt op <code data-quick-url></code>, op je Cloudflare-account <strong data-quick-account></strong>. Beheerder: <span data-quick-admins></span>. Al de rest is ingevuld — klik op Installeren.',
     rerun: 'Elke stap kan veilig opnieuw uitgevoerd worden — onderbroken of mislukt? Klik gewoon opnieuw.',
+    stepsDetails: 'Details van de installatie',
     selfNote: 'Deze update brengt een nieuwe installer mee. Die wordt eerst geïnstalleerd, over deze heen, en voert daarna de rest van de update uit. Lukt dat niet, dan verandert er niets en blijft deze installer werken. Start de nieuwe installer niet (deze pagina laadt niet meer)? Zet hem terug in het Cloudflare-dashboard: <em>Workers &amp; Pages → <span data-self-script>arcanum-installer</span> → Deployments</em> → de vorige versie → <em>Rollback</em>.',
     install: 'Installeren',
     changeTitle: 'Aanmelding wijzigen',
@@ -164,6 +165,7 @@ const nl = {
     chooseAccount: 'Kies het account en bevestig opnieuw.',
     noVersion: 'Geen versie beschikbaar — probeer straks opnieuw.',
     retryIn: ' (opnieuw over 6 s)',
+    progress: 'Stap {n} van {total}: {title}…',
     stepFailed: '{title}: {detail}',
     // The installer's own address (Geavanceerd → Toegang tot de installer).
     publicUnknown: 'Of het eigen adres van de installer aan staat, is niet te zien zonder Cloudflare-token.',
