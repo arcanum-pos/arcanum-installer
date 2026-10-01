@@ -765,9 +765,17 @@ describe("behind Arcanum (the installer's own address)", () => {
     expect(html).toContain('<p class="soft hidden" data-progress></p>');
   });
 
+  it('the page lists what the install will use, one per line, in one style', async () => {
+    const html = await (await SELF.fetch('https://installer.test/')).text();
+    expect(html).toMatch(/<dl class="facts">\s*<dt>Adres<\/dt><dd data-quick-url><\/dd>\s*<dt>Cloudflare-account<\/dt><dd data-quick-account><\/dd>\s*<dt>Beheerders<\/dt><dd data-quick-admins><\/dd>\s*<\/dl>/);
+  });
+
   it('the page passes "Open je Arcanum" by the installer behind Arcanum while its own address is still to be closed', async () => {
     const html = await (await SELF.fetch('https://installer.test/')).text();
     expect(html).toContain("'/login?returnTo=' + encodeURIComponent('/installer/?naar=console')");
+    // Decided when it's clicked, from the state right then (not whatever the page loaded earlier).
+    expect(html).toContain("$('[data-open]').addEventListener('click', async (ev) => {");
+    expect(html).toContain("try { p = await api('api/public-access'); } catch {}");
     expect(html).toContain("params.get('naar') === 'console'");
     expect(html).toContain("new URL('../console', location.href)");
   });

@@ -154,9 +154,10 @@ export function publicUrl(state: InstallerState): string | null {
   return state.customDomain ? `https://${state.customDomain}` : workersDevUrl(state);
 }
 
-// "Aanmelding wijzigen" under way: staged, or applied and still undoable.
-// The test sign-in and the recovery code need the installer's own address.
-export const loginChangeActive = (state: InstallerState) => !!(state.loginChange?.staged || state.loginChange?.applied);
+// "Aanmelding wijzigen" under way: a provider staged (its test sign-in
+// needs the installer's own address), or a switch that stopped half way.
+// Once applied it no longer counts — undoing works through Arcanum too.
+export const loginChangeActive = (state: InstallerState) => !!(state.loginChange?.staged || state.loginChange?.applied?.phase === 'started');
 
 // Whether the installer's own address should be off: linked to Arcanum,
 // not kept open on purpose, no login change under way.

@@ -428,4 +428,16 @@ describe("the installer's own address during a change", () => {
     await call('POST', '/api/login-change/cancel', {}, via);
     expect((await call('GET', '/api/public-access', undefined, via)).body).toMatchObject({ loginChange: false, shouldClose: true });
   });
+
+  it('once applied, the change no longer keeps it on: the next visit through Arcanum may close it (undo works through Arcanum)', async () => {
+    fakes.releases.offerUpdate = true;
+    await call('POST', '/api/release', { version: NEXT_VERSION });
+    await runAll();
+    await seedMemberships();
+    fakes.cf.workersDev.set('arcanum-installer', true);
+    await stageAndTest();
+    expect((await call('GET', '/api/public-access')).body).toMatchObject({ loginChange: true, shouldClose: false });
+    expect((await call('POST', '/api/login-change/apply', {})).status).toBe(200);
+    expect((await call('GET', '/api/public-access')).body).toMatchObject({ directEnabled: true, loginChange: false, shouldClose: true });
+  });
 });

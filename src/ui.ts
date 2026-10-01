@@ -116,6 +116,10 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   ul.checks li.bad { color: var(--destructive); } ul.checks li.bad::before { content: "✕"; }
   ul.checks li.note { color: var(--muted-foreground); } ul.checks li.note::before { content: "!"; }
   ul.people { margin: 2px 0 0; padding-left: 1.2em; }
+  /* What the install will use: label and value, one per line, all in the same type. */
+  dl.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; }
+  dl.facts dt { color: var(--muted-foreground); }
+  dl.facts dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -214,7 +218,12 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
 
     <section id="s-install" class="card">
       <h2>${p.installTitle}</h2>
-      <p data-quick>${p.quick}</p>
+      <dl class="facts">
+        <dt>${p.quickAddress}</dt><dd data-quick-url></dd>
+        <dt>${p.quickAccount}</dt><dd data-quick-account></dd>
+        <dt>${p.quickAdmins}</dt><dd data-quick-admins></dd>
+      </dl>
+      <p>${p.quickRest}</p>
       <div data-quick-version style="display:grid;gap:6px"><label for="quick-version">${p.version}</label><select id="quick-version"></select></div>
       <div class="row"><button data-run>${p.install}</button></div>
       <p class="soft hidden" data-progress></p>
@@ -531,16 +540,26 @@ async function publicAction(path) {
 $('[data-public-open]').addEventListener('click', () => publicAction('api/public-access/open'));
 $('[data-public-close]').addEventListener('click', () => publicAction('api/public-access/close'));
 
-// "Open je Arcanum": the console — on the installer's own address, while
+// "Open je Arcanum": the console. On the installer's own address, while
 // that's still to be closed, by way of the installer behind Arcanum (sign
-// in, close, on to the console), in this tab: this page stops working here.
+// in, close, on to the console) — decided when it's clicked, from the
+// state right then, and in this tab: this page stops working here.
+const passByUrl = (url) => url + '/login?returnTo=' + encodeURIComponent('/installer/?naar=console');
+const passesBy = (p) => !!(p && p.linked && p.shouldClose && p.directEnabled !== false);
 function openLink() {
   const a = $('[data-open]'); const url = status && status.address ? status.address.publicUrl : '';
-  const p = publicAccess;
-  const passBy = !viaArcanum() && p && p.linked && p.shouldClose && p.directEnabled !== false;
-  a.href = passBy ? url + '/login?returnTo=' + encodeURIComponent('/installer/?naar=console') : url + '/console';
-  if (passBy) a.removeAttribute('target'); else a.target = '_blank';
+  const own = !viaArcanum();
+  a.href = own && passesBy(publicAccess) ? passByUrl(url) : url + '/console';
+  if (own) a.removeAttribute('target'); else a.target = '_blank';
 }
+$('[data-open]').addEventListener('click', async (ev) => {
+  if (viaArcanum() || !status || !status.address) return;
+  ev.preventDefault();
+  const url = status.address.publicUrl;
+  let p = publicAccess;
+  try { p = await api('api/public-access'); } catch {}
+  location.href = passesBy(p) ? passByUrl(url) : url + '/console';
+});
 
 // Arrived from "Open je Arcanum" (through Arcanum): close the own address,
 // then on to the console — whatever happens, the console is where this goes.
@@ -550,7 +569,7 @@ async function moveAndOpenConsole() {
     status = await api('api/status');
     const p = await api('api/public-access');
     if (closeNow(p)) await api('api/public-access/close', {});
-  } catch {}
+  } catch (e) { console.error('Could not close the own address of the installer:', e); }
   location.replace(new URL('../console', location.href).toString());
 }
 

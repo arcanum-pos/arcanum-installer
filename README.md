@@ -99,9 +99,10 @@ Arcanum whose address is on the admin list (with a shared key,
 3. **Geavanceerd → Toegang tot de installer** switches it back on
    (`POST /api/public-access/open`) — then it stays on until it's switched
    off there again (through Arcanum).
-4. **Aanmelding wijzigen** needs it (the test sign-in and the recovery code
-   only work there): staging a change switches it on, and it stays on until
-   the change can no longer be undone or is cancelled.
+4. **Aanmelding wijzigen** needs it (the test sign-in only works there):
+   staging a change switches it on, and it stays on while a provider is
+   staged or a switch stopped half way. Once applied (or cancelled), the
+   next "Open je Arcanum" closes it again; undoing works through Arcanum.
 
 With the own address off and Arcanum's sign-in broken, the way back in is
 the bootstrapper: *Eigen installatie* again re-uploads this installer onto
