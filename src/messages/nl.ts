@@ -179,6 +179,8 @@ const nl = {
     publicLoginChange: ' Het blijft aan zolang een nieuwe login-provider klaarstaat (of een wijziging halverwege is): de test-aanmelding werkt alleen daar.',
     publicThroughArcanum: ' Uitschakelen kan alleen via Arcanum: {url}',
     publicNotLinked: 'Nog niet gekoppeld aan Arcanum — dat gebeurt vanzelf bij de volgende update.',
+    backToStart: 'Terug naar {host}',
+    backToStartHint: 'Arcanum gebruikt nu een andere login-provider. Hiermee zet je de client van deze installatie bij {host} klaar — dezelfde waarmee je je bij deze installer aanmeldt; er hoeft niets ingevuld te worden. Daarna test en pas je toe zoals hierboven.',
   },
 
   api: {
@@ -217,6 +219,7 @@ const nl = {
     notLinked: 'De installer is nog niet gekoppeld aan Arcanum — dat gebeurt bij de volgende update',
     closeThroughArcanum: (url: string) => `Open de installer via ${url} om zijn eigen adres uit te schakelen — zo weet je zeker dat hij bereikbaar blijft`,
     closeAfterLoginChange: 'Niet tijdens een wijziging van de aanmelding: de test-aanmelding en de herstelcode hebben het eigen adres van de installer nodig',
+    noStartClient: 'Deze installatie heeft geen eigen client bij login.kaboutersoft.be (ze werd niet via start.kaboutersoft.be gemaakt)',
   },
 
   steps: {

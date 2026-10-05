@@ -166,6 +166,8 @@ export default {
     publicLoginChange: ' It stays on while a new login provider is staged (or a change stopped half way): the test sign-in only works there.',
     publicThroughArcanum: ' Switching it off only works through Arcanum: {url}',
     publicNotLinked: 'Not linked to Arcanum yet — that happens by itself with the next update.',
+    backToStart: 'Back to {host}',
+    backToStartHint: 'Arcanum now uses another login provider. This stages this installation’s own client at {host} — the one you sign in to this installer with; nothing to type. Then test and apply as above.',
   },
 
   api: {
@@ -204,6 +206,7 @@ export default {
     notLinked: 'The installer isn’t linked to Arcanum yet — that happens with the next update',
     closeThroughArcanum: (url: string) => `Open the installer at ${url} to switch its own address off — that way you know for sure it stays reachable`,
     closeAfterLoginChange: 'Not during a sign-in change: the test sign-in and the recovery code need the installer’s own address',
+    noStartClient: 'This installation has no client of its own at login.kaboutersoft.be (it wasn’t made through start.kaboutersoft.be)',
   },
 
   steps: {

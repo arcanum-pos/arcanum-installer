@@ -166,6 +166,8 @@ export default {
     publicLoginChange: ' Elle reste active tant qu’un nouveau fournisseur de connexion est préparé (ou qu’une modification est à moitié faite) : la connexion de test ne fonctionne que là.',
     publicThroughArcanum: ' La désactivation ne se fait que via Arcanum : {url}',
     publicNotLinked: 'Pas encore lié à Arcanum — cela se fait automatiquement à la prochaine mise à jour.',
+    backToStart: 'Revenir à {host}',
+    backToStartHint: 'Arcanum utilise maintenant un autre fournisseur de connexion. Ceci prépare le client de cette installation chez {host} — celui avec lequel vous vous connectez à cet installateur ; rien à saisir. Ensuite, testez et appliquez comme ci-dessus.',
   },
 
   api: {
@@ -204,6 +206,7 @@ export default {
     notLinked: 'L’installateur n’est pas encore lié à Arcanum — cela se fait à la prochaine mise à jour',
     closeThroughArcanum: (url: string) => `Ouvrez l’installateur via ${url} pour désactiver sa propre adresse — vous êtes ainsi sûr qu’il reste accessible`,
     closeAfterLoginChange: 'Pas pendant une modification de la connexion : la connexion de test et le code de récupération ont besoin de l’adresse propre de l’installateur',
+    noStartClient: 'Cette installation n’a pas de client propre chez login.kaboutersoft.be (elle n’a pas été créée via start.kaboutersoft.be)',
   },
 
   steps: {

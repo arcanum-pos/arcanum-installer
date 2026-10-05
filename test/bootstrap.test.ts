@@ -122,7 +122,7 @@ describe('the handoff', () => {
     expect(cookie).toMatch(/^arcanum_installer=/);
 
     const status = (await call('GET', '/api/status')).body;
-    expect(status.bootstrapped).toEqual({ owner: OWNER.email, issuer: 'https://login.test' });
+    expect(status.bootstrapped).toEqual({ owner: OWNER.email, issuer: 'https://login.test', startClient: { issuer: 'https://login.test', clientId: INSTANCE_CLIENT.id } });
     expect(status.access).toEqual({ via: 'session', email: OWNER.email });
     expect(status.cloudflare).toMatchObject({ accountId: 'acc-1', accountName: 'Scouts Elewijt', subdomain: SUBDOMAIN, remember: true, tokenAvailable: true });
     expect(status.login).toMatchObject({ issuer: 'https://login.test', clientId: INSTANCE_CLIENT.id, clientSecretSet: true });

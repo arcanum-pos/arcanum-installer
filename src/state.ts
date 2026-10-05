@@ -111,6 +111,9 @@ export interface InstallerState {
     importedAt: string;
     owner: { email: string; sub: string };
     login?: SignInClient;
+    // Its own client at login.kaboutersoft.be, kept once the sign-in above
+    // moved to another provider — so Arcanum can always go back to it.
+    startClient?: SignInClient;
     handoffs: string[];
     recoveryHash?: string;
   };
@@ -152,6 +155,14 @@ export function workersDevUrl(state: InstallerState): string | null {
 export function publicUrl(state: InstallerState): string | null {
   if (!state.cloudflare) return null;
   return state.customDomain ? `https://${state.customDomain}` : workersDevUrl(state);
+}
+
+// This installation's own client at login.kaboutersoft.be (the bootstrapper's):
+// kept aside after a move away, else the sign-in while it still is that one.
+export function startClientOf(state: InstallerState): SignInClient | undefined {
+  const b = state.bootstrap;
+  if (!b) return undefined;
+  return b.startClient ?? (b.login && b.login.selfService !== false ? b.login : undefined);
 }
 
 // "Aanmelding wijzigen" under way: a provider staged (its test sign-in

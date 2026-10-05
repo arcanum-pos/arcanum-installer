@@ -195,6 +195,11 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       <p>${p.loginUrls}</p>
       <p data-summary class="soft"></p>
       <p data-login-installed class="soft hidden">${p.loginInstalled}</p>
+      <div data-back-to-start class="hidden" style="display:grid;gap:6px">
+        <button type="button" class="secondary" data-back-to-start-button></button>
+        <p class="soft" data-back-to-start-hint></p>
+        <p class="error" data-back-to-start-error></p>
+      </div>
       <form data-form="login-provider">
         <label for="issuer">${p.issuer}</label><input id="issuer" name="issuer" type="url" placeholder="https://accounts.google.com" required>
         <label for="clientId">${p.clientId}</label><input id="clientId" name="clientId" type="text" required>
@@ -421,6 +426,15 @@ function render() {
   $('#s-public').classList.toggle('hidden', !s.installed);
   if (s.installed) loadPublicAccess();
   $('[data-login-installed]').classList.toggle('hidden', !s.installed);
+  // Arcanum on another provider than this installation's own client at login.kaboutersoft.be: one click back.
+  const start = s.bootstrapped && s.bootstrapped.startClient;
+  const elsewhere = !!(s.installed && start && s.login && (s.login.issuer !== start.issuer || s.login.clientId !== start.clientId));
+  $('[data-back-to-start]').classList.toggle('hidden', !elsewhere);
+  if (elsewhere) {
+    const host = new URL(start.issuer).host;
+    $('[data-back-to-start-button]').textContent = fmt(M.backToStart, { host });
+    $('[data-back-to-start-hint]').textContent = fmt(M.backToStartHint, { host });
+  }
   const changing = !!(s.installed && s.loginChange && (s.loginChange.staged || s.loginChange.applied));
   $('#s-change').classList.toggle('hidden', !changing);
   if (changing) loadChange();
@@ -500,6 +514,14 @@ async function changeAction(path, question) {
   finally { for (const b of document.querySelectorAll('#s-change button')) b.disabled = false; loadChange(); }
 }
 $('[data-change-apply]').addEventListener('click', () => changeAction('api/login-change/apply', M.confirmApply));
+$('[data-back-to-start-button]').addEventListener('click', async () => {
+  const button = $('[data-back-to-start-button]'); const err = $('[data-back-to-start-error]'); err.textContent = ''; button.disabled = true;
+  try {
+    const staged = await api('api/login-change/stage', { startClient: true });
+    showChecks(staged.checks || []); testOutcome = ''; await refresh(); renderChange(staged);
+    $('#s-change').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) { err.textContent = e.message; } finally { button.disabled = false; }
+});
 $('[data-change-finish]').addEventListener('click', () => changeAction('api/login-change/apply'));
 $('[data-change-undo]').addEventListener('click', () => changeAction('api/login-change/undo', M.confirmUndo));
 $('[data-change-cancel]').addEventListener('click', () => changeAction('api/login-change/cancel'));

@@ -126,12 +126,12 @@ const stage = (body: Record<string, unknown> = NEW_PROVIDER) => call('POST', '/a
 // The admin's browser: /auth/test-login (with the installer session) → the new
 // provider, where they sign in → back to /auth/test-callback (without the
 // Strict session cookie — only the pending cookie).
-async function testSignIn(claims: Record<string, unknown>, opts: { pendingCookie?: string } = {}) {
+async function testSignIn(claims: Record<string, unknown>, opts: { pendingCookie?: string; at?: 'new' | 'start' } = {}) {
   const start = await call('GET', '/auth/test-login');
   expect(start.status).toBe(302);
   const authorize = start.headers.get('Location')!;
   const pending = start.setCookie.find((c) => c.startsWith('arcanum_installer_test='))!.split(';')[0];
-  const code = fakes.newIssuer.approve(authorize, claims);
+  const code = (opts.at === 'start' ? fakes.issuer : fakes.newIssuer).approve(authorize, claims);
   const back = await call('GET', `/auth/test-callback?code=${code}&state=${new URL(authorize).searchParams.get('state')}`, undefined, { cookie: opts.pendingCookie ?? pending });
   return { authorize: new URL(authorize), back: back.headers.get('Location') };
 }
@@ -457,5 +457,45 @@ describe("the installer's own address during a change", () => {
     expect((await call('GET', '/api/public-access')).body).toMatchObject({ loginChange: true, shouldClose: false });
     expect((await call('POST', '/api/login-change/apply', {})).status).toBe(200);
     expect((await call('GET', '/api/public-access')).body).toMatchObject({ directEnabled: true, loginChange: false, shouldClose: true });
+  });
+});
+
+describe('back to login.kaboutersoft.be ("Terug naar …")', () => {
+  beforeEach(install);
+
+  it("after a move to another provider, one click stages this installation's own client again — callbacks registered, tested, applied — and the installer signs in with it again", async () => {
+    await stageAndTest();
+    expect((await call('POST', '/api/login-change/apply', {})).status).toBe(200);
+    const away = (await call('GET', '/api/status')).body;
+    expect(away.login.issuer).toBe('https://nieuw.test');
+    expect(away.bootstrapped.startClient).toEqual({ issuer: 'https://login.test', clientId: INSTANCE_CLIENT.id });
+
+    const staged = await call('POST', '/api/login-change/stage', { startClient: true });
+    expect(staged.status, JSON.stringify(staged.body)).toBe(200);
+    expect(staged.body.staged).toMatchObject({ issuer: 'https://login.test', clientId: INSTANCE_CLIENT.id });
+    // What the switch needs, registered with that client (with its own credentials).
+    expect(fakes.issuer.client.redirect_uris).toEqual(expect.arrayContaining([`${ORIGIN}/auth/test-callback`, `${PUBLIC_URL}/callback`]));
+
+    // Jan's membership carries the address of the provider it moved to.
+    expect((await testSignIn({ sub: 'user-123', email: 'jan@nieuw.test', email_verified: true }, { at: 'start' })).back).toBe('/?aanmeldtest=ok');
+    const back = await call('POST', '/api/login-change/apply', {});
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+    const status = (await call('GET', '/api/status')).body;
+    expect(status.login).toMatchObject({ issuer: 'https://login.test', clientId: INSTANCE_CLIENT.id });
+    expect(status.bootstrapped.startClient).toEqual({ issuer: 'https://login.test', clientId: INSTANCE_CLIENT.id });
+    expect(binding('arcanum-backend', 'DEFAULT_IDP_ISSUER_URL').text).toBe('https://login.test');
+    expect((await row('m1')).issuer).toBe('https://login.test');
+    // The installer's own sign-in is that client again (self-service included: a custom domain registers there).
+    expect((await call('GET', '/api/login-options', undefined, { cookie: null })).body.account).toEqual({ issuer: 'https://login.test' });
+  });
+
+  it("an installation without its own client there can't", async () => {
+    // Arcanum already on it: the stage still works (nothing to go back to is fine); without a bootstrap record it's refused.
+    const state = JSON.parse((await env.INSTALLER_STATE.get('state'))!);
+    delete state.bootstrap;
+    await env.INSTALLER_STATE.put('state', JSON.stringify(state));
+    const refused = await call('POST', '/api/login-change/stage', { startClient: true });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toMatch(/geen eigen client/);
   });
 });

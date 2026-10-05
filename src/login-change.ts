@@ -44,7 +44,7 @@ import { Cloudflare } from './cloudflare';
 import { safeEqual } from './crypto';
 import { checkClients, type ClientCheck } from './idp-check';
 import { claimsOf, discovery, pkceChallenge, random, sameIssuer } from './oidc';
-import { isAdmin, loadState, publicUrl, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState, type LoginSettings } from './state';
+import { isAdmin, loadState, publicUrl, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState, type LoginSettings, startClientOf } from './state';
 import { runStep } from './steps';
 import { messageOf, type Messages } from './i18n';
 
@@ -416,10 +416,18 @@ export async function applyChange(ctx: ChangeContext): Promise<Outcome & { resig
     await saveState(env, state);
     return refuse(t.change.applyHalfway(messageOf(err, t)), 502);
   }
-  // This page's own sign-in follows (bootstrapped installers).
+  // This page's own sign-in follows (bootstrapped installers) — unless
+  // Arcanum moved to the very client this page already signs in with (back
+  // to login.kaboutersoft.be): then it stays as it is, self-service included.
+  const start = startClientOf(state);
   if (state.bootstrap) {
-    const client = browserClient(staged.login);
-    state.bootstrap.login = { issuer: staged.login.issuer, clientId: client.clientId, clientSecret: client.clientSecret, selfService: false };
+    if (start && start.issuer === staged.login.issuer && start.clientId === staged.login.clientId) {
+      state.bootstrap.login = start;
+    } else {
+      state.bootstrap.startClient ??= start;
+      const client = browserClient(staged.login);
+      state.bootstrap.login = { issuer: staged.login.issuer, clientId: client.clientId, clientSecret: client.clientSecret, selfService: false };
+    }
   }
   applied.phase = 'done';
   delete change.staged;

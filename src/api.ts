@@ -9,10 +9,11 @@ import { canSignInWithAccount } from './oidc';
 import { Cloudflare, CloudflareError } from './cloudflare';
 import type { WorkerDescriptor } from './contract';
 import { compareVersions, fetchIndex, fetchManifest, fetchReleaseJson, installable, ReleaseError } from './releases';
-import { directShouldClose, INSTALLER_KEY_SECRET, installationStarted, isAdmin, loadState, loginChangeActive, publicUrl, rootSecret, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
+import { directShouldClose, startClientOf, INSTALLER_KEY_SECRET, installationStarted, isAdmin, loadState, loginChangeActive, publicUrl, rootSecret, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
 import { blueprintFrom, planSteps, runStep } from './steps';
 import { safeEqual } from './crypto';
-import { applyChange, changeInfo, changesIdentity, dropExpiredSnapshot, providerIdentity, readLoginProvider, undoChange } from './login-change';
+import { applyChange, changeInfo, changesIdentity, dropExpiredSnapshot, providerIdentity, readLoginProvider, TEST_CALLBACK_PATH, undoChange } from './login-change';
+import { addClientUris } from './auth-client';
 import { messageOf, textsFor, type Messages } from './i18n';
 
 const TOKEN_PERMISSIONS = [
@@ -128,7 +129,14 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
     probeUrl: url && state.probePath ? `${url}${state.probePath}` : null,
     access: access ? { via: access.via, email: access.email } : null,
     // Who the bootstrapper set it up for, and the provider admins sign in to this page with.
-    bootstrapped: state.bootstrap ? { owner: state.bootstrap.owner.email, issuer: state.bootstrap.login?.issuer ?? null } : null,
+    bootstrapped: state.bootstrap
+      ? {
+          owner: state.bootstrap.owner.email,
+          issuer: state.bootstrap.login?.issuer ?? null,
+          // Its own client at login.kaboutersoft.be ("Terug naar …"), while it still is that one.
+          startClient: startClientOf(state) ? { issuer: startClientOf(state)!.issuer, clientId: startClientOf(state)!.clientId } : null,
+        }
+      : null,
     installer: { release: env.INSTALLER_RELEASE ?? null, selfUpdate: state.selfUpdate ?? null },
     // "Aanmelding wijzigen": a staged provider, or a change that can still be undone.
     loginChange: {
@@ -290,8 +298,29 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
 
       if (path === '/api/login-change/stage' && request.method === 'POST') {
         if (state.loginChange?.applied?.phase === 'started') return json({ error: t.api.finishChangeFirst }, 409);
-        const b = await body(request);
-        const fallback = state.loginChange?.staged?.login.issuer === providerIdentity(b).issuer ? state.loginChange.staged.login : state.login;
+        let b = await body(request);
+        let fallback = state.loginChange?.staged?.login.issuer === providerIdentity(b).issuer ? state.loginChange.staged.login : state.login;
+        // "Terug naar login.kaboutersoft.be": this installation's own client
+        // there — the one the bootstrapper made, that this page signs in
+        // with. Its secret is only known here (sealed), so nothing is typed.
+        // First the addresses the switch needs are registered with it: this
+        // page's test sign-in, and Arcanum's own domain.
+        if (b.startClient === true) {
+          const own = startClientOf(state);
+          if (!own) return json({ error: t.api.noStartClient }, 409);
+          const url = publicUrl(state);
+          const workersDev = workersDevUrl(state);
+          try {
+            await addClientUris(own.issuer, { id: own.clientId, secret: await unsealValue(env, state, own.clientSecret) }, {
+              redirectUris: [`${origin}${TEST_CALLBACK_PATH}`, ...[url, workersDev].filter(Boolean).map((u) => `${u}/callback`)],
+              postLogoutRedirectUris: [url, workersDev].filter(Boolean) as string[],
+            });
+          } catch (err) {
+            return json({ error: messageOf(err, t) }, 502);
+          }
+          b = { issuer: own.issuer, clientId: own.clientId };
+          fallback = { issuer: own.issuer, clientId: own.clientId, clientSecret: own.clientSecret, authorizationEndpoint: `${own.issuer}/authorize` };
+        }
         const read = await readLoginProvider(env, state, b, fallback, t);
         if (!read.ok) return json({ error: read.error, ...(read.checks ? { checks: read.checks } : {}) }, read.status);
         // The test sign-in and the recovery code need the installer's own
