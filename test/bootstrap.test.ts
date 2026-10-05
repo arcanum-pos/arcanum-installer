@@ -423,8 +423,29 @@ describe('the kind of installation and its channel (only from the bootstrapper)'
     expect((await call('GET', '/api/status')).body.instance).toEqual({ kind: 'internal', channel: 'stable' });
   });
 
+  it("the demo: ORG_CREATION=internal and its console's install link (DEMO_INSTALL_URL) from the bootstrapper's address", async () => {
+    await useConfig(await bootstrapConfig({ instance: { kind: 'internal', channel: 'stable', startUrl: 'https://start.example.test' } }));
+    expect((await handoff()).status).toBe(200);
+    const releases = (await call('GET', '/api/releases')).body;
+    await call('POST', '/api/release', { version: releases.releases[0].version });
+    expect((await runAll()).failed).toBeNull();
+    expect(binding('arcanum-backend', 'ORG_CREATION').text).toBe('internal');
+    expect(binding('arcanum-backend', 'DEMO_INSTALL_URL')).toEqual({ type: 'plain_text', name: 'DEMO_INSTALL_URL', text: 'https://start.example.test' });
+  });
+
+  it('several organizations get no demo link', async () => {
+    await useConfig(await bootstrapConfig({ instance: { kind: 'admins', channel: 'stable', startUrl: 'https://start.example.test' } }));
+    await handoff();
+    const releases = (await call('GET', '/api/releases')).body;
+    await call('POST', '/api/release', { version: releases.releases[0].version });
+    expect((await runAll()).failed).toBeNull();
+    expect(binding('arcanum-backend', 'DEMO_INSTALL_URL')).toBeUndefined();
+  });
+
   it('an unknown kind or channel in the handover is refused as a whole', async () => {
     await useConfig(await bootstrapConfig({ instance: { kind: 'everything', channel: 'stable' } }));
+    expect((await handoff()).status).toBe(404);
+    await useConfig(await bootstrapConfig({ instance: { kind: 'internal', channel: 'stable', startUrl: 'javascript:alert(1)' } }));
     expect((await handoff()).status).toBe(404);
   });
 });

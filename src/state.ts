@@ -41,6 +41,9 @@ export interface InstanceSettings {
   kind: 'single' | 'admins' | 'internal';
   // 'dev': development builds (releases-dev.json) are offered too.
   channel: 'stable' | 'dev';
+  // The demo only: where its console's "Eigen installatie" link points
+  // (the backend's DEMO_INSTALL_URL) — the bootstrapper's own address.
+  startUrl?: string;
 }
 
 // This page's own sign-in client (oidc.ts). `selfService: false` once

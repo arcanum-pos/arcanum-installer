@@ -52,6 +52,8 @@ export interface InstallContext {
   // every own installation, unless the bootstrapper said otherwise (state.ts
   // InstanceSettings). Unset: 'single'.
   orgCreation?: OrgCreation;
+  // The demo only: the backend's DEMO_INSTALL_URL.
+  demoInstallUrl?: string;
 }
 
 export type OrgCreation = 'single' | 'admins' | 'internal';
@@ -178,12 +180,13 @@ export function migrationsPayload(migrations: WorkerDescriptor['durable_object_m
 // "internal". Applied last, replacing any descriptor value. Only the
 // bootstrapper can make an installation multi-org or a demo one
 // (ctx.orgCreation, from the handover — never a choice in the installer).
-export function ownInstanceVars(name: string, orgCreation: OrgCreation = 'single'): Record<string, string> {
-  return name === 'arcanum-backend' ? { ORG_CREATION: orgCreation } : {};
+export function ownInstanceVars(name: string, orgCreation: OrgCreation = 'single', demoInstallUrl?: string): Record<string, string> {
+  if (name !== 'arcanum-backend') return {};
+  return { ORG_CREATION: orgCreation, ...(orgCreation === 'internal' && demoInstallUrl ? { DEMO_INSTALL_URL: demoInstallUrl } : {}) };
 }
 
 export function uploadMetadata(descriptor: WorkerDescriptor, ctx: InstallContext): Record<string, unknown> {
-  const forced = ownInstanceVars(descriptor.name, ctx.orgCreation);
+  const forced = ownInstanceVars(descriptor.name, ctx.orgCreation, ctx.demoInstallUrl);
   const bindings = [
     ...descriptor.bindings.map((b) => resourceBinding(b, ctx)),
     ...Object.entries(descriptor.env)

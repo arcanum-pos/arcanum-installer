@@ -69,7 +69,10 @@ export function readBootstrapConfig(env: Env): Parsed {
     text(value.cloudflareToken) && text(value.accountId) && text(value.subdomain) && text(value.handoffCodeHash) && text(value.handoffExpiresAt) &&
     !!owner && text(owner.email) && text(owner.sub) &&
     (login === null || (!!login && text(login.issuer) && text(login.clientId) && text(login.clientSecret))) &&
-    (value.instance === undefined || (KINDS.includes((value.instance as InstanceSettings)?.kind) && CHANNELS.includes((value.instance as InstanceSettings)?.channel)));
+    (value.instance === undefined ||
+      (KINDS.includes((value.instance as InstanceSettings)?.kind) &&
+        CHANNELS.includes((value.instance as InstanceSettings)?.channel) &&
+        ((value.instance as InstanceSettings).startUrl === undefined || /^https:\/\/[^\s]+$/.test(String((value.instance as InstanceSettings).startUrl)))));
   return ok ? { config: value as unknown as BootstrapConfig } : null;
 }
 
@@ -130,10 +133,11 @@ export async function handoff(env: Env, state: InstallerState, code: string, ins
   // (the platform's own installations). Another kind on an installed one:
   // the backend gets its ORG_CREATION with "Verder installeren".
   if (config.instance) {
-    if (state.installed && state.instance?.kind !== config.instance.kind && (state.instance || config.instance.kind !== 'single')) {
+    const changed = state.instance?.kind !== config.instance.kind || state.instance?.startUrl !== config.instance.startUrl;
+    if (state.installed && changed && (state.instance || config.instance.kind !== 'single')) {
       for (const step of ['worker:arcanum-backend', 'verify']) delete state.steps[step];
     }
-    state.instance = { kind: config.instance.kind, channel: config.instance.channel };
+    state.instance = { kind: config.instance.kind, channel: config.instance.channel, ...(config.instance.startUrl ? { startUrl: config.instance.startUrl } : {}) };
   }
   const recoveryCode = newRecoveryCode();
   state.bootstrap = {
