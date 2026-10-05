@@ -423,12 +423,17 @@ describe('login provider options', () => {
     await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'arcanum-client', scopes: 'openid profile email' });
     expect((await runAll()).failed).toBeNull();
     expect(binding('arcanum-backend', 'DEFAULT_IDP_SCOPES').text).toBe('openid profile email');
+    // An admin sets the default mail account by hand (wrangler secret put).
+    const backendScript = fakes.cf.scripts.get('arcanum-backend')!;
+    backendScript.metadata.bindings.push({ type: 'secret_text', name: 'DEFAULT_SMTP_HOST', text: 'smtp.example.test' });
     // Back to the default scopes: nothing to send any more…
     expect((await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'arcanum-client', scopes: '' })).status).toBe(200);
     expect((await runAll()).failed).toBeNull();
     // …so it's removed, not left behind for the Worker to keep using.
     expect(binding('arcanum-backend', 'DEFAULT_IDP_SCOPES')).toBeUndefined();
     expect(fakes.cf.secretDeletes).toContainEqual({ script: 'arcanum-backend', name: 'DEFAULT_IDP_SCOPES' });
+    // A secret set by hand (the default mail account) is never touched.
+    expect(binding('arcanum-backend', 'DEFAULT_SMTP_HOST')).toEqual({ type: 'secret_text', name: 'DEFAULT_SMTP_HOST', text: 'smtp.example.test' });
     // What's still set stays, and an upload with nothing stale removes nothing.
     expect(binding('arcanum-backend', 'DEFAULT_IDP_CLIENT_SECRET').text).toBe(CLIENT_SECRET);
     const deletes = fakes.cf.secretDeletes.length;

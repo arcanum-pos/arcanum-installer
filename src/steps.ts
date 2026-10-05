@@ -84,6 +84,16 @@ async function appliedMigrations(cf: Cloudflare, accountId: string, dbId: string
 // Whether a release's bff can forward /installer/* (declares the shared key).
 export const bffSupportsInstaller = (descriptor: WorkerDescriptor) => 'INSTALLER_INTERNAL_KEY' in descriptor.env;
 
+// The optional secrets this installer sets itself (from its own settings),
+// and so also removes once they no longer apply.
+export const INSTALLER_MANAGED_SECRETS = new Set([
+  'DEFAULT_IDP_CONNECTION_NAME',
+  'DEFAULT_IDP_SCOPES',
+  'DEFAULT_IDP_AUTH_CODE_CLIENT_ID',
+  'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET',
+  INSTALLER_KEY_SECRET,
+]);
+
 export interface StepContext {
   env: Env;
   state: InstallerState;
@@ -298,11 +308,15 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     if (linkInstaller) (metadata.bindings as unknown[]).push({ type: 'service', name: 'ARCANUM_INSTALLER_SERVICE', service: state.behindArcanum!.script });
     await cf.uploadScript(accountId, name, metadata, descriptor.modules ?? []);
     // Cloudflare keeps a Worker's secrets that an upload doesn't mention: an
-    // optional one this installation no longer sets (Google's separate
-    // browser client and scopes after moving to another provider, say) has
-    // to go explicitly — or it would still be used.
+    // optional one this installer set before but no longer does (Google's
+    // separate browser client and scopes after moving to another provider,
+    // say) has to go explicitly — or it would still be used. Only the ones
+    // the installer manages itself: never what an admin set by hand
+    // (DEFAULT_SMTP_*, BOOTSTRAP_API_KEY…).
     const sent = new Set((metadata.bindings as { name: string }[]).map((b) => b.name));
-    const optionalSecrets = Object.entries(descriptor.env).filter(([n, spec]) => spec.kind === 'secret' && spec.source === 'optional' && !sent.has(n)).map(([n]) => n);
+    const optionalSecrets = Object.entries(descriptor.env)
+      .filter(([n, spec]) => spec.kind === 'secret' && spec.source === 'optional' && INSTALLER_MANAGED_SECRETS.has(n) && !sent.has(n))
+      .map(([n]) => n);
     if (optionalSecrets.length) {
       const existing = new Set(((await cf.scriptBindings(accountId, name)) ?? []).filter((b) => b.type === 'secret_text').map((b) => b.name));
       for (const stale of optionalSecrets.filter((n) => existing.has(n))) await cf.deleteSecret(accountId, name, stale);
