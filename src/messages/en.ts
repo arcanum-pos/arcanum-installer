@@ -176,6 +176,7 @@ export default {
     wrongRecoveryCode: 'Wrong recovery code',
     badArcanumKey: 'Invalid key from Arcanum',
     notAdmin: (who: string) => `${who} is not on the list of administrators of this installation`,
+    emailNotVerified: (who: string) => `${who} is not confirmed at the login provider — confirm the address there and try again`,
     thisAccount: 'This account',
     notSignedIn: 'Not signed in',
     pasteToken: 'Paste the Cloudflare API token',

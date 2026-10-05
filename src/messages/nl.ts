@@ -189,6 +189,7 @@ const nl = {
     wrongRecoveryCode: 'Onjuiste herstelcode',
     badArcanumKey: 'Ongeldige sleutel van Arcanum',
     notAdmin: (who: string) => `${who} staat niet in de lijst met beheerders van deze installatie`,
+    emailNotVerified: (who: string) => `${who} is niet bevestigd bij de login-provider — bevestig het adres daar en probeer opnieuw`,
     thisAccount: 'Dit account',
     notSignedIn: 'Niet aangemeld',
     pasteToken: 'Plak het API-token van Cloudflare',

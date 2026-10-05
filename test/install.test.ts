@@ -707,6 +707,11 @@ describe("behind Arcanum (the installer's own address)", () => {
     expect(stranger.status).toBe(403);
     expect(stranger.body.forbidden).toBe(true);
     expect((await call('GET', '/api/status', undefined, false, viaArcanum('0'.repeat(64)))).status).toBe(401);
+    // An admin's address the login provider marks unverified proves nothing.
+    const unverified = await call('GET', '/api/status', undefined, false, { headers: { ...viaArcanum(key).headers, 'X-User-Email-Verified': 'false' } });
+    expect(unverified.status).toBe(403);
+    expect(unverified.body.error).toMatch(/niet bevestigd/);
+    expect((await call('GET', '/api/status', undefined, false, { headers: { ...viaArcanum(key).headers, 'X-User-Email-Verified': 'true' } })).status).toBe(200);
     // A key header is never a fallback to the session.
     expect((await call('GET', '/api/status', undefined, true, viaArcanum('wrong'))).status).toBe(401);
   });

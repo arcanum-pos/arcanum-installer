@@ -176,6 +176,7 @@ export default {
     wrongRecoveryCode: 'Code de récupération incorrect',
     badArcanumKey: 'Clé d’Arcanum non valable',
     notAdmin: (who: string) => `${who} ne figure pas dans la liste des administrateurs de cette installation`,
+    emailNotVerified: (who: string) => `${who} n’est pas confirmée auprès du fournisseur de connexion — confirmez l’adresse là-bas et réessayez`,
     thisAccount: 'Ce compte',
     notSignedIn: 'Non connecté',
     pasteToken: 'Collez le jeton d’API de Cloudflare',

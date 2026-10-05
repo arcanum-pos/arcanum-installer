@@ -76,6 +76,9 @@ async function arcanumAccess(env: Env, state: InstallerState, request: Request, 
   if (!expected || !safeEqual(key, expected)) return json({ error: t.api.badArcanumKey }, 401);
   const email = (request.headers.get('X-User-Email') ?? '').trim().toLowerCase();
   if (!email || !isAdmin(state, email)) return json({ error: t.api.notAdmin(email || t.api.thisAccount), forbidden: true }, 403);
+  // The admin list is by e-mail: an address the login provider says isn't
+  // verified proves nothing (absent = the provider doesn't say, as for the invites).
+  if (request.headers.get('X-User-Email-Verified') === 'false') return json({ error: t.api.emailNotVerified(email), forbidden: true }, 403);
   return { via: 'arcanum', sessionId: `arcanum:${email}`, email };
 }
 
