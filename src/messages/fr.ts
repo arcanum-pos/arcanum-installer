@@ -168,6 +168,9 @@ export default {
     publicNotLinked: 'Pas encore lié à Arcanum — cela se fait automatiquement à la prochaine mise à jour.',
     backToStart: 'Revenir à {host}',
     backToStartHint: 'Arcanum utilise maintenant un autre fournisseur de connexion. Ceci prépare le client de cette installation chez {host} — celui avec lequel vous vous connectez à cet installateur ; rien à saisir. Ensuite, testez et appliquez comme ci-dessus.',
+    kindAdmins: 'plusieurs organisations',
+    kindDemo: 'installation de démo',
+    channelDev: 'versions de développement',
   },
 
   api: {

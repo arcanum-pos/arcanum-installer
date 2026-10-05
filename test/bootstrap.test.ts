@@ -7,7 +7,7 @@
 import { env } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../src/index';
-import { INSTALLER_LOGO, INSTANCE_CLIENT, installFakes, PUBLIC_URL, SELF_UPDATE_VERSION, SUBDOMAIN, TOKEN, type Fakes } from './fakes';
+import { DEV_VERSION, INSTALLER_LOGO, INSTANCE_CLIENT, installFakes, PUBLIC_URL, SELF_UPDATE_VERSION, SUBDOMAIN, TOKEN, type Fakes } from './fakes';
 
 const ORIGIN = `https://arcanum-installer.${SUBDOMAIN}.workers.dev`;
 const STATE_KEY = 'test-state-key-0123456789abcdef0123456789abcdef';
@@ -374,5 +374,57 @@ describe('the one-screen install', () => {
     expect(chosen.body.steps.some((s: any) => s.id === 'installer:self')).toBe(false);
     expect((await runAll()).failed).toBeNull();
     expect(fakes.cf.scripts.get('arcanum-installer')!.order).toBe(0);
+  });
+});
+
+describe('the kind of installation and its channel (only from the bootstrapper)', () => {
+  it('without them: one organization, stable releases — ORG_CREATION=single, no development builds offered', async () => {
+    await handoff();
+    const status = (await call('GET', '/api/status')).body;
+    expect(status.instance).toEqual({ kind: 'single', channel: 'stable' });
+    const releases = (await call('GET', '/api/releases')).body.releases.map((r: any) => r.version);
+    expect(releases.some((v: string) => v.includes('-dev.'))).toBe(false);
+  });
+
+  it('several organizations + development builds: kept in the state, ORG_CREATION=admins on the backend, development builds offered newest first', async () => {
+    await useConfig(await bootstrapConfig({ instance: { kind: 'admins', channel: 'dev' } }));
+    expect((await handoff()).status).toBe(200);
+    expect((await call('GET', '/api/status')).body.instance).toEqual({ kind: 'admins', channel: 'dev' });
+    const releases = (await call('GET', '/api/releases')).body.releases.map((r: any) => r.version);
+    expect(releases.slice(0, 2)).toEqual([DEV_VERSION, '0.1.5-dev.1']);
+    expect((await call('POST', '/api/release', { version: DEV_VERSION })).status).toBe(200);
+    expect((await runAll()).failed).toBeNull();
+    expect(binding('arcanum-backend', 'ORG_CREATION')).toEqual({ type: 'plain_text', name: 'ORG_CREATION', text: 'admins' });
+    expect((await call('GET', '/api/status')).body.installed.version).toBe(DEV_VERSION);
+    // Every later update keeps it (it lives in the installer's state, not on the Worker).
+    expect((await call('POST', '/api/step', { id: 'worker:arcanum-backend' })).body.status).toBe('done');
+    expect(binding('arcanum-backend', 'ORG_CREATION').text).toBe('admins');
+  });
+
+  it('a later handover can change the kind: the backend is redeployed with it; without one, the kind stays', async () => {
+    await handoff();
+    const releases = (await call('GET', '/api/releases')).body;
+    await call('POST', '/api/release', { version: releases.releases[0].version });
+    expect((await runAll()).failed).toBeNull();
+    expect(binding('arcanum-backend', 'ORG_CREATION').text).toBe('single');
+
+    const second = 'handoff-code-second-0123456789abcdefghijkl';
+    await useConfig(await bootstrapConfig({ login: null, instance: { kind: 'internal', channel: 'stable' } }, second));
+    expect((await handoff(second)).status).toBe(200);
+    const pending = (await call('GET', '/api/status')).body.steps.filter((s: any) => s.status !== 'done').map((s: any) => s.id);
+    expect(pending).toEqual(['worker:arcanum-backend', 'verify']);
+    expect((await runAll()).failed).toBeNull();
+    expect(binding('arcanum-backend', 'ORG_CREATION').text).toBe('internal');
+
+    // A handover without it (anyone else running the bootstrapper again) leaves it as it is.
+    const third = 'handoff-code-third-0123456789abcdefghijklmn';
+    await useConfig(await bootstrapConfig({ login: null }, third));
+    expect((await handoff(third)).status).toBe(200);
+    expect((await call('GET', '/api/status')).body.instance).toEqual({ kind: 'internal', channel: 'stable' });
+  });
+
+  it('an unknown kind or channel in the handover is refused as a whole', async () => {
+    await useConfig(await bootstrapConfig({ instance: { kind: 'everything', channel: 'stable' } }));
+    expect((await handoff()).status).toBe(404);
   });
 });

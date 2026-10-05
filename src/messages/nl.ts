@@ -181,6 +181,9 @@ const nl = {
     publicNotLinked: 'Nog niet gekoppeld aan Arcanum — dat gebeurt vanzelf bij de volgende update.',
     backToStart: 'Terug naar {host}',
     backToStartHint: 'Arcanum gebruikt nu een andere login-provider. Hiermee zet je de client van deze installatie bij {host} klaar — dezelfde waarmee je je bij deze installer aanmeldt; er hoeft niets ingevuld te worden. Daarna test en pas je toe zoals hierboven.',
+    kindAdmins: 'meerdere organisaties',
+    kindDemo: 'demo-installatie',
+    channelDev: 'ontwikkelversies',
   },
 
   api: {

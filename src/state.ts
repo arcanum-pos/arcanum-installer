@@ -35,6 +35,14 @@ export interface StepRecord {
 // The login provider as the installer keeps it (Arcanum's DEFAULT_IDP_*).
 export type LoginSettings = NonNullable<InstallerState['login']>;
 
+export interface InstanceSettings {
+  // The backend's ORG_CREATION: 'single' (one org), 'admins' (the admins
+  // create and import several), 'internal' (the demo: the bootstrapper's demo orgs).
+  kind: 'single' | 'admins' | 'internal';
+  // 'dev': development builds (releases-dev.json) are offered too.
+  channel: 'stable' | 'dev';
+}
+
 // This page's own sign-in client (oidc.ts). `selfService: false` once
 // "Aanmelding wijzigen" pointed it at another provider: then it's no longer
 // the bootstrapper's client at arcanum-auth, so no /clients/self (login:uris).
@@ -103,6 +111,11 @@ export interface InstallerState {
   // switched off (through Arcanum). `keptOpen`: switched back on under
   // Geavanceerd — stays on until it's closed there.
   behindArcanum?: { script: string; publicAccessRemoved?: boolean; keptOpen?: boolean };
+  // What kind of installation this is, and which releases it follows — set
+  // only by the bootstrapper's handover (for the platform's own
+  // installations), kept here so every update and self-update keeps it.
+  // Unset: one organization, stable releases.
+  instance?: InstanceSettings;
   // Made by the bootstrapper (bootstrap.ts): who set it up, the OAuth client
   // at its login provider that admins sign in to this page with (oidc.ts —
   // also the one Arcanum starts with), the handoff codes already used, and

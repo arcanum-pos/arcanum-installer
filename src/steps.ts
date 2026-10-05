@@ -302,6 +302,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
       resources: { d1: state.resources.d1, kv: state.resources.kv, ratelimitNamespaceId: state.resources.ratelimitNamespaceId! },
       currentMigrationTag: descriptor.durable_object_migrations.length ? await cf.getMigrationTag(accountId, name) : null,
       assetsJwt: worker.assets ? state.assets?.completionJwt : undefined,
+      orgCreation: state.instance?.kind,
     };
     if (worker.assets && !context.assetsJwt) throw new Error(s.assetsIncomplete);
     const metadata = uploadMetadata(descriptor, context);

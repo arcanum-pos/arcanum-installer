@@ -8,7 +8,7 @@ import { handoff, isBootstrapped } from './bootstrap';
 import { canSignInWithAccount } from './oidc';
 import { Cloudflare, CloudflareError } from './cloudflare';
 import type { WorkerDescriptor } from './contract';
-import { compareVersions, fetchIndex, fetchManifest, fetchReleaseJson, installable, ReleaseError } from './releases';
+import { compareVersions, fetchManifest, fetchReleaseJson, installable, ReleaseError, releaseIndexFor } from './releases';
 import { directShouldClose, startClientOf, INSTALLER_KEY_SECRET, installationStarted, isAdmin, loadState, loginChangeActive, publicUrl, rootSecret, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
 import { blueprintFrom, planSteps, runStep } from './steps';
 import { safeEqual } from './crypto';
@@ -138,6 +138,8 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
         }
       : null,
     installer: { release: env.INSTALLER_RELEASE ?? null, selfUpdate: state.selfUpdate ?? null },
+    // Set by the bootstrapper only (shown, never changed here).
+    instance: state.instance ?? { kind: 'single', channel: 'stable' },
     // "Aanmelding wijzigen": a staged provider, or a change that can still be undone.
     loginChange: {
       staged: state.loginChange?.staged ? { issuer: state.loginChange.staged.login.issuer } : null,
@@ -389,7 +391,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
     }
 
     if (path === '/api/releases' && request.method === 'GET') {
-      const index = await fetchIndex(env.RELEASES_INDEX_URL);
+      const index = await releaseIndexFor(env.RELEASES_INDEX_URL, state.instance?.channel);
       return json({ latest: index.latest, installed: state.installed?.version ?? null, releases: installable(index).map((r) => ({ version: r.version, prerelease: r.prerelease, releasedAt: r.released_at, notesUrl: r.notes_url })) });
     }
 
@@ -399,7 +401,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       if (state.installed && compareVersions(String(version), state.installed.version) <= 0) {
         return json({ error: t.api.notNewer(state.installed.version) }, 409);
       }
-      const index = await fetchIndex(env.RELEASES_INDEX_URL);
+      const index = await releaseIndexFor(env.RELEASES_INDEX_URL, state.instance?.channel);
       const entry = installable(index).find((r) => r.version === version);
       if (!entry) return json({ error: t.api.unknownRelease(String(version)) }, 400);
       const manifest = await fetchManifest(entry.manifest_url);

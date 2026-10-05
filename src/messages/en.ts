@@ -168,6 +168,9 @@ export default {
     publicNotLinked: 'Not linked to Arcanum yet — that happens by itself with the next update.',
     backToStart: 'Back to {host}',
     backToStartHint: 'Arcanum now uses another login provider. This stages this installation’s own client at {host} — the one you sign in to this installer with; nothing to type. Then test and apply as above.',
+    kindAdmins: 'several organisations',
+    kindDemo: 'demo installation',
+    channelDev: 'development builds',
   },
 
   api: {

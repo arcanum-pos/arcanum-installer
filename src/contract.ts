@@ -48,7 +48,13 @@ export interface InstallContext {
   resources: { d1: Record<string, string>; kv: Record<string, string>; ratelimitNamespaceId: string };
   currentMigrationTag: string | null;
   assetsJwt?: string;
+  // Who may create organizations (the backend's ORG_CREATION): 'single' for
+  // every own installation, unless the bootstrapper said otherwise (state.ts
+  // InstanceSettings). Unset: 'single'.
+  orgCreation?: OrgCreation;
 }
+
+export type OrgCreation = 'single' | 'admins' | 'internal';
 
 export class ContractError extends TextError {}
 
@@ -169,13 +175,15 @@ export function migrationsPayload(migrations: WorkerDescriptor['durable_object_m
 // HOSTING_PLAN.md section 1), whatever a release's descriptor says: a
 // release built before ORG_CREATION existed doesn't carry it, and a
 // mistake in the contract could hand over the shared demo tenant's
-// "internal". Applied last, replacing any descriptor value.
-export const OWN_INSTANCE_VARS: Record<string, Record<string, string>> = {
-  'arcanum-backend': { ORG_CREATION: 'single' },
-};
+// "internal". Applied last, replacing any descriptor value. Only the
+// bootstrapper can make an installation multi-org or a demo one
+// (ctx.orgCreation, from the handover — never a choice in the installer).
+export function ownInstanceVars(name: string, orgCreation: OrgCreation = 'single'): Record<string, string> {
+  return name === 'arcanum-backend' ? { ORG_CREATION: orgCreation } : {};
+}
 
 export function uploadMetadata(descriptor: WorkerDescriptor, ctx: InstallContext): Record<string, unknown> {
-  const forced = OWN_INSTANCE_VARS[descriptor.name] ?? {};
+  const forced = ownInstanceVars(descriptor.name, ctx.orgCreation);
   const bindings = [
     ...descriptor.bindings.map((b) => resourceBinding(b, ctx)),
     ...Object.entries(descriptor.env)

@@ -49,12 +49,37 @@ export async function fetchIndex(indexUrl: string): Promise<ReleaseIndex> {
   return index;
 }
 
-// -1 / 0 / 1 for "0.1.2" vs "0.1.10" (numeric parts; a pre-release suffix is ignored).
+// -1 / 0 / 1: "0.1.24" < "0.1.25-dev.1" < "0.1.25-dev.2" < "0.1.25" —
+// numeric parts, then a release above its own pre-releases, then the
+// pre-release parts (numbers numerically). As arcanum-releases' lib.mjs.
 export function compareVersions(a: string, b: string): number {
-  const parts = (v: string) => v.split('-')[0].split('.').map((n) => Number(n) || 0);
-  const [x, y] = [parts(a), parts(b)];
+  const split = (v: string) => [v.split('-')[0], v.split('-').slice(1).join('-')] as const;
+  const [[ca, pa], [cb, pb]] = [split(a), split(b)];
+  const x = ca.split('.').map((n) => Number(n) || 0);
+  const y = cb.split('.').map((n) => Number(n) || 0);
   for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0) ? -1 : 1;
+  if (!pa || !pb) return pa === pb ? 0 : pa ? -1 : 1;
+  const [xs, ys] = [pa.split('.'), pb.split('.')];
+  for (let i = 0; i < Math.max(xs.length, ys.length); i++) {
+    if (xs[i] === undefined) return -1;
+    if (ys[i] === undefined) return 1;
+    if (xs[i] === ys[i]) continue;
+    const numeric = /^\d+$/.test(xs[i]) && /^\d+$/.test(ys[i]);
+    return numeric ? (Number(xs[i]) < Number(ys[i]) ? -1 : 1) : xs[i] < ys[i] ? -1 : 1;
+  }
   return 0;
+}
+
+// The releases an installation may choose from: releases.json, and on the
+// development channel also releases-dev.json next to it (development builds
+// — never listed in releases.json, so older installers never see them).
+// Newest first.
+export async function releaseIndexFor(indexUrl: string, channel: 'stable' | 'dev' | undefined): Promise<ReleaseIndex> {
+  const index = await fetchIndex(indexUrl);
+  if (channel !== 'dev') return index;
+  const dev = await fetchIndex(indexUrl.replace(/releases\.json$/, 'releases-dev.json')).catch(() => null);
+  const releases = [...index.releases, ...(dev?.releases ?? [])].sort((p, q) => compareVersions(q.version, p.version));
+  return { ...index, releases };
 }
 
 // Only releases this installer can install.

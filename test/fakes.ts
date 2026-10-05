@@ -310,6 +310,8 @@ export class FakeCloudflare {
 export const NEXT_VERSION = '0.1.3';
 // A release that also carries the installer (manifest.installer).
 export const SELF_UPDATE_VERSION = '0.1.4';
+// A development build (releases-dev.json only), newer than everything above.
+export const DEV_VERSION = '0.1.5-dev.2';
 export const NEXT_MIGRATION = { name: '0018_update_test.sql', sql: 'ALTER TABLE tabs ADD COLUMN update_test TEXT' };
 const releaseBase = (version: string) => `https://releases.test/download/v${version}`;
 
@@ -363,6 +365,7 @@ export class FakeReleases {
     backend.schema += `\nINSERT OR IGNORE INTO d1_migrations (name) VALUES ('${NEXT_MIGRATION.name}');\n`;
     r.versions.set(NEXT_VERSION, await r.publish(NEXT_VERSION, workers, database));
     r.versions.set(SELF_UPDATE_VERSION, await r.publish(SELF_UPDATE_VERSION, workers, database, INSTALLER_ARTIFACT));
+    r.versions.set(DEV_VERSION, await r.publish(DEV_VERSION, workers, database));
     return r;
   }
 
@@ -401,6 +404,10 @@ export class FakeReleases {
 
   handle(url: URL): Response {
     if (url.href === 'https://releases.test/releases.json') return Response.json(this.index());
+    if (url.href === 'https://releases.test/releases-dev.json') {
+      const entry = (version: string) => ({ version, tag: `v${version}`, prerelease: true, released_at: '2026-09-26T12:00:00.000Z', format_version: 1, manifest_url: `${releaseBase(version)}/manifest.json`, notes_url: '' });
+      return Response.json({ format: 'arcanum-releases-index', latest: null, releases: [entry(DEV_VERSION), entry('0.1.5-dev.1')] });
+    }
     for (const [version, published] of this.versions) {
       const base = releaseBase(version);
       if (url.href === `${base}/manifest.json`) return Response.json(published.manifest);

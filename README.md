@@ -55,6 +55,15 @@ Two secrets on the Worker (plus its KV `INSTALLER_STATE`, title
   }
   ```
 
+  Optionally `"instance": { "kind": "single" | "admins" | "internal",
+  "channel": "stable" | "dev" }` — only for the platform's own
+  installations (the bootstrapper's platform admins). `kind` is the
+  backend's `ORG_CREATION` (one org / the admins create several / the demo),
+  `channel: "dev"` also offers development builds (`releases-dev.json`, next
+  to `releases.json`). Kept in the installer's state, so every update and
+  self-update keeps it; there's no setting for it in the installer itself.
+  Absent: the installation keeps what it has (new: `single`, `stable`).
+
   `login` is `null` when the bootstrapper reuses the client this installer
   already has (it reads `state.bootstrap.login.clientId` from the KV). The
   client has the redirect URIs `https://arcanum-bff.<sub>.workers.dev/callback`

@@ -10,6 +10,9 @@
 //     owner: { email, sub },
 //     handoffCodeHash,    // hex SHA-256 of the one-time code in the link
 //     handoffExpiresAt,   // ISO time; the link works until then, once
+//     instance?: { kind: 'single'|'admins'|'internal', channel: 'stable'|'dev' },
+//                         // only from the bootstrapper for the platform's own
+//                         // installations; absent: this installer's own stays
 //   }
 //
 // A valid code imports the config into the state (the token sealed like a
@@ -25,7 +28,7 @@ import type { Env } from './env';
 import { Cloudflare } from './cloudflare';
 import { randomBytes, safeEqual, sha256Hex } from './crypto';
 import { newSessionCookie, normalizeRecoveryCode } from './auth';
-import { installationStarted, isAdmin, sealValue, type InstallerState } from './state';
+import { installationStarted, isAdmin, sealValue, type InstallerState, type InstanceSettings } from './state';
 import type { Messages } from './i18n';
 
 export interface BootstrapConfig {
@@ -38,7 +41,11 @@ export interface BootstrapConfig {
   owner: { email: string; sub: string };
   handoffCodeHash: string;
   handoffExpiresAt: string;
+  instance?: InstanceSettings;
 }
+
+const KINDS = ['single', 'admins', 'internal'];
+const CHANNELS = ['stable', 'dev'];
 
 // What BOOTSTRAP_CONFIG becomes once imported: nothing left to hand over.
 const IMPORTED_STUB = { version: 1, imported: true };
@@ -61,7 +68,8 @@ export function readBootstrapConfig(env: Env): Parsed {
   const ok =
     text(value.cloudflareToken) && text(value.accountId) && text(value.subdomain) && text(value.handoffCodeHash) && text(value.handoffExpiresAt) &&
     !!owner && text(owner.email) && text(owner.sub) &&
-    (login === null || (!!login && text(login.issuer) && text(login.clientId) && text(login.clientSecret)));
+    (login === null || (!!login && text(login.issuer) && text(login.clientId) && text(login.clientSecret))) &&
+    (value.instance === undefined || (KINDS.includes((value.instance as InstanceSettings)?.kind) && CHANNELS.includes((value.instance as InstanceSettings)?.channel)));
   return ok ? { config: value as unknown as BootstrapConfig } : null;
 }
 
@@ -117,6 +125,15 @@ export async function handoff(env: Env, state: InstallerState, code: string, ins
     state.admins = [state.admins, owner.email].filter(Boolean).join(', ');
     // Installed already: the backend gets the new list with "Verder installeren".
     if (state.installed) for (const step of ['worker:arcanum-backend', 'verify']) delete state.steps[step];
+  }
+  // The kind of installation and its channel, when the bootstrapper says
+  // (the platform's own installations). Another kind on an installed one:
+  // the backend gets its ORG_CREATION with "Verder installeren".
+  if (config.instance) {
+    if (state.installed && state.instance?.kind !== config.instance.kind && (state.instance || config.instance.kind !== 'single')) {
+      for (const step of ['worker:arcanum-backend', 'verify']) delete state.steps[step];
+    }
+    state.instance = { kind: config.instance.kind, channel: config.instance.channel };
   }
   const recoveryCode = newRecoveryCode();
   state.bootstrap = {

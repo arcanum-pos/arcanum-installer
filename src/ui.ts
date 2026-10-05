@@ -378,7 +378,10 @@ function render() {
   const s = status;
   // Which release this installer itself came from (INSTALLER_RELEASE): after
   // an update it shows the new one — the proof it updated itself.
-  $('[data-installer-version]').textContent = fmt(M.installerRelease, { release: s.installer && s.installer.release ? s.installer.release : M.noReleaseNumber });
+  // The kind of installation and its channel, when not the default (set by the bootstrapper).
+  const kind = s.instance && s.instance.kind === 'admins' ? M.kindAdmins : s.instance && s.instance.kind === 'internal' ? M.kindDemo : '';
+  const channel = s.instance && s.instance.channel === 'dev' ? M.channelDev : '';
+  $('[data-installer-version]').textContent = [fmt(M.installerRelease, { release: s.installer && s.installer.release ? s.installer.release : M.noReleaseNumber }), kind, channel].filter(Boolean).join(' · ');
   $('#token-link').href = s.tokenTemplateUrl;
   const set = (id, done, summary) => { const el = $(id); el.classList.toggle('done', !!done); $('[data-summary]', el) && ($('[data-summary]', el).textContent = summary || ''); };
   set('#s-cloudflare', s.cloudflare && s.cloudflare.tokenAvailable, s.cloudflare ? fmt(M.cloudflareSummary, { account: s.cloudflare.accountName, url: s.address ? s.address.publicUrl : '' }) + (s.cloudflare.tokenAvailable ? '' : M.tokenNeeded) : '');
@@ -629,11 +632,25 @@ document.addEventListener('input', (ev) => { if (ev.target.id === 'issuer') goog
 
 async function refresh() { status = await api('api/status'); render(); }
 
-function newerThan(a, b) {
-  const x = a.split('-')[0].split('.').map(Number), y = b.split('-')[0].split('.').map(Number);
-  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
-  return false;
+// As releases.ts compareVersions: 0.1.24 < 0.1.25-dev.1 < 0.1.25-dev.2 < 0.1.25.
+function compareVersions(a, b) {
+  const split = (v) => [v.split('-')[0], v.split('-').slice(1).join('-')];
+  const [ca, pa] = split(a), [cb, pb] = split(b);
+  const x = ca.split('.').map(Number), y = cb.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0) ? -1 : 1;
+  if (!pa || !pb) return pa === pb ? 0 : pa ? -1 : 1;
+  const xs = pa.split('.'), ys = pb.split('.');
+  for (let i = 0; i < Math.max(xs.length, ys.length); i++) {
+    if (xs[i] === undefined) return -1;
+    if (ys[i] === undefined) return 1;
+    if (xs[i] === ys[i]) continue;
+    const nx = Number(xs[i]), ny = Number(ys[i]);
+    if (!isNaN(nx) && !isNaN(ny)) return nx < ny ? -1 : 1;
+    return xs[i] < ys[i] ? -1 : 1;
+  }
+  return 0;
 }
+const newerThan = (a, b) => compareVersions(a, b) > 0;
 
 async function loadReleases() {
   try {
