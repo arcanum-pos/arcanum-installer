@@ -429,6 +429,24 @@ describe("the installer's own address during a change", () => {
     expect((await call('GET', '/api/public-access', undefined, via)).body).toMatchObject({ loginChange: false, shouldClose: true });
   });
 
+  it("applying moves the bff's sign-in too (its own DEFAULT_IDP_*), and undo moves it back", async () => {
+    fakes.releases.offerUpdate = true;
+    await call('POST', '/api/release', { version: NEXT_VERSION });
+    await runAll();
+    await seedMemberships();
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_ISSUER_URL').text).toBe('https://login.test');
+    await stageAndTest();
+    const before = fakes.fetchCalls();
+    expect((await call('POST', '/api/login-change/apply', {})).status).toBe(200);
+    // Still one request well inside the Free plan's 50 subrequests.
+    expect(fakes.fetchCalls() - before).toBeLessThan(40);
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_ISSUER_URL').text).toBe('https://nieuw.test');
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_CLIENT_ID').text).toBe(NEW_PROVIDER.clientId);
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_CLIENT_SECRET').text).toBe(NEW_PROVIDER.clientSecret);
+    expect((await call('POST', '/api/login-change/undo', {})).status).toBe(200);
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_ISSUER_URL').text).toBe('https://login.test');
+  });
+
   it('once applied, the change no longer keeps it on: the next visit through Arcanum may close it (undo works through Arcanum)', async () => {
     fakes.releases.offerUpdate = true;
     await call('POST', '/api/release', { version: NEXT_VERSION });

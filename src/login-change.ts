@@ -344,9 +344,10 @@ type Outcome = { ok: true } | { ok: false; status: number; error: string };
 const refuse = (error: string, status = 409): Outcome => ({ ok: false, status, error });
 
 // The switch itself, the existing way: the backend with the new DEFAULT_IDP_*
-// (and admin list), then its seeded 'default' provider row cleared.
+// (and admin list), then its seeded 'default' provider row cleared — and the
+// bff, which has the same DEFAULT_IDP_* (it signs people in with them).
 async function redeployLogin(ctx: ChangeContext) {
-  for (const id of ['worker:arcanum-backend', 'login:reset']) {
+  for (const id of ['worker:arcanum-backend', 'login:reset', 'worker:arcanum-bff']) {
     const outcome = await runStep(id, { env: ctx.env, state: ctx.state, cf: ctx.cf, t: ctx.t });
     ctx.state.steps[id] = { status: 'done', at: new Date().toISOString(), detail: outcome.detail };
   }

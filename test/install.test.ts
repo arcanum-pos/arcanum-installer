@@ -425,13 +425,29 @@ describe('login provider options', () => {
     const saved = await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'arcanum-client', scopes: 'openid profile email' });
     expect(saved.status).toBe(200);
     const pending = saved.body.steps.filter((s: any) => s.status !== 'done').map((s: any) => s.id);
-    expect(pending).toEqual(['worker:arcanum-backend', 'login:reset', 'verify']);
+    expect(pending).toEqual(['worker:arcanum-backend', 'login:reset', 'worker:arcanum-bff', 'verify']);
     const run = await runAll();
     expect(run.failed, run.detail).toBeNull();
     expect(fakes.cf.scripts.get('arcanum-backend')!.order).toBeGreaterThan(backendUploads);
     expect(binding('arcanum-backend', 'DEFAULT_IDP_SCOPES').text).toBe('openid profile email');
     const backendDb = [...fakes.cf.d1.values()].find((d) => d.name === 'arcanum-backend')!;
     expect(backendDb.queries.filter((q) => q.includes("DELETE FROM identity_providers WHERE org_id = 'default'"))).toHaveLength(2);
+  });
+});
+
+describe("the bff's own login provider settings", () => {
+  it('a release whose bff declares DEFAULT_IDP_* gets the same values as the backend — the secret only as a Worker secret', async () => {
+    await configure();
+    expect((await runAll()).failed).toBeNull();
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_CLIENT_SECRET')).toBeUndefined(); // 0.1.1's bff doesn't declare them
+    fakes.releases.offerUpdate = true;
+    await call('POST', '/api/release', { version: NEXT_VERSION });
+    expect((await runAll()).failed).toBeNull();
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_ISSUER_URL')).toEqual({ type: 'secret_text', name: 'DEFAULT_IDP_ISSUER_URL', text: 'https://login.test' });
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_CLIENT_ID').text).toBe('arcanum-client');
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_CLIENT_SECRET')).toEqual({ type: 'secret_text', name: 'DEFAULT_IDP_CLIENT_SECRET', text: CLIENT_SECRET });
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_CLIENT_SECRET').text).toBe(binding('arcanum-backend', 'DEFAULT_IDP_CLIENT_SECRET').text);
+    expect(bodies.join('\n')).not.toContain(CLIENT_SECRET);
   });
 });
 

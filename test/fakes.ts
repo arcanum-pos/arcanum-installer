@@ -331,6 +331,15 @@ export class FakeReleases {
     const workers = structuredClone(fixture.workers) as any;
     workers['arcanum-bff'].env.INSTALLER_INTERNAL_KEY = { kind: 'secret', source: 'optional' };
     workers['arcanum-bff'].env.ARCANUM_VERSION = { kind: 'var', source: 'optional' };
+    // The login provider, the bff's own too (it no longer asks the backend).
+    Object.assign(workers['arcanum-bff'].env, {
+      DEFAULT_IDP_ISSUER_URL: { kind: 'secret', source: 'install', question: 'login.issuer' },
+      DEFAULT_IDP_CLIENT_ID: { kind: 'secret', source: 'install', question: 'login.clientId' },
+      DEFAULT_IDP_CLIENT_SECRET: { kind: 'secret', source: 'install', question: 'login.clientSecret' },
+      DEFAULT_IDP_SCOPES: { kind: 'secret', source: 'optional' },
+      DEFAULT_IDP_AUTH_CODE_CLIENT_ID: { kind: 'secret', source: 'optional' },
+      DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET: { kind: 'secret', source: 'optional' },
+    });
     const database = structuredClone(fixture.database) as any;
     const backend = database.databases.find((d: any) => d.name === 'arcanum-backend');
     backend.migrations.push(NEXT_MIGRATION);

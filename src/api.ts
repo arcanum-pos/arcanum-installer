@@ -273,8 +273,9 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       if (!read.ok) return json({ error: read.error, ...(read.checks ? { checks: read.checks } : {}) }, read.status);
       state.login = read.login;
       // Already installed? Re-deploy the backend with the new settings and
-      // let it re-seed the login provider ("Verder installeren" applies it).
-      for (const step of ['worker:arcanum-backend', 'login:reset', 'verify']) delete state.steps[step];
+      // let it re-seed the login provider, and the bff (which signs people in
+      // with them) — "Verder installeren" applies it.
+      for (const step of ['worker:arcanum-backend', 'login:reset', 'worker:arcanum-bff', 'verify']) delete state.steps[step];
       await saveState(env, state);
       return json({ ...(await status(env, state, sessionId, access, t)), checks: read.checks });
     }
