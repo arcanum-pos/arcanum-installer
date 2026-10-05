@@ -297,6 +297,16 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     const metadata = uploadMetadata(descriptor, context);
     if (linkInstaller) (metadata.bindings as unknown[]).push({ type: 'service', name: 'ARCANUM_INSTALLER_SERVICE', service: state.behindArcanum!.script });
     await cf.uploadScript(accountId, name, metadata, descriptor.modules ?? []);
+    // Cloudflare keeps a Worker's secrets that an upload doesn't mention: an
+    // optional one this installation no longer sets (Google's separate
+    // browser client and scopes after moving to another provider, say) has
+    // to go explicitly — or it would still be used.
+    const sent = new Set((metadata.bindings as { name: string }[]).map((b) => b.name));
+    const optionalSecrets = Object.entries(descriptor.env).filter(([n, spec]) => spec.kind === 'secret' && spec.source === 'optional' && !sent.has(n)).map(([n]) => n);
+    if (optionalSecrets.length) {
+      const existing = new Set(((await cf.scriptBindings(accountId, name)) ?? []).filter((b) => b.type === 'secret_text').map((b) => b.name));
+      for (const stale of optionalSecrets.filter((n) => existing.has(n))) await cf.deleteSecret(accountId, name, stale);
+    }
     // Only the public entry gets a workers.dev address; everything else is
     // reachable solely through service bindings.
     await cf.setWorkersDev(accountId, name, worker.public_entry);

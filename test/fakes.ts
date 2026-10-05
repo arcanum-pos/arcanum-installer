@@ -52,6 +52,8 @@ export class FakeCloudflare {
   sessions = new Map<string, { needed: Set<string>; completion: string }>();
   completionJwts = new Set<string>();
   failures: { match: RegExp; message: string }[] = [];
+  // Secrets removed one by one (DELETE …/secrets/:name).
+  secretDeletes: { script: string; name: string }[] = [];
   // Secrets set one by one (PUT …/secrets, what `wrangler secret put` does).
   secretPuts: { script: string; name: string; text: string }[] = [];
   uploads = 0;
@@ -192,6 +194,17 @@ export class FakeCloudflare {
       return ok({ name, type });
     }
 
+    const secret = rest.match(/^\/workers\/scripts\/([^/]+)\/secrets\/([^/]+)$/);
+    if (secret && method === 'DELETE') {
+      const s = this.scripts.get(secret[1]);
+      if (!s) return fail(404, 'This Worker does not exist on your account.', 10007);
+      const name = decodeURIComponent(secret[2]);
+      if (!(s.metadata.bindings ?? []).some((b: any) => b.type === 'secret_text' && b.name === name)) return fail(404, 'Secret not found', 10056);
+      s.metadata.bindings = s.metadata.bindings.filter((b: any) => b.name !== name);
+      this.secretDeletes.push({ script: secret[1], name });
+      return ok(null);
+    }
+
     const sub = rest.match(/^\/workers\/scripts\/([^/]+)\/subdomain$/);
     if (sub && method === 'GET') {
       if (!this.scripts.has(sub[1])) return fail(404, 'Worker not found', 10007);
@@ -281,6 +294,10 @@ export class FakeCloudflare {
     }
     this.doClasses.set(name, classes);
     if (metadata.assets && !this.completionJwts.has(metadata.assets.jwt)) return fail(400, 'Invalid assets completion token', 10401);
+    // Like Cloudflare: a secret the new upload doesn't mention stays on the Worker.
+    const sent = new Set((metadata.bindings ?? []).map((b: any) => b.name));
+    const kept = (this.scripts.get(name)?.metadata.bindings ?? []).filter((b: any) => b.type === 'secret_text' && !sent.has(b.name));
+    metadata.bindings = [...(metadata.bindings ?? []), ...kept];
     this.scripts.set(name, { metadata, modules, order: ++this.uploads });
     return ok({ id: name });
   }

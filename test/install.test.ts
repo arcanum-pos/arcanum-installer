@@ -418,6 +418,24 @@ describe('login provider options', () => {
     expect(fakes.cf.d1.size).toBe(d1);
   });
 
+  it("a setting that's no longer set leaves the Worker too — Cloudflare keeps secrets an upload doesn't mention", async () => {
+    await configure();
+    await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'arcanum-client', scopes: 'openid profile email' });
+    expect((await runAll()).failed).toBeNull();
+    expect(binding('arcanum-backend', 'DEFAULT_IDP_SCOPES').text).toBe('openid profile email');
+    // Back to the default scopes: nothing to send any more…
+    expect((await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'arcanum-client', scopes: '' })).status).toBe(200);
+    expect((await runAll()).failed).toBeNull();
+    // …so it's removed, not left behind for the Worker to keep using.
+    expect(binding('arcanum-backend', 'DEFAULT_IDP_SCOPES')).toBeUndefined();
+    expect(fakes.cf.secretDeletes).toContainEqual({ script: 'arcanum-backend', name: 'DEFAULT_IDP_SCOPES' });
+    // What's still set stays, and an upload with nothing stale removes nothing.
+    expect(binding('arcanum-backend', 'DEFAULT_IDP_CLIENT_SECRET').text).toBe(CLIENT_SECRET);
+    const deletes = fakes.cf.secretDeletes.length;
+    expect((await call('POST', '/api/step', { id: 'worker:arcanum-backend' })).body.status).toBe('done');
+    expect(fakes.cf.secretDeletes.length).toBe(deletes);
+  });
+
   it('changing the login provider after install re-deploys the backend and clears the seeded provider', async () => {
     await configure();
     await runAll();

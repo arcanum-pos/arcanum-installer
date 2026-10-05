@@ -127,6 +127,12 @@ export class Cloudflare {
   // A script's current bindings (without secret values) — how the
   // installer finds its own KV namespace before uploading itself.
   // NOT VERIFIED against a live account: GET …/scripts/:name/settings.
+  // A secret the Worker no longer needs: an upload keeps the secrets it
+  // doesn't mention, so they're removed one by one.
+  async deleteSecret(accountId: string, scriptName: string, name: string): Promise<void> {
+    await this.call('DELETE', `/accounts/${accountId}/workers/scripts/${scriptName}/secrets/${encodeURIComponent(name)}`);
+  }
+
   async scriptBindings(accountId: string, scriptName: string): Promise<{ type: string; name: string; namespace_id?: string }[] | null> {
     try {
       return (await this.call<{ bindings?: { type: string; name: string; namespace_id?: string }[] }>('GET', `/accounts/${accountId}/workers/scripts/${scriptName}/settings`)).bindings ?? [];
