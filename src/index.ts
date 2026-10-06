@@ -1,5 +1,5 @@
 // arcanum-installer — on the account that will host Arcanum, uploaded there
-// by the bootstrapper (start.kaboutersoft.be, handed over via /handoff). Its setup page installs the five
+// by the bootstrapper (arcanum.kaboutersoft.be, handed over via /handoff). Its setup page installs the five
 // Arcanum Workers from a published release (arcanum-pos/arcanum-releases),
 // and updates them — itself first. See README.md and HOSTING_PLAN.md.
 import type { Env } from './env';

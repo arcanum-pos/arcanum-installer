@@ -1,5 +1,5 @@
 // The handoff from the bootstrapper (arcanum-bootstrapper,
-// start.kaboutersoft.be). It uploads this installer onto the visitor's own
+// arcanum.kaboutersoft.be). It uploads this installer onto the visitor's own
 // Cloudflare account with one secret, BOOTSTRAP_CONFIG, and sends the
 // browser to /handoff?code=… — the page posts the code to /api/handoff:
 //

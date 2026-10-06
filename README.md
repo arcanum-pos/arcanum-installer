@@ -6,14 +6,14 @@ lives there and nowhere else. It deploys the five Arcanum Workers from a
 published release ([arcanum-releases](https://github.com/arcanum-pos/arcanum-releases)),
 creates their databases and storage, and generates every secret.
 
-To install: sign in at **https://start.kaboutersoft.be**, choose
+To install: sign in at **https://arcanum.kaboutersoft.be**, choose
 **Eigen installatie** and paste a Cloudflare API token — the bootstrapper
 puts this installer on your account and hands it over (below). That's the
 only supported way to install it.
 
-## From start.kaboutersoft.be (bootstrapped)
+## From arcanum.kaboutersoft.be (bootstrapped)
 
-1. Sign in at start.kaboutersoft.be → **Eigen installatie**. No Cloudflare
+1. Sign in at arcanum.kaboutersoft.be → **Eigen installatie**. No Cloudflare
    account yet? The page explains how to make one (free). **Maak een
    token** opens Cloudflare's token page with the permissions filled in;
    paste the token back.

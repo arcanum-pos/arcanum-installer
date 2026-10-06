@@ -11,7 +11,7 @@ export default {
     signIn: 'Se connecter',
     signInAccountHint: 'Avec le compte avec lequel vous installez Arcanum (<span data-login-issuer></span>).',
     signInWithAccount: 'Se connecter avec votre compte',
-    awaitingHandoff: 'Cet installateur est prêt sur votre compte Cloudflare, mais ne vous a pas encore été transmis. Ouvrez-le via le lien reçu sur start.kaboutersoft.be — ou relancez-y « Propre installation ».',
+    awaitingHandoff: 'Cet installateur est prêt sur votre compte Cloudflare, mais ne vous a pas encore été transmis. Ouvrez-le via le lien reçu sur arcanum.kaboutersoft.be — ou relancez-y « Propre installation ».',
     recoveryTitle: 'Conservez votre code de récupération',
     recoveryIntro: 'Vous êtes connecté en tant que <strong data-recovery-email></strong>. Désormais, vous vous connectez ici avec ce compte. Si cela ne fonctionne pas un jour (par exemple parce que le fournisseur de connexion est injoignable), vous entrez avec ce code de récupération :',
     recoveryOnce: 'Il n’est affiché qu’une seule fois — conservez-le en lieu sûr, par exemple dans votre gestionnaire de mots de passe. Quiconque le possède peut utiliser cet installateur. Le code de récupération précédent (s’il y en avait un) ne fonctionne plus.',
@@ -209,7 +209,7 @@ export default {
     notLinked: 'L’installateur n’est pas encore lié à Arcanum — cela se fait à la prochaine mise à jour',
     closeThroughArcanum: (url: string) => `Ouvrez l’installateur via ${url} pour désactiver sa propre adresse — vous êtes ainsi sûr qu’il reste accessible`,
     closeAfterLoginChange: 'Pas pendant une modification de la connexion : la connexion de test et le code de récupération ont besoin de l’adresse propre de l’installateur',
-    noStartClient: 'Cette installation n’a pas de client propre chez login.kaboutersoft.be (elle n’a pas été créée via start.kaboutersoft.be)',
+    noStartClient: 'Cette installation n’a pas de client propre chez login.kaboutersoft.be (elle n’a pas été créée via arcanum.kaboutersoft.be)',
   },
 
   steps: {
@@ -308,9 +308,9 @@ export default {
 
   handoff: {
     used: 'Ce lien a déjà été utilisé. Connectez-vous avec votre compte ou avec votre code de récupération.',
-    none: 'Cet installateur n’a pas été préparé via start.kaboutersoft.be — il n’y a rien à transmettre.',
-    wrong: 'Ce lien n’est pas correct. Ouvrez l’installateur via le lien de start.kaboutersoft.be.',
-    expired: 'Ce lien a expiré. Relancez « Propre installation » sur start.kaboutersoft.be — ce qui est déjà prêt est conservé.',
+    none: 'Cet installateur n’a pas été préparé via arcanum.kaboutersoft.be — il n’y a rien à transmettre.',
+    wrong: 'Ce lien n’est pas correct. Ouvrez l’installateur via le lien de arcanum.kaboutersoft.be.',
+    expired: 'Ce lien a expiré. Relancez « Propre installation » sur arcanum.kaboutersoft.be — ce qui est déjà prêt est conservé.',
     otherAccount: (installed: string, offered: string) => `Arcanum est déjà (partiellement) installé sur le compte ${installed} — pas sur ${offered}.`,
   },
 

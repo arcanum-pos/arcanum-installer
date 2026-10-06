@@ -21,7 +21,7 @@ const nl = {
     signIn: 'Aanmelden',
     signInAccountHint: 'Met het account waarmee je Arcanum installeert (<span data-login-issuer></span>).',
     signInWithAccount: 'Aanmelden met je account',
-    awaitingHandoff: 'Deze installer staat klaar op je Cloudflare-account, maar werd nog niet overgedragen. Open hem via de link die je op start.kaboutersoft.be kreeg — of start daar "Eigen installatie" opnieuw.',
+    awaitingHandoff: 'Deze installer staat klaar op je Cloudflare-account, maar werd nog niet overgedragen. Open hem via de link die je op arcanum.kaboutersoft.be kreeg — of start daar "Eigen installatie" opnieuw.',
     recoveryTitle: 'Bewaar je herstelcode',
     recoveryIntro: 'Je bent aangemeld als <strong data-recovery-email></strong>. Voortaan meld je je hier aan met dat account. Lukt dat ooit niet (bijvoorbeeld omdat de login-provider onbereikbaar is), dan kom je binnen met deze herstelcode:',
     recoveryOnce: 'Hij wordt maar één keer getoond — bewaar hem op een veilige plek, bijvoorbeeld in je wachtwoordbeheerder. Wie hem heeft, kan deze installer bedienen. De vorige herstelcode (als er een was) werkt niet meer.',
@@ -222,7 +222,7 @@ const nl = {
     notLinked: 'De installer is nog niet gekoppeld aan Arcanum — dat gebeurt bij de volgende update',
     closeThroughArcanum: (url: string) => `Open de installer via ${url} om zijn eigen adres uit te schakelen — zo weet je zeker dat hij bereikbaar blijft`,
     closeAfterLoginChange: 'Niet tijdens een wijziging van de aanmelding: de test-aanmelding en de herstelcode hebben het eigen adres van de installer nodig',
-    noStartClient: 'Deze installatie heeft geen eigen client bij login.kaboutersoft.be (ze werd niet via start.kaboutersoft.be gemaakt)',
+    noStartClient: 'Deze installatie heeft geen eigen client bij login.kaboutersoft.be (ze werd niet via arcanum.kaboutersoft.be gemaakt)',
   },
 
   steps: {
@@ -326,9 +326,9 @@ const nl = {
   // The bootstrapper's link (bootstrap.ts).
   handoff: {
     used: 'Deze link werd al gebruikt. Meld je aan met je account of met je herstelcode.',
-    none: 'Deze installer werd niet via start.kaboutersoft.be klaargezet — er is niets over te dragen.',
-    wrong: 'Deze link klopt niet. Open de installer via de link van start.kaboutersoft.be.',
-    expired: 'Deze link is verlopen. Start "Eigen installatie" op start.kaboutersoft.be opnieuw — wat al klaarstaat blijft bewaard.',
+    none: 'Deze installer werd niet via arcanum.kaboutersoft.be klaargezet — er is niets over te dragen.',
+    wrong: 'Deze link klopt niet. Open de installer via de link van arcanum.kaboutersoft.be.',
+    expired: 'Deze link is verlopen. Start "Eigen installatie" op arcanum.kaboutersoft.be opnieuw — wat al klaarstaat blijft bewaard.',
     otherAccount: (installed: string, offered: string) => `Arcanum is al (deels) geïnstalleerd op account ${installed} — niet op ${offered}.`,
   },
 

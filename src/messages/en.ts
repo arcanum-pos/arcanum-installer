@@ -11,7 +11,7 @@ export default {
     signIn: 'Sign in',
     signInAccountHint: 'With the account you are installing Arcanum with (<span data-login-issuer></span>).',
     signInWithAccount: 'Sign in with your account',
-    awaitingHandoff: 'This installer is ready on your Cloudflare account, but has not been handed over yet. Open it with the link you got on start.kaboutersoft.be — or start "Own installation" there again.',
+    awaitingHandoff: 'This installer is ready on your Cloudflare account, but has not been handed over yet. Open it with the link you got on arcanum.kaboutersoft.be — or start "Own installation" there again.',
     recoveryTitle: 'Keep your recovery code',
     recoveryIntro: 'You are signed in as <strong data-recovery-email></strong>. From now on you sign in here with that account. If that ever fails (for example because the login provider can’t be reached), you get in with this recovery code:',
     recoveryOnce: 'It is shown only once — keep it somewhere safe, for example in your password manager. Anyone who has it can operate this installer. The previous recovery code (if there was one) no longer works.',
@@ -209,7 +209,7 @@ export default {
     notLinked: 'The installer isn’t linked to Arcanum yet — that happens with the next update',
     closeThroughArcanum: (url: string) => `Open the installer at ${url} to switch its own address off — that way you know for sure it stays reachable`,
     closeAfterLoginChange: 'Not during a sign-in change: the test sign-in and the recovery code need the installer’s own address',
-    noStartClient: 'This installation has no client of its own at login.kaboutersoft.be (it wasn’t made through start.kaboutersoft.be)',
+    noStartClient: 'This installation has no client of its own at login.kaboutersoft.be (it wasn’t made through arcanum.kaboutersoft.be)',
   },
 
   steps: {
@@ -308,9 +308,9 @@ export default {
 
   handoff: {
     used: 'This link has already been used. Sign in with your account or with your recovery code.',
-    none: 'This installer was not set up through start.kaboutersoft.be — there is nothing to hand over.',
-    wrong: 'This link is not right. Open the installer with the link from start.kaboutersoft.be.',
-    expired: 'This link has expired. Start "Own installation" on start.kaboutersoft.be again — what is already there is kept.',
+    none: 'This installer was not set up through arcanum.kaboutersoft.be — there is nothing to hand over.',
+    wrong: 'This link is not right. Open the installer with the link from arcanum.kaboutersoft.be.',
+    expired: 'This link has expired. Start "Own installation" on arcanum.kaboutersoft.be again — what is already there is kept.',
     otherAccount: (installed: string, offered: string) => `Arcanum is already (partly) installed on account ${installed} — not on ${offered}.`,
   },
 

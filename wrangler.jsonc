@@ -1,7 +1,7 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	// On the account that will host Arcanum: uploaded there by the
-	// bootstrapper (start.kaboutersoft.be, from the latest release). It installs and updates
+	// bootstrapper (arcanum.kaboutersoft.be, from the latest release). It installs and updates
 	// the five Arcanum Workers from the published release bundles
 	// (arcanum-pos/arcanum-releases) — and, on an update, itself first.
 	"name": "arcanum-installer",

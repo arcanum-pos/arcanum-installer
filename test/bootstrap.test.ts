@@ -1,4 +1,4 @@
-// An installer made by the bootstrapper (start.kaboutersoft.be): the
+// An installer made by the bootstrapper (arcanum.kaboutersoft.be): the
 // handoff, the one-time import of BOOTSTRAP_CONFIG, signing in with an
 // account (OIDC against a fake issuer) or the recovery code, the one-screen
 // install, the custom domain registered at the login provider, and the
