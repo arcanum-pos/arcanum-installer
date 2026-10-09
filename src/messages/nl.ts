@@ -132,7 +132,7 @@ const nl = {
     mailHint_resend: 'Het domein van het afzenderadres moet bij Resend geverifieerd zijn.',
     mailHint_cloudflare: 'Verstuurt via je eigen Cloudflare-account. Het afzenderadres moet op een van deze domeinen staan: {domains}.',
     mailCloudflareNone: 'Cloudflare Email Service: geen domein gevonden dat klaar is om te versturen. Op Workers Paid: Compute → Email Service → Email Sending → Onboard Domain; daarna verschijnt het hier.',
-    mailCloudflarePermission: 'Cloudflare Email Service: je token mag de domeinen niet lezen. Voeg in My Profile → API Tokens bij arcanum-installer Zone · Zone · Read en Zone · Zone Settings · Read toe (Zone Resources: je domein of All zones); het token blijft hetzelfde.',
+    mailCloudflarePermission: 'Cloudflare Email Service: je token mag de domeinen niet lezen. Voeg in My Profile → API Tokens bij arcanum-installer Zone · Zone · Read, Zone · Zone Settings · Read en Account · Email Sending · Read toe (Zone Resources: je domein of All zones); het token blijft hetzelfde.',
     mailNone: 'Geen e-mail ingesteld — uitnodigingen gaan niet per mail.',
     mailSummary: '{service} · afzender {from}',
     mailApplied: 'Opgeslagen en actief. Stuur een testmail om het na te gaan.',
@@ -228,7 +228,7 @@ const nl = {
   api: {
     mailMissing: (fields: string) => `Vul nog in: ${fields}`,
     mailCloudflareToken: 'Het Cloudflare-token is niet beschikbaar in deze sessie — plak het opnieuw (Cloudflare-account).',
-    mailCloudflarePermission: 'Je token mag de domeinen niet lezen: voeg Zone · Zone · Read en Zone · Zone Settings · Read toe.',
+    mailCloudflarePermission: 'Je token mag de domeinen niet lezen: voeg Zone · Zone · Read, Zone · Zone Settings · Read en Account · Email Sending · Read toe.',
     mailCloudflareDomain: (domains: string) => (domains ? `Het afzenderadres moet op een van deze domeinen staan: ${domains}` : 'Dit account heeft geen domein dat klaar is om te versturen (Email Service → Email Sending).'),
     noStateKey: 'INSTALLER_STATE_KEY ontbreekt',
     crossSite: 'Niet toegestaan vanaf een andere site',

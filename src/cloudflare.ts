@@ -186,7 +186,8 @@ export class Cloudflare {
 
   // Cloudflare Email Service (MAIL.md phase 5): the account's zones, and per
   // zone the domains onboarded for sending. Needs Zone · Zone · Read and
-  // Zone · Zone Settings · Read on the token — not in the token template,
+  // Zone · Zone Settings · Read and Account · Email Sending · Read on the token (the
+  // last one found by trial, 2026-10-09) — not in the token template,
   // added by hand like a custom domain's permissions.
   listZones(accountId: string) {
     return this.call<{ id: string; name: string }[]>('GET', `/zones?account.id=${encodeURIComponent(accountId)}&per_page=50`);

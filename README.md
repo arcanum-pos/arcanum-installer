@@ -214,8 +214,8 @@ arcanum-mailer's own `send_email` binding (always uploaded; unused
 otherwise). It's offered only when the account has a domain onboarded for
 sending (Compute → Email Service → Email Sending, Workers Paid): the
 installer lists the account's zones and each zone's
-`/email/sending/subdomains`. That needs **Zone · Zone · Read** and **Zone ·
-Zone Settings · Read** on the token — not in the token template; the page
+`/email/sending/subdomains`. That needs **Zone · Zone · Read**, **Zone ·
+Zone Settings · Read** and **Account · Email Sending · Read** on the token — not in the token template; the page
 says how to add them, like a custom domain's. The sender address must be on
 one of the listed domains.
 
