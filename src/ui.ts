@@ -71,11 +71,11 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   label { font-weight: 500; margin-top: 6px; }
   label.check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
   /* Input — h-8, rounded-lg, border-input. */
-  input[type=text], input[type=password], input[type=url], input[type=number], select { height: 2rem; width: 100%; border: 1px solid var(--input); border-radius: var(--radius); background: transparent; color: var(--foreground); padding: 0 10px; font: inherit; outline: none; transition: border-color .15s, box-shadow .15s; }
+  input[type=text], input[type=password], input[type=url], input[type=number], input[type=email], select { height: 2rem; width: 100%; border: 1px solid var(--input); border-radius: var(--radius); background: transparent; color: var(--foreground); padding: 0 10px; font: inherit; outline: none; transition: border-color .15s, box-shadow .15s; }
   /* A file to pick (Google's service account JSON). */
   input[type=file] { font: inherit; font-size: 13px; color: var(--muted-foreground); }
   /* The mail service's fields (built by the page script): one under the other, like the form's own. */
-  [data-mail-fields] { display: grid; gap: 6px; }
+  [data-mail-fields], [data-mail-test-box] { display: grid; gap: 6px; }
   input::placeholder { color: var(--muted-foreground); }
   input:focus-visible, select:focus-visible, button:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent); }
   input[type=checkbox] { accent-color: var(--primary); width: 16px; height: 16px; }
