@@ -193,6 +193,19 @@ npm test          # end-to-end against a fake Cloudflare API, a fake release and
 npx wrangler dev  # needs a .dev.vars with INSTALLER_STATE_KEY and BOOTSTRAP_CONFIG (.dev.vars.example)
 ```
 
+## E-mail (Geavanceerd)
+
+The installation's mail account (`MAIL.md` in the arcanum folder): a
+service (SMTP, Gmail API, Brevo, Resend — `src/mail.ts`) and its settings,
+sealed in the installer's state and given to arcanum-backend as the secret
+`MAIL_CONFIG` — right away when the installation exists (no new upload),
+otherwise with the next install. Keys and passwords are never sent back to
+the page; left empty, the saved one is kept. **Testmail sturen** asks
+Arcanum itself (`POST /api/organizations/mail-test`, instance admins only)
+to send one through the live setting, so it only works with the installer
+opened through Arcanum. Setting it removes the old hand-set
+`DEFAULT_SMTP_*` secrets; switching it off removes `MAIL_CONFIG`.
+
 ## License
 
 Copyright (C) 2026 kaboutersoft.be
@@ -209,16 +222,3 @@ hosting or support — but if you run a modified version for users over a
 network, you must offer those users its source code (AGPL §13). The app's
 "Broncode" link (the `SOURCE_URL` setting of arcanum-bff) is how an
 installation points its users to that source.
-
-## E-mail (Geavanceerd)
-
-The installation's mail account (`MAIL.md` in the arcanum folder): a
-service (SMTP, Gmail API, Brevo, Resend — `src/mail.ts`) and its settings,
-sealed in the installer's state and given to arcanum-backend as the secret
-`MAIL_CONFIG` — right away when the installation exists (no new upload),
-otherwise with the next install. Keys and passwords are never sent back to
-the page; left empty, the saved one is kept. **Testmail sturen** asks
-Arcanum itself (`POST /api/organizations/mail-test`, instance admins only)
-to send one through the live setting, so it only works with the installer
-opened through Arcanum. Setting it removes the old hand-set
-`DEFAULT_SMTP_*` secrets; switching it off removes `MAIL_CONFIG`.
