@@ -9,7 +9,7 @@ export default {
     mailSave: 'Save',
     mailTest: 'Send a test mail',
     mailTestTo: 'Test mail to (empty: to yourself)',
-    mailTestHint: 'The test mail is a real invitation, as your members get it. To see whether it stays out of spam, paste the address <a href="https://www.mail-tester.com" target="_blank" rel="noopener">mail-tester.com</a> gives you, send, and check your score there.',
+    mailTestHint: 'The test mail is an invitation as your members get it, marked as a test at the top. To see whether it stays out of spam, paste the address <a href="https://www.mail-tester.com" target="_blank" rel="noopener">mail-tester.com</a> gives you, send, and check your score there.',
     mailOff: 'Switch mail off',
     title: 'arcanum · installation',
     language: 'Language',

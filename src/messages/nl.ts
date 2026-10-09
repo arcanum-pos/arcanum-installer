@@ -19,7 +19,7 @@ const nl = {
     mailSave: 'Opslaan',
     mailTest: 'Testmail sturen',
     mailTestTo: 'Testmail naar (leeg: naar jezelf)',
-    mailTestHint: 'De testmail is een echte uitnodiging, zoals je leden ze krijgen. Wil je weten of ze niet in de spam belanden? Plak hier het adres dat <a href="https://www.mail-tester.com" target="_blank" rel="noopener">mail-tester.com</a> je geeft, stuur, en bekijk daar je score.',
+    mailTestHint: 'De testmail is een uitnodiging zoals je leden ze krijgen, met bovenaan dat het een test is. Wil je weten of ze niet in de spam belanden? Plak hier het adres dat <a href="https://www.mail-tester.com" target="_blank" rel="noopener">mail-tester.com</a> je geeft, stuur, en bekijk daar je score.',
     mailOff: 'E-mail uitzetten',
     title: 'arcanum · installeren',
     language: 'Taal',
