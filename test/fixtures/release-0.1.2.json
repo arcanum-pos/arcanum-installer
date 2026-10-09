@@ -279,7 +279,12 @@
      "source": "install",
      "question": "admins"
     },
-    "DEFAULT_SMTP_HOST": {
+    "MAIL_CONFIG": {
+     "kind": "secret",
+     "source": "optional",
+     "note": "mail is configured per org in the portal"
+    },
+"DEFAULT_SMTP_HOST": {
      "kind": "secret",
      "source": "optional",
      "note": "mail is configured per org in the portal"

@@ -3,6 +3,12 @@ import type { Messages } from './nl';
 // French (Belgian, formal "vous") — the same keys as nl.ts.
 export default {
   page: {
+    mailTitle: 'E-mail',
+    mailIntro: 'Avec quoi cette installation envoie ses e-mails (invitations) — pour toutes ses organisations ; le nom de l’expéditeur est celui de l’organisation. Sans e-mail, les invitations fonctionnent, mais ne sont pas envoyées par e-mail.',
+    mailService: 'Service',
+    mailSave: 'Enregistrer',
+    mailTest: 'Envoyer un e-mail de test',
+    mailOff: 'Désactiver l’e-mail',
     title: 'arcanum · installation',
     language: 'Langue',
     done: 'Terminé',
@@ -91,6 +97,32 @@ export default {
   },
 
   script: {
+    advancedMail: 'E-mail',
+    mailService_smtp: 'SMTP (p. ex. iCloud+, votre propre serveur)',
+    mailService_gmail_api: 'API Gmail (Google Workspace)',
+    mailService_brevo: 'Brevo',
+    mailService_resend: 'Resend',
+    mailField_host: 'Serveur SMTP',
+    mailField_port: 'Port (587 ou 465)',
+    mailField_username: 'Nom d’utilisateur',
+    mailField_password: 'Mot de passe (spécifique à l’app)',
+    mailField_fromAddress: 'Adresse de l’expéditeur',
+    mailField_fromName: 'Nom de l’expéditeur (facultatif — par défaut celui de l’organisation)',
+    mailField_clientEmail: 'Compte de service (client_email)',
+    mailField_privateKey: 'Clé privée (private_key du fichier JSON)',
+    mailField_impersonatedUser: 'Envoyer en tant que (un utilisateur de votre Workspace)',
+    mailField_apiKey: 'Clé API',
+    mailHint_smtp: 'iCloud+ : smtp.mail.me.com, port 587, votre adresse @icloud.com comme nom d’utilisateur et un mot de passe spécifique à l’app. Google refuse le SMTP depuis Cloudflare — choisissez alors l’API Gmail.',
+    mailHint_gmail_api: 'Un compte de service avec délégation au niveau du domaine (scope gmail.send) dans Google Workspace.',
+    mailHint_brevo: 'L’adresse de l’expéditeur doit être vérifiée chez Brevo (un expéditeur ou tout votre domaine).',
+    mailHint_resend: 'Le domaine de l’adresse de l’expéditeur doit être vérifié chez Resend.',
+    mailNone: 'Aucun e-mail configuré — les invitations ne sont pas envoyées par e-mail.',
+    mailSummary: '{service} · expéditeur {from}',
+    mailApplied: 'Enregistré et actif. Envoyez un e-mail de test pour le vérifier.',
+    mailLater: 'Enregistré — actif à la prochaine installation ou mise à jour.',
+    mailTestOk: 'E-mail de test envoyé à {to}. Vérifiez aussi vos spams.',
+    mailTestFailed: 'L’e-mail de test n’est pas parti ({code}) : {detail}',
+    mailTestViaArcanum: 'Envoyer un e-mail de test n’est possible qu’en ouvrant l’installateur via votre Arcanum (…/installer/).',
     dateLocale: 'fr-BE',
     notSignedIn: 'Non connecté',
     recoveryCode: 'Code de récupération',
@@ -174,6 +206,7 @@ export default {
   },
 
   api: {
+    mailMissing: (fields: string) => `À compléter : ${fields}`,
     noStateKey: 'INSTALLER_STATE_KEY manque',
     crossSite: 'Non autorisé depuis un autre site',
     expectJson: 'JSON attendu',

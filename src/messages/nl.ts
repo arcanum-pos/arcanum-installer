@@ -13,6 +13,12 @@
 // passed through inside these sentences.
 const nl = {
   page: {
+    mailTitle: 'E-mail',
+    mailIntro: 'Waarmee deze installatie mails verstuurt (uitnodigingen) — voor al haar organisaties; de naam van de afzender is die van de organisatie. Zonder e-mail werken uitnodigingen gewoon, maar gaan ze niet per mail.',
+    mailService: 'Dienst',
+    mailSave: 'Opslaan',
+    mailTest: 'Testmail sturen',
+    mailOff: 'E-mail uitzetten',
     title: 'arcanum · installeren',
     language: 'Taal',
     done: 'Klaar',
@@ -101,6 +107,32 @@ const nl = {
   },
 
   script: {
+    advancedMail: 'E-mail',
+    mailService_smtp: 'SMTP (bv. iCloud+, je eigen mailserver)',
+    mailService_gmail_api: 'Gmail API (Google Workspace)',
+    mailService_brevo: 'Brevo',
+    mailService_resend: 'Resend',
+    mailField_host: 'SMTP-server',
+    mailField_port: 'Poort (587 of 465)',
+    mailField_username: 'Gebruikersnaam',
+    mailField_password: 'Wachtwoord (app-specifiek)',
+    mailField_fromAddress: 'Afzenderadres',
+    mailField_fromName: 'Naam van de afzender (optioneel — standaard die van de organisatie)',
+    mailField_clientEmail: 'Serviceaccount (client_email)',
+    mailField_privateKey: 'Private key (private_key uit het JSON-bestand)',
+    mailField_impersonatedUser: 'Versturen als (een gebruiker van je Workspace)',
+    mailField_apiKey: 'API-sleutel',
+    mailHint_smtp: 'iCloud+: smtp.mail.me.com, poort 587, je @icloud.com-adres als gebruikersnaam en een app-specifiek wachtwoord. Google weigert SMTP vanuit Cloudflare — kies daar Gmail API.',
+    mailHint_gmail_api: 'Een serviceaccount met domeinbrede delegatie (scope gmail.send) in Google Workspace.',
+    mailHint_brevo: 'Het afzenderadres moet bij Brevo geverifieerd zijn (een afzender of je hele domein).',
+    mailHint_resend: 'Het domein van het afzenderadres moet bij Resend geverifieerd zijn.',
+    mailNone: 'Geen e-mail ingesteld — uitnodigingen gaan niet per mail.',
+    mailSummary: '{service} · afzender {from}',
+    mailApplied: 'Opgeslagen en actief. Stuur een testmail om het na te gaan.',
+    mailLater: 'Opgeslagen — het wordt actief bij de volgende Installeren of Bijwerken.',
+    mailTestOk: 'Testmail verstuurd naar {to}. Kijk ook in je spam.',
+    mailTestFailed: 'De testmail ging niet weg ({code}): {detail}',
+    mailTestViaArcanum: 'Een testmail sturen kan alleen als je de installer via je Arcanum opent (…/installer/).',
     dateLocale: 'nl-BE',
     notSignedIn: 'Niet aangemeld',
     recoveryCode: 'Herstelcode',
@@ -187,6 +219,7 @@ const nl = {
   },
 
   api: {
+    mailMissing: (fields: string) => `Vul nog in: ${fields}`,
     noStateKey: 'INSTALLER_STATE_KEY ontbreekt',
     crossSite: 'Niet toegestaan vanaf een andere site',
     expectJson: 'Verwacht JSON',

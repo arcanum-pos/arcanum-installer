@@ -3,6 +3,12 @@ import type { Messages } from './nl';
 // English (British) — the same keys as nl.ts.
 export default {
   page: {
+    mailTitle: 'E-mail',
+    mailIntro: 'What this installation sends its mail with (invites) — for all its organisations; the sender’s name is the organisation’s. Without mail, invites still work, but aren’t mailed.',
+    mailService: 'Service',
+    mailSave: 'Save',
+    mailTest: 'Send a test mail',
+    mailOff: 'Switch mail off',
     title: 'arcanum · installation',
     language: 'Language',
     done: 'Done',
@@ -91,6 +97,32 @@ export default {
   },
 
   script: {
+    advancedMail: 'E-mail',
+    mailService_smtp: 'SMTP (e.g. iCloud+, your own mail server)',
+    mailService_gmail_api: 'Gmail API (Google Workspace)',
+    mailService_brevo: 'Brevo',
+    mailService_resend: 'Resend',
+    mailField_host: 'SMTP server',
+    mailField_port: 'Port (587 or 465)',
+    mailField_username: 'Username',
+    mailField_password: 'Password (app-specific)',
+    mailField_fromAddress: 'Sender address',
+    mailField_fromName: 'Sender name (optional — the organisation’s by default)',
+    mailField_clientEmail: 'Service account (client_email)',
+    mailField_privateKey: 'Private key (private_key from the JSON file)',
+    mailField_impersonatedUser: 'Send as (a user of your Workspace)',
+    mailField_apiKey: 'API key',
+    mailHint_smtp: 'iCloud+: smtp.mail.me.com, port 587, your @icloud.com address as username and an app-specific password. Google refuses SMTP from Cloudflare — choose Gmail API there.',
+    mailHint_gmail_api: 'A service account with domain-wide delegation (scope gmail.send) in Google Workspace.',
+    mailHint_brevo: 'The sender address must be verified at Brevo (a sender, or your whole domain).',
+    mailHint_resend: 'The sender address’s domain must be verified at Resend.',
+    mailNone: 'No mail set up — invites aren’t mailed.',
+    mailSummary: '{service} · sender {from}',
+    mailApplied: 'Saved and active. Send a test mail to check.',
+    mailLater: 'Saved — it becomes active with the next Install or Update.',
+    mailTestOk: 'Test mail sent to {to}. Check your spam too.',
+    mailTestFailed: 'The test mail didn’t go out ({code}): {detail}',
+    mailTestViaArcanum: 'Sending a test mail only works when you open the installer through your Arcanum (…/installer/).',
     dateLocale: 'en-GB',
     notSignedIn: 'Not signed in',
     recoveryCode: 'Recovery code',
@@ -174,6 +206,7 @@ export default {
   },
 
   api: {
+    mailMissing: (fields: string) => `Still to fill in: ${fields}`,
     noStateKey: 'INSTALLER_STATE_KEY is missing',
     crossSite: 'Not allowed from another site',
     expectJson: 'JSON expected',

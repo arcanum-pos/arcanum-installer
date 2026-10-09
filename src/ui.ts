@@ -221,6 +221,21 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       <form data-form="admins"><label for="emails">${p.emails}</label><input id="emails" name="emails" type="text" placeholder="${p.emailsPlaceholder}" required><button>${p.save}</button><p class="error" data-error></p></form>
     </section>
 
+    <section id="s-mail" class="card">
+      <h2>${p.mailTitle}</h2>
+      <p class="soft">${p.mailIntro}</p>
+      <p data-summary class="soft"></p>
+      <form data-form="mail">
+        <label for="mail-provider">${p.mailService}</label><select id="mail-provider" name="provider"></select>
+        <p class="soft" data-mail-hint></p>
+        <div data-mail-fields></div>
+        <button>${p.mailSave}</button>
+        <p class="error" data-error></p>
+      </form>
+      <p class="soft" data-mail-note></p>
+      <p><button type="button" class="secondary" data-mail-test>${p.mailTest}</button> <button type="button" class="secondary" data-mail-off>${p.mailOff}</button></p>
+    </section>
+
     <section id="s-install" class="card">
       <h2>${p.installTitle}</h2>
       <dl class="facts">
@@ -369,7 +384,7 @@ $('[data-recovery-saved]').addEventListener('change', (ev) => { $('[data-recover
 $('[data-recovery-continue]').addEventListener('click', async () => { $('[data-recovery-code]').textContent = ''; await refresh(); show(true); await loadReleases(); });
 
 // One screen: the detailed cards under "Geavanceerd" (a new title, or their own).
-const ADVANCED = { 's-address': M.advancedAddress, 's-login': M.advancedLogin, 's-cloudflare': M.advancedCloudflare, 's-admins': M.advancedAdmins, 's-public': null };
+const ADVANCED = { 's-address': M.advancedAddress, 's-login': M.advancedLogin, 's-mail': M.advancedMail, 's-cloudflare': M.advancedCloudflare, 's-admins': M.advancedAdmins, 's-public': null };
 for (const [id, title] of Object.entries(ADVANCED)) { const el = $('#' + id); if (title) $('h2', el).textContent = title; $('[data-advanced]').append(el); }
 $('#s-install h2').textContent = M.install;
 $('[data-run]').classList.add('big');
@@ -441,7 +456,57 @@ function render() {
   const changing = !!(s.installed && s.loginChange && (s.loginChange.staged || s.loginChange.applied));
   $('#s-change').classList.toggle('hidden', !changing);
   if (changing) loadChange();
+  renderMail(s);
 }
+
+// Geavanceerd → E-mail (mail.ts): the fields follow the chosen service;
+// a key or password is never shown — left empty, the saved one is kept.
+// The services and their fields come with the status (mail.ts MAIL_SERVICES).
+let mailFieldsFor = null;
+function mailFields(provider, s) {
+  const box = $('[data-mail-fields]'); box.innerHTML = '';
+  const saved = s.mail && s.mail.provider === provider ? s.mail : null;
+  for (const f of (s.mailServices || {})[provider] || []) {
+    const id = 'mail-' + f.name;
+    const label = document.createElement('label'); label.htmlFor = id; label.textContent = M['mailField_' + f.name] || f.name;
+    const input = document.createElement(f.multiline ? 'textarea' : 'input'); input.id = id; input.name = f.name; input.autocomplete = 'off';
+    if (!f.multiline) input.type = f.secret ? 'password' : f.number ? 'number' : 'text';
+    if (f.number && !saved) input.value = '587';
+    if (saved && saved.values[f.name] !== undefined) input.value = saved.values[f.name];
+    if (f.secret && saved && saved.secretsSet.includes(f.name)) input.placeholder = M.secretKept;
+    else if (!f.optional) input.required = true;
+    box.append(label, input);
+  }
+  $('[data-mail-hint]').textContent = M['mailHint_' + provider] || '';
+  mailFieldsFor = provider;
+}
+function renderMail(s) {
+  const sel = $('#mail-provider');
+  if (!sel.options.length) for (const value of Object.keys(s.mailServices || {})) { const o = document.createElement('option'); o.value = value; o.textContent = M['mailService_' + value] || value; sel.append(o); }
+  const current = s.mail ? s.mail.provider : (sel.value || 'smtp');
+  if (mailFieldsFor === null) { sel.value = current; mailFields(current, s); }
+  const el = $('#s-mail'); el.classList.toggle('done', !!s.mail);
+  $('[data-summary]', el).textContent = s.mail ? fmt(M.mailSummary, { service: M['mailService_' + s.mail.provider] || s.mail.provider, from: s.mail.values.fromAddress || s.mail.values.impersonatedUser || '' }) : M.mailNone;
+  $('[data-mail-test]').classList.toggle('hidden', !s.mail);
+  $('[data-mail-off]').classList.toggle('hidden', !s.mail);
+}
+$('#mail-provider').addEventListener('change', (e) => mailFields(e.target.value, status || {}));
+$('[data-mail-off]').addEventListener('click', async () => {
+  const note = $('[data-mail-note]'); note.textContent = '';
+  try { const r = await api('api/mail/off', {}); status = r; mailFieldsFor = null; render(); } catch (e) { note.textContent = e.message; }
+});
+// The test goes through Arcanum itself (arcanum-backend, the live MAIL_CONFIG, to you).
+$('[data-mail-test]').addEventListener('click', async (e) => {
+  const note = $('[data-mail-note]'); note.textContent = '';
+  if (!viaArcanum()) { note.textContent = M.mailTestViaArcanum; return; }
+  e.target.disabled = true;
+  try {
+    const res = await fetch('../api/organizations/mail-test', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const r = await res.json().catch(() => ({}));
+    note.textContent = res.ok && r.ok ? fmt(M.mailTestOk, { to: r.to || '' }) : fmt(M.mailTestFailed, { code: r.code || res.status, detail: r.detail || r.error || '' });
+  } catch (err) { note.textContent = fmt(M.mailTestFailed, { code: '—', detail: err.message }); }
+  finally { e.target.disabled = false; }
+});
 
 // "Aanmelding wijzigen": stage → test sign-in → apply, undo for 7 days (login-change.ts).
 const TEST_OUTCOMES = {
@@ -706,6 +771,7 @@ document.addEventListener('submit', async (ev) => {
     if (result.checks) showChecks(result.checks);
     if (form.dataset.form === 'cloudflare') form.token.value = '';
     if (form.dataset.form === 'login-provider') { form.clientSecret.value = ''; form.authCodeClientSecret.value = ''; }
+    if (form.dataset.form === 'mail') { $('[data-mail-note]').textContent = result.mailApplied === 'applied' ? M.mailApplied : M.mailLater; mailFieldsFor = null; render(); }
   } catch (e) { err.textContent = e.message; if (e.data && e.data.checks) showChecks(e.data.checks); } finally { button.disabled = false; }
 });
 

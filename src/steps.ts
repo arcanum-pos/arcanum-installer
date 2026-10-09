@@ -3,6 +3,7 @@
 // Workers Free plan's limits (50 subrequests, ~10 ms CPU): at most a few
 // Cloudflare API calls and one release file each. Every step can be re-run
 // safely, so a failed or interrupted install simply continues.
+import { OLD_SMTP_SECRETS } from './mail';
 import type { Env } from './env';
 import { Cloudflare, CloudflareError } from './cloudflare';
 import { generateSecret, randomBytes } from './crypto';
@@ -86,7 +87,40 @@ export const bffSupportsInstaller = (descriptor: WorkerDescriptor) => 'INSTALLER
 
 // The optional secrets this installer sets itself (from its own settings),
 // and so also removes once they no longer apply.
+// Secrets a Worker got from an older release and no longer needs, removed
+// on its next upload (an upload keeps what it doesn't mention). The
+// backend only needs the login provider's issuer since MAIL.md decision 6:
+// its client id and secret belong to the bff alone.
+export const RETIRED_SECRETS: Record<string, string[]> = {
+  'arcanum-backend': [
+    'DEFAULT_IDP_CLIENT_ID',
+    'DEFAULT_IDP_CLIENT_SECRET',
+    'DEFAULT_IDP_CONNECTION_NAME',
+    'DEFAULT_IDP_SCOPES',
+    'DEFAULT_IDP_AUTH_CODE_CLIENT_ID',
+    'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET',
+  ],
+};
+
+// The secrets to remove from a Worker after its upload (Cloudflare keeps the
+// ones an upload doesn't mention): the optional ones this installer manages
+// but didn't send, the old hand-set mail fallback once MAIL_CONFIG is set,
+// and what a release no longer gives this Worker.
+export function secretsToRemove(name: string, descriptor: WorkerDescriptor, sent: Set<string>, mailSet: boolean): string[] {
+  return [
+    ...new Set([
+      ...Object.entries(descriptor.env)
+        .filter(([n, spec]) => spec.kind === 'secret' && spec.source === 'optional' && INSTALLER_MANAGED_SECRETS.has(n) && !sent.has(n))
+        .map(([n]) => n),
+      ...(mailSet && sent.has('MAIL_CONFIG') ? OLD_SMTP_SECRETS : []),
+      ...(RETIRED_SECRETS[name] ?? []).filter((n) => !sent.has(n)),
+    ]),
+  ];
+}
+
 export const INSTALLER_MANAGED_SECRETS = new Set([
+  // The installation's mail account (mail.ts): removed when mail is switched off.
+  'MAIL_CONFIG',
   'DEFAULT_IDP_CONNECTION_NAME',
   'DEFAULT_IDP_SCOPES',
   'DEFAULT_IDP_AUTH_CODE_CLIENT_ID',
@@ -297,6 +331,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
             }
           : {}),
         ...(linkInstaller ? { [INSTALLER_KEY_SECRET]: secrets[INSTALLER_KEY_SECRET] } : {}),
+        ...(state.mail ? { MAIL_CONFIG: await unsealValue(ctx.env, state, state.mail.config) } : {}),
       },
       secrets,
       resources: { d1: state.resources.d1, kv: state.resources.kv, ratelimitNamespaceId: state.resources.ratelimitNamespaceId! },
@@ -316,9 +351,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     // the installer manages itself: never what an admin set by hand
     // (DEFAULT_SMTP_*, BOOTSTRAP_API_KEY…).
     const sent = new Set((metadata.bindings as { name: string }[]).map((b) => b.name));
-    const optionalSecrets = Object.entries(descriptor.env)
-      .filter(([n, spec]) => spec.kind === 'secret' && spec.source === 'optional' && INSTALLER_MANAGED_SECRETS.has(n) && !sent.has(n))
-      .map(([n]) => n);
+    const optionalSecrets = secretsToRemove(name, descriptor, sent, !!state.mail);
     if (optionalSecrets.length) {
       const existing = new Set(((await cf.scriptBindings(accountId, name)) ?? []).filter((b) => b.type === 'secret_text').map((b) => b.name));
       for (const stale of optionalSecrets.filter((n) => existing.has(n))) await cf.deleteSecret(accountId, name, stale);

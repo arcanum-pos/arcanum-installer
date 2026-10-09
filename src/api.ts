@@ -15,6 +15,7 @@ import { safeEqual } from './crypto';
 import { applyChange, changeInfo, changesIdentity, dropExpiredSnapshot, providerIdentity, readLoginProvider, TEST_CALLBACK_PATH, undoChange } from './login-change';
 import { addClientUris } from './auth-client';
 import { messageOf, textsFor, type Messages } from './i18n';
+import { buildMailConfig, MAIL_SERVICES, mailSummary, OLD_SMTP_SECRETS, type MailConfig } from './mail';
 
 const TOKEN_PERMISSIONS = [
   { key: 'workers_scripts', type: 'edit' },
@@ -101,6 +102,31 @@ export function installerScript(state: InstallerState, request: Request): string
   return state.behindArcanum?.script ?? 'arcanum-installer';
 }
 
+export async function mailConfigOf(env: Env, state: InstallerState): Promise<MailConfig | null> {
+  return state.mail ? (JSON.parse(await unsealValue(env, state, state.mail.config)) as MailConfig) : null;
+}
+
+// MAIL_CONFIG on arcanum-backend right away, when it exists and the token's
+// at hand (else the next Installeren/Bijwerken gives it — the backend's step
+// is redone). The old hand-set DEFAULT_SMTP_* go once it's set.
+async function applyMail(env: Env, state: InstallerState, sessionId: string, config: MailConfig | null): Promise<'applied' | 'later'> {
+  const token = await tokenFor(env, state, sessionId);
+  const accountId = state.cloudflare?.accountId;
+  const cf = token && accountId ? cloudflareFor(env, token) : null;
+  if (!cf || !accountId || !state.installed || !(await cf.scriptExists(accountId, 'arcanum-backend'))) {
+    delete state.steps['worker:arcanum-backend'];
+    return 'later';
+  }
+  const existing = new Set(((await cf.scriptBindings(accountId, 'arcanum-backend')) ?? []).filter((b) => b.type === 'secret_text').map((b) => b.name));
+  if (config) {
+    await cf.putSecret(accountId, 'arcanum-backend', 'MAIL_CONFIG', JSON.stringify(config));
+    for (const old of OLD_SMTP_SECRETS.filter((n) => existing.has(n))) await cf.deleteSecret(accountId, 'arcanum-backend', old);
+  } else if (existing.has('MAIL_CONFIG')) {
+    await cf.deleteSecret(accountId, 'arcanum-backend', 'MAIL_CONFIG');
+  }
+  return 'applied';
+}
+
 export async function status(env: Env, state: InstallerState, sessionId: string, access: Access | undefined, t: Messages) {
   const url = publicUrl(state);
   const steps = state.release ? planSteps(state.release.blueprint, state, t).map((s) => ({ ...s, ...(state.steps[s.id] ?? { status: 'todo' }) })) : [];
@@ -122,6 +148,9 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
         }
       : null,
     admins: state.admins ?? null,
+    // The service and its plain values — never a key or password.
+    mail: mailSummary(await mailConfigOf(env, state)),
+    mailServices: MAIL_SERVICES,
     release: state.release ? { version: state.release.version, components: state.release.manifest.components } : null,
     locked: installationStarted(state),
     steps,
@@ -388,6 +417,23 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       state.admins = list.join(', ');
       await saveState(env, state);
       return json(await status(env, state, sessionId, access, t));
+    }
+
+    // Geavanceerd → E-mail (MAIL.md): a service and its settings, or off.
+    if (path === '/api/mail' && request.method === 'POST') {
+      const input = await body(request);
+      const built = buildMailConfig(input, await mailConfigOf(env, state));
+      if ('missing' in built) return json({ error: t.api.mailMissing(built.missing.join(', ')) }, 400);
+      state.mail = { config: await sealValue(env, state, JSON.stringify(built.config)), updatedAt: new Date().toISOString() };
+      const applied = await applyMail(env, state, sessionId, built.config);
+      await saveState(env, state);
+      return json({ ...(await status(env, state, sessionId, access, t)), mailApplied: applied });
+    }
+    if (path === '/api/mail/off' && request.method === 'POST') {
+      delete state.mail;
+      const applied = await applyMail(env, state, sessionId, null);
+      await saveState(env, state);
+      return json({ ...(await status(env, state, sessionId, access, t)), mailApplied: applied });
     }
 
     if (path === '/api/releases' && request.method === 'GET') {

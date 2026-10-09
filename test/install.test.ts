@@ -5,6 +5,7 @@
 import { env, SELF } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newSessionCookie } from '../src/auth';
+import { secretsToRemove } from '../src/steps';
 import { installFakes, NEXT_MIGRATION, NEXT_VERSION, OTHER_ACCOUNT_TOKEN, PUBLIC_URL, SELF_UPDATE_VERSION, SUBDOMAIN, TOKEN, type Fakes } from './fakes';
 
 const CLIENT_SECRET = 'idp-client-secret-value-xyz';
@@ -861,5 +862,75 @@ describe('an installer that the bootstrapper did not hand over', () => {
     expect(start.headers.get('Location')).toBe('/?fout=geen-account-aanmelding');
     expect((await call('POST', '/api/handoff', { code: 'x' }, false)).status).toBe(404);
     expect((await call('POST', '/api/login', { password: 'test-installer-password' }, false)).status).toBe(401);
+  });
+});
+
+// Geavanceerd → E-mail (src/mail.ts, MAIL.md): the installation's mail
+// account, given to arcanum-backend as MAIL_CONFIG.
+describe('the installation’s mail', () => {
+  const BREVO = { provider: 'brevo', apiKey: 'xkeysib-secret-1', fromAddress: 'noreply@scouts.test' };
+
+  it('before installing: saved, given to the backend with the install — never shown back', async () => {
+    await configure();
+    const saved = await call('POST', '/api/mail', BREVO);
+    expect(saved.status).toBe(200);
+    expect(saved.body.mailApplied).toBe('later');
+    expect(saved.body.mail).toEqual({ provider: 'brevo', values: { fromAddress: 'noreply@scouts.test' }, secretsSet: ['apiKey'] });
+    expect(JSON.stringify(saved.body)).not.toContain('xkeysib-secret-1');
+    expect((await runAll()).failed).toBeNull();
+    expect(JSON.parse(binding('arcanum-backend', 'MAIL_CONFIG').text)).toEqual(BREVO);
+  });
+
+  it('installed: set right away (no new upload), and the hand-set DEFAULT_SMTP_* go', async () => {
+    await configure();
+    expect((await runAll()).failed).toBeNull();
+    fakes.cf.scripts.get('arcanum-backend')!.metadata.bindings.push({ type: 'secret_text', name: 'DEFAULT_SMTP_HOST', text: 'smtp.mail.me.com' });
+    const saved = await call('POST', '/api/mail', BREVO);
+    expect(saved.body.mailApplied).toBe('applied');
+    expect(fakes.cf.secretPuts).toContainEqual({ script: 'arcanum-backend', name: 'MAIL_CONFIG', text: JSON.stringify(BREVO) });
+    expect(fakes.cf.secretDeletes).toContainEqual({ script: 'arcanum-backend', name: 'DEFAULT_SMTP_HOST' });
+  });
+
+  it('a key left empty keeps the saved one (same service); missing fields are named; another service needs its own', async () => {
+    await configure();
+    await call('POST', '/api/mail', BREVO);
+    expect((await call('POST', '/api/mail', { provider: 'brevo', apiKey: '', fromAddress: 'info@scouts.test' })).status).toBe(200);
+    expect((await runAll()).failed).toBeNull();
+    expect(JSON.parse(binding('arcanum-backend', 'MAIL_CONFIG').text)).toEqual({ ...BREVO, fromAddress: 'info@scouts.test' });
+    const resend = await call('POST', '/api/mail', { provider: 'resend', apiKey: '', fromAddress: 'info@scouts.test' });
+    expect(resend.status).toBe(400);
+    expect(resend.body.error).toContain('apiKey');
+    expect((await call('POST', '/api/mail', { provider: 'pigeon' })).status).toBe(400);
+  });
+
+  it('SMTP: the port is a number; the Gmail key keeps its line breaks', async () => {
+    await configure();
+    await call('POST', '/api/mail', { provider: 'smtp', host: 'smtp.mail.me.com', port: '587', username: 'u@icloud.com', password: 'p', fromAddress: 'bert@kaboutersoft.be' });
+    expect((await runAll()).failed).toBeNull();
+    expect(JSON.parse(binding('arcanum-backend', 'MAIL_CONFIG').text)).toMatchObject({ provider: 'smtp', port: 587 });
+    expect((await call('POST', '/api/mail', { provider: 'smtp', host: 'h', port: 'x', username: 'u', password: 'p', fromAddress: 'a@b.test' })).status).toBe(400);
+  });
+
+  it('switched off: MAIL_CONFIG leaves the backend', async () => {
+    await configure();
+    await call('POST', '/api/mail', BREVO);
+    expect((await runAll()).failed).toBeNull();
+    const off = await call('POST', '/api/mail/off', {});
+    expect(off.body.mail).toBeNull();
+    expect(fakes.cf.secretDeletes).toContainEqual({ script: 'arcanum-backend', name: 'MAIL_CONFIG' });
+  });
+
+  it("the backend's old login secrets leave it once a release stops giving them; the issuer and anything hand-set stay", () => {
+    const descriptor = { env: { DEFAULT_IDP_ISSUER_URL: { kind: 'secret', source: 'install' }, MAIL_CONFIG: { kind: 'secret', source: 'optional' } } } as any;
+    const sent = new Set(['DEFAULT_IDP_ISSUER_URL']);
+    expect(secretsToRemove('arcanum-backend', descriptor, sent, false).sort()).toEqual(
+      ['DEFAULT_IDP_AUTH_CODE_CLIENT_ID', 'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET', 'DEFAULT_IDP_CLIENT_ID', 'DEFAULT_IDP_CLIENT_SECRET', 'DEFAULT_IDP_CONNECTION_NAME', 'DEFAULT_IDP_SCOPES', 'MAIL_CONFIG'].sort()
+    );
+    // While a release still gives them, they stay; the bff keeps its own.
+    expect(secretsToRemove('arcanum-backend', descriptor, new Set(['DEFAULT_IDP_ISSUER_URL', 'DEFAULT_IDP_CLIENT_ID', 'DEFAULT_IDP_CLIENT_SECRET', 'MAIL_CONFIG']), true)).not.toContain('DEFAULT_IDP_CLIENT_SECRET');
+    expect(secretsToRemove('arcanum-bff', { env: {} } as any, new Set(), false)).toEqual([]);
+    // The hand-set mail fallback only goes once MAIL_CONFIG is actually given.
+    expect(secretsToRemove('arcanum-backend', descriptor, new Set(['MAIL_CONFIG']), true)).toContain('DEFAULT_SMTP_HOST');
+    expect(secretsToRemove('arcanum-backend', descriptor, new Set([]), false)).not.toContain('DEFAULT_SMTP_HOST');
   });
 });
