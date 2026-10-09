@@ -50,7 +50,6 @@ export default {
     googleHint: 'Google a besoin de <strong>deux</strong> clients OAuth : un client du type <em>TVs and Limited Input devices</em> ci-dessus (pour la connexion sur la caisse) et un client du type <em>Web application</em> ci-dessous, avec l’URL de callback comme <em>Authorized redirect URI</em>. Les scopes deviennent <code>openid profile email</code> (Google refuse <code>offline_access</code>).',
     scopes: 'Scopes (facultatif)',
     browserClient: 'Client distinct pour la connexion dans le navigateur (facultatif)',
-    connection: 'Connexion Auth0 (facultatif)',
     adminsTitle: '3. Administrateurs',
     adminsIntro: 'Seules ces personnes peuvent créer ou importer une organisation sur cette installation. D’autres personnes peuvent toutefois être invitées. Utilisez <code>*@votredomaine.be</code> pour tout un domaine.',
     emails: 'Adresses e-mail',

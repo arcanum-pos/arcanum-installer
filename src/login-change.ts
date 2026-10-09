@@ -82,7 +82,6 @@ export async function readLoginProvider(
   const refuse = (error: string, checks?: ClientCheck[]) => ({ ok: false as const, status: 400, error, checks });
   const { issuer, clientId, authCodeClientId } = providerIdentity(b);
   const clientSecret = typeof b.clientSecret === 'string' ? b.clientSecret.trim() : '';
-  const connectionName = typeof b.connectionName === 'string' && b.connectionName.trim() ? b.connectionName.trim() : undefined;
   const isGoogle = /^https:\/\/accounts\.google\.com$/.test(issuer);
   // Google rejects the platform's default `offline_access` scope.
   const scopes = (typeof b.scopes === 'string' && b.scopes.trim().replace(/\s+/g, ' ')) || (isGoogle ? 'openid profile email' : undefined);
@@ -125,7 +124,6 @@ export async function readLoginProvider(
       issuer,
       clientId,
       clientSecret: clientSecret ? await sealValue(env, state, clientSecret) : keepSecret!,
-      connectionName,
       authorizationEndpoint: doc.authorization_endpoint,
       scopes,
       authCodeClientId,

@@ -43,7 +43,7 @@ export interface InstallContext {
   issuerUrl: string;
   // Answers to 'install' questions, by question id (login.issuer, login.clientId, …).
   answers: Record<string, string>;
-  // Optional settings the installer fills in (SOURCE_URL, GIT_COMMIT_SHA, DEFAULT_IDP_CONNECTION_NAME, …).
+  // Optional settings the installer fills in (SOURCE_URL, GIT_COMMIT_SHA, DEFAULT_IDP_SCOPES, …).
   optional: Record<string, string>;
   // Generated secrets by name — 'generate' entries by their own name, 'shared' ones by `key`.
   secrets: Record<string, string>;

@@ -60,7 +60,6 @@ const nl = {
     googleHint: 'Google heeft <strong>twee</strong> OAuth-clients nodig: een client van het type <em>TVs and Limited Input devices</em> hierboven (voor aanmelden op de kassa) en een client van het type <em>Web application</em> hieronder, met de callback-URL als <em>Authorized redirect URI</em>. De scopes worden <code>openid profile email</code> (Google weigert <code>offline_access</code>).',
     scopes: 'Scopes (optioneel)',
     browserClient: 'Aparte client voor aanmelden in de browser (optioneel)',
-    connection: 'Auth0-connectie (optioneel)',
     adminsTitle: '3. Beheerders',
     adminsIntro: 'Alleen deze mensen kunnen op deze installatie een organisatie aanmaken of importeren. Anderen kunnen wel uitgenodigd worden. Gebruik <code>*@jouwdomein.be</code> voor een heel domein.',
     emails: 'E-mailadressen',

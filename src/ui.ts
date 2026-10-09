@@ -212,7 +212,6 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
         <label for="scopes">${p.scopes}</label><input id="scopes" name="scopes" type="text" placeholder="openid profile email offline_access">
         <label for="authCodeClientId">${p.browserClient}</label><input id="authCodeClientId" name="authCodeClientId" type="text" placeholder="${p.clientId}">
         <input id="authCodeClientSecret" name="authCodeClientSecret" type="password" autocomplete="off" placeholder="${p.clientSecret}">
-        <label for="connectionName">${p.connection}</label><input id="connectionName" name="connectionName" type="text">
         <button>${p.checkAndSave}</button><p class="error" data-error></p>
         <ul class="checks" data-checks></ul>
       </form>

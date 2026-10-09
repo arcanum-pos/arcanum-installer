@@ -976,9 +976,10 @@ describe('the installation’s mail', () => {
     expect(secretsToRemove('arcanum-backend', descriptor, sent, false).sort()).toEqual(
       ['DEFAULT_IDP_AUTH_CODE_CLIENT_ID', 'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET', 'DEFAULT_IDP_CLIENT_ID', 'DEFAULT_IDP_CLIENT_SECRET', 'DEFAULT_IDP_CONNECTION_NAME', 'DEFAULT_IDP_SCOPES', 'MAIL_CONFIG'].sort()
     );
-    // While a release still gives them, they stay; the bff keeps its own.
+    // While a release still gives them, they stay. The bff keeps its own —
+    // except the Auth0 connection, retired.
     expect(secretsToRemove('arcanum-backend', descriptor, new Set(['DEFAULT_IDP_ISSUER_URL', 'DEFAULT_IDP_CLIENT_ID', 'DEFAULT_IDP_CLIENT_SECRET', 'MAIL_CONFIG']), true)).not.toContain('DEFAULT_IDP_CLIENT_SECRET');
-    expect(secretsToRemove('arcanum-bff', { env: {} } as any, new Set(), false)).toEqual([]);
+    expect(secretsToRemove('arcanum-bff', { env: {} } as any, new Set(), false)).toEqual(['DEFAULT_IDP_CONNECTION_NAME']);
     // The hand-set mail fallback only goes once MAIL_CONFIG is actually given.
     expect(secretsToRemove('arcanum-backend', descriptor, new Set(['MAIL_CONFIG']), true)).toContain('DEFAULT_SMTP_HOST');
     expect(secretsToRemove('arcanum-backend', descriptor, new Set([]), false)).not.toContain('DEFAULT_SMTP_HOST');

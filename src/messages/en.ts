@@ -50,7 +50,6 @@ export default {
     googleHint: 'Google needs <strong>two</strong> OAuth clients: a client of the type <em>TVs and Limited Input devices</em> above (for signing in on the till) and a client of the type <em>Web application</em> below, with the callback URL as <em>Authorized redirect URI</em>. The scopes become <code>openid profile email</code> (Google refuses <code>offline_access</code>).',
     scopes: 'Scopes (optional)',
     browserClient: 'Separate client for signing in in the browser (optional)',
-    connection: 'Auth0 connection (optional)',
     adminsTitle: '3. Administrators',
     adminsIntro: 'Only these people can create or import an organisation on this installation. Others can still be invited. Use <code>*@yourdomain.be</code> for a whole domain.',
     emails: 'E-mail addresses',

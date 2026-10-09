@@ -145,7 +145,6 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
       ? {
           issuer: state.login.issuer,
           clientId: state.login.clientId,
-          connectionName: state.login.connectionName ?? null,
           clientSecretSet: true,
           scopes: state.login.scopes ?? null,
           authCodeClientId: state.login.authCodeClientId ?? null,

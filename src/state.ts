@@ -85,7 +85,6 @@ export interface InstallerState {
     issuer: string;
     clientId: string;
     clientSecret: Sealed;
-    connectionName?: string;
     authorizationEndpoint: string;
     // Google rejects `offline_access`; unset = the platform default scopes.
     scopes?: string;

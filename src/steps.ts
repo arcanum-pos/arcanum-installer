@@ -100,6 +100,9 @@ export const RETIRED_SECRETS: Record<string, string[]> = {
     'DEFAULT_IDP_AUTH_CODE_CLIENT_ID',
     'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET',
   ],
+  // The Auth0 connection (enterprise SSO, long unused; the device grant
+  // doesn't take it) — gone from the bff since 0.1.35.
+  'arcanum-bff': ['DEFAULT_IDP_CONNECTION_NAME'],
 };
 
 // The secrets to remove from a Worker after its upload (Cloudflare keeps the
@@ -121,7 +124,6 @@ export function secretsToRemove(name: string, descriptor: WorkerDescriptor, sent
 export const INSTALLER_MANAGED_SECRETS = new Set([
   // The installation's mail account (mail.ts): removed when mail is switched off.
   'MAIL_CONFIG',
-  'DEFAULT_IDP_CONNECTION_NAME',
   'DEFAULT_IDP_SCOPES',
   'DEFAULT_IDP_AUTH_CODE_CLIENT_ID',
   'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET',
@@ -322,7 +324,6 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
         GIT_COMMIT_SHA: release.manifest.components[name]?.commit ?? '',
         // Shown in the console footer.
         ARCANUM_VERSION: release.version,
-        ...(state.login?.connectionName ? { DEFAULT_IDP_CONNECTION_NAME: state.login.connectionName } : {}),
         ...(state.login?.scopes ? { DEFAULT_IDP_SCOPES: state.login.scopes } : {}),
         ...(state.login?.authCodeClientId && state.login.authCodeClientSecret
           ? {
