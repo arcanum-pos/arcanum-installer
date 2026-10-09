@@ -903,12 +903,30 @@ describe('the installation’s mail', () => {
     expect((await call('POST', '/api/mail', { provider: 'pigeon' })).status).toBe(400);
   });
 
-  it('SMTP: the port is a number; the Gmail key keeps its line breaks', async () => {
+  it('SMTP: the port is a number', async () => {
     await configure();
     await call('POST', '/api/mail', { provider: 'smtp', host: 'smtp.mail.me.com', port: '587', username: 'u@icloud.com', password: 'p', fromAddress: 'bert@kaboutersoft.be' });
     expect((await runAll()).failed).toBeNull();
     expect(JSON.parse(binding('arcanum-backend', 'MAIL_CONFIG').text)).toMatchObject({ provider: 'smtp', port: 587 });
     expect((await call('POST', '/api/mail', { provider: 'smtp', host: 'h', port: 'x', username: 'u', password: 'p', fromAddress: 'a@b.test' })).status).toBe(400);
+  });
+
+  it("Gmail API: the service account file becomes clientEmail + privateKey; only the address is ever shown; kept when no new file", async () => {
+    await configure();
+    const key = '-----BEGIN PRIVATE KEY-----\nMIIEv...\n-----END PRIVATE KEY-----\n';
+    const file = JSON.stringify({ type: 'service_account', client_email: 'svc@proj.iam.gserviceaccount.com', private_key: key, project_id: 'p' });
+    const saved = await call('POST', '/api/mail', { provider: 'gmail_api', serviceAccount: file, impersonatedUser: 'noreply@scouts.test' });
+    expect(saved.status).toBe(200);
+    expect(saved.body.mail).toEqual({ provider: 'gmail_api', values: { impersonatedUser: 'noreply@scouts.test', clientEmail: 'svc@proj.iam.gserviceaccount.com' }, secretsSet: ['serviceAccount'] });
+    expect(JSON.stringify(saved.body)).not.toContain('PRIVATE KEY');
+    // No new file: the saved account stays.
+    expect((await call('POST', '/api/mail', { provider: 'gmail_api', serviceAccount: '', impersonatedUser: 'info@scouts.test' })).status).toBe(200);
+    expect((await runAll()).failed).toBeNull();
+    expect(JSON.parse(binding('arcanum-backend', 'MAIL_CONFIG').text)).toEqual({ provider: 'gmail_api', clientEmail: 'svc@proj.iam.gserviceaccount.com', privateKey: key, impersonatedUser: 'info@scouts.test' });
+    // Not a service account file: refused.
+    const bad = await call('POST', '/api/mail', { provider: 'gmail_api', serviceAccount: '{"hello":"world"}', impersonatedUser: 'x@scouts.test' });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toContain('serviceAccount');
   });
 
   it('switched off: MAIL_CONFIG leaves the backend', async () => {

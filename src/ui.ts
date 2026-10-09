@@ -71,13 +71,13 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   label { font-weight: 500; margin-top: 6px; }
   label.check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
   /* Input — h-8, rounded-lg, border-input. */
-  input[type=text], input[type=password], input[type=url], input[type=number], select, textarea { height: 2rem; width: 100%; border: 1px solid var(--input); border-radius: var(--radius); background: transparent; color: var(--foreground); padding: 0 10px; font: inherit; outline: none; transition: border-color .15s, box-shadow .15s; }
-  /* A multi-line field (the Gmail service account's private key). */
-  textarea { height: auto; min-height: 7rem; padding: 8px 10px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  input[type=text], input[type=password], input[type=url], input[type=number], select { height: 2rem; width: 100%; border: 1px solid var(--input); border-radius: var(--radius); background: transparent; color: var(--foreground); padding: 0 10px; font: inherit; outline: none; transition: border-color .15s, box-shadow .15s; }
+  /* A file to pick (Google's service account JSON). */
+  input[type=file] { font: inherit; font-size: 13px; color: var(--muted-foreground); }
   /* The mail service's fields (built by the page script): one under the other, like the form's own. */
   [data-mail-fields] { display: grid; gap: 6px; }
-  input::placeholder, textarea::placeholder { color: var(--muted-foreground); }
-  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent); }
+  input::placeholder { color: var(--muted-foreground); }
+  input:focus-visible, select:focus-visible, button:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent); }
   input[type=checkbox] { accent-color: var(--primary); width: 16px; height: 16px; }
   /* Button — default and outline variants. */
   button { justify-self: start; height: 2rem; padding: 0 10px; border-radius: var(--radius); border: 1px solid transparent; background: var(--primary); color: var(--primary-foreground); font: inherit; font-weight: 500; cursor: pointer; margin-top: 8px; transition: background .15s; }
@@ -473,8 +473,9 @@ function mailFields(provider, s) {
   for (const f of (s.mailServices || {})[provider] || []) {
     const id = 'mail-' + f.name;
     const label = document.createElement('label'); label.htmlFor = id; label.textContent = M['mailField_' + f.name] || f.name;
-    const input = document.createElement(f.multiline ? 'textarea' : 'input'); input.id = id; input.name = f.name; input.autocomplete = 'off';
-    if (!f.multiline) input.type = f.secret ? 'password' : f.number ? 'number' : 'text';
+    if (f.serviceAccountFile) { box.append(label, ...serviceAccountPicker(id, f.name, saved)); continue; }
+    const input = document.createElement('input'); input.id = id; input.name = f.name; input.autocomplete = 'off';
+    input.type = f.secret ? 'password' : f.number ? 'number' : 'text';
     if (f.number && !saved) input.value = '587';
     if (saved && saved.values[f.name] !== undefined) input.value = saved.values[f.name];
     if (f.secret && saved && saved.secretsSet.includes(f.name)) input.placeholder = M.secretKept;
@@ -484,6 +485,25 @@ function mailFields(provider, s) {
   $('[data-mail-hint]').textContent = M['mailHint_' + provider] || '';
   mailFieldsFor = provider;
 }
+// Google's service account file: read here, only its address shown; its
+// text goes with the form (hidden), the private key never on screen.
+function serviceAccountPicker(id, name, saved) {
+  const file = document.createElement('input'); file.type = 'file'; file.id = id; file.accept = '.json,application/json';
+  const text = document.createElement('input'); text.type = 'hidden'; text.name = name;
+  const note = document.createElement('p'); note.className = 'soft';
+  if (saved && saved.secretsSet.includes(name)) note.textContent = fmt(M.mailServiceAccountSaved, { email: saved.values.clientEmail || '' });
+  else file.required = true;
+  file.addEventListener('change', async () => {
+    text.value = ''; const picked = file.files && file.files[0]; if (!picked) return;
+    try {
+      const raw = await picked.text(); const json = JSON.parse(raw);
+      if (typeof json.client_email !== 'string' || typeof json.private_key !== 'string') throw new Error();
+      text.value = raw; note.textContent = fmt(M.mailServiceAccountLoaded, { email: json.client_email });
+    } catch { note.textContent = M.mailServiceAccountInvalid; }
+  });
+  return [file, text, note];
+}
+
 function renderMail(s) {
   const sel = $('#mail-provider');
   if (!sel.options.length) for (const value of Object.keys(s.mailServices || {})) { const o = document.createElement('option'); o.value = value; o.textContent = M['mailService_' + value] || value; sel.append(o); }

@@ -12,8 +12,10 @@ export interface MailField {
   // A key or password: never sent back to the page; left empty = kept.
   secret?: boolean;
   optional?: boolean;
-  multiline?: boolean;
   number?: boolean;
+  // Google's service account file (JSON): picked on the page, read there,
+  // sent as its text; becomes clientEmail + privateKey (the key never shown).
+  serviceAccountFile?: boolean;
 }
 
 export const MAIL_SERVICES: Record<string, MailField[]> = {
@@ -25,12 +27,7 @@ export const MAIL_SERVICES: Record<string, MailField[]> = {
     { name: 'fromAddress' },
     { name: 'fromName', optional: true },
   ],
-  gmail_api: [
-    { name: 'clientEmail' },
-    { name: 'privateKey', secret: true, multiline: true },
-    { name: 'impersonatedUser' },
-    { name: 'fromName', optional: true },
-  ],
+  gmail_api: [{ name: 'serviceAccount', secret: true, serviceAccountFile: true }, { name: 'impersonatedUser' }, { name: 'fromName', optional: true }],
   brevo: [{ name: 'apiKey', secret: true }, { name: 'fromAddress' }, { name: 'fromName', optional: true }],
   resend: [{ name: 'apiKey', secret: true }, { name: 'fromAddress' }, { name: 'fromName', optional: true }],
 };
@@ -46,6 +43,13 @@ export function buildMailConfig(input: Record<string, unknown>, previous: MailCo
   const config: MailConfig = { provider };
   const missing: string[] = [];
   for (const f of fields) {
+    if (f.serviceAccountFile) {
+      const file = readServiceAccount(input[f.name]);
+      if (file) Object.assign(config, file);
+      else if (!input[f.name] && previous?.provider === provider && previous.clientEmail && previous.privateKey) Object.assign(config, { clientEmail: previous.clientEmail, privateKey: previous.privateKey });
+      else missing.push(f.name);
+      continue;
+    }
     let value = typeof input[f.name] === 'string' ? (input[f.name] as string).trim() : typeof input[f.name] === 'number' ? String(input[f.name]) : '';
     if (!value && f.secret && previous?.provider === provider && previous[f.name]) value = String(previous[f.name]);
     if (!value) {
@@ -59,19 +63,34 @@ export function buildMailConfig(input: Record<string, unknown>, previous: MailCo
         continue;
       }
       config[f.name] = n;
-    } else config[f.name] = f.multiline ? value.replace(/\\n/g, '\n') : value;
+    } else config[f.name] = value;
   }
   return missing.length ? { missing } : { config };
 }
 
-// What the page may see: the service, its plain values, which secrets are set.
+// Google's service account JSON → what the mailer needs; null when it isn't one.
+function readServiceAccount(text: unknown): { clientEmail: string; privateKey: string } | null {
+  if (typeof text !== 'string' || !text.trim()) return null;
+  try {
+    const json = JSON.parse(text) as { type?: unknown; client_email?: unknown; private_key?: unknown };
+    if (typeof json.client_email !== 'string' || typeof json.private_key !== 'string' || !json.private_key.includes('PRIVATE KEY')) return null;
+    return { clientEmail: json.client_email, privateKey: json.private_key };
+  } catch {
+    return null;
+  }
+}
+
+// What the page may see: the service, its plain values, which secrets are
+// set — for Gmail the service account's address, never its key.
 export function mailSummary(config: MailConfig | null) {
   if (!config) return null;
   const fields = MAIL_SERVICES[config.provider] ?? [];
+  const values: Record<string, string> = Object.fromEntries(fields.filter((f) => !f.secret && config[f.name] !== undefined).map((f) => [f.name, String(config[f.name])]));
+  if (config.clientEmail) values.clientEmail = String(config.clientEmail);
   return {
     provider: config.provider,
-    values: Object.fromEntries(fields.filter((f) => !f.secret && config[f.name] !== undefined).map((f) => [f.name, String(config[f.name])])),
-    secretsSet: fields.filter((f) => f.secret && config[f.name]).map((f) => f.name),
+    values,
+    secretsSet: fields.filter((f) => f.secret && (f.serviceAccountFile ? config.privateKey : config[f.name])).map((f) => f.name),
   };
 }
 
