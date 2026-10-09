@@ -237,6 +237,10 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       </form>
       <p class="soft" data-mail-note></p>
       <p class="soft" data-mail-cloudflare></p>
+      <div data-mail-test-box class="hidden">
+        <label for="mail-test-to">${p.mailTestTo}</label><input id="mail-test-to" type="email" autocomplete="off">
+        <p class="soft">${p.mailTestHint}</p>
+      </div>
       <p><button type="button" class="secondary" data-mail-test>${p.mailTest}</button> <button type="button" class="secondary" data-mail-off>${p.mailOff}</button></p>
     </section>
 
@@ -530,6 +534,8 @@ function renderMail(s) {
   const el = $('#s-mail'); el.classList.toggle('done', !!s.mail);
   $('[data-summary]', el).textContent = s.mail ? fmt(M.mailSummary, { service: M['mailService_' + s.mail.provider] || s.mail.provider, from: s.mail.values.fromAddress || s.mail.values.impersonatedUser || '' }) : M.mailNone;
   $('[data-mail-test]').classList.toggle('hidden', !s.mail);
+  $('[data-mail-test-box]').classList.toggle('hidden', !s.mail);
+  if (s.access && s.access.email) $('#mail-test-to').placeholder = s.access.email;
   $('[data-mail-off]').classList.toggle('hidden', !s.mail);
 }
 $('#mail-provider').addEventListener('change', (e) => mailFields(e.target.value, status || {}));
@@ -543,7 +549,9 @@ $('[data-mail-test]').addEventListener('click', async (e) => {
   if (!viaArcanum()) { note.textContent = M.mailTestViaArcanum; return; }
   e.target.disabled = true;
   try {
-    const res = await fetch('../api/organizations/mail-test', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    // To yourself, or to a checker's address (mail-tester.com): a real invitation.
+    const to = $('#mail-test-to').value.trim();
+    const res = await fetch('../api/organizations/mail-test', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(to ? { to } : {}) });
     const r = await res.json().catch(() => ({}));
     note.textContent = res.ok && r.ok ? fmt(M.mailTestOk, { to: r.to || '' }) : fmt(M.mailTestFailed, { code: r.code || res.status, detail: r.detail || r.error || '' });
   } catch (err) { note.textContent = fmt(M.mailTestFailed, { code: '—', detail: err.message }); }

@@ -202,9 +202,11 @@ sealed in the installer's state and given to arcanum-backend as the secret
 `MAIL_CONFIG` — right away when the installation exists (no new upload),
 otherwise with the next install. Keys and passwords are never sent back to
 the page; left empty, the saved one is kept. **Testmail sturen** asks
-Arcanum itself (`POST /api/organizations/mail-test`, instance admins only)
-to send one through the live setting, so it only works with the installer
-opened through Arcanum. Setting it removes the old hand-set
+Arcanum itself (`POST /api/organizations/mail-test`, instance admins only,
+at most 10 an hour) to send a real invitation through the live setting —
+to yourself, or to the address you fill in (mail-tester.com's, to score
+SPF/DKIM/DMARC and content) — so it only works with the installer opened
+through Arcanum. Setting it removes the old hand-set
 `DEFAULT_SMTP_*` secrets; switching it off removes `MAIL_CONFIG`.
 
 **Cloudflare Email Service** (`"provider": "cloudflare"`) sends through
