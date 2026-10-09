@@ -196,7 +196,8 @@ npx wrangler dev  # needs a .dev.vars with INSTALLER_STATE_KEY and BOOTSTRAP_CON
 ## E-mail (Geavanceerd)
 
 The installation's mail account (`MAIL.md` in the arcanum folder): a
-service (SMTP, Gmail API, Brevo, Resend — `src/mail.ts`) and its settings,
+service (SMTP, Gmail API, Brevo, Resend, Cloudflare Email Service —
+`src/mail.ts`) and its settings,
 sealed in the installer's state and given to arcanum-backend as the secret
 `MAIL_CONFIG` — right away when the installation exists (no new upload),
 otherwise with the next install. Keys and passwords are never sent back to
@@ -205,6 +206,16 @@ Arcanum itself (`POST /api/organizations/mail-test`, instance admins only)
 to send one through the live setting, so it only works with the installer
 opened through Arcanum. Setting it removes the old hand-set
 `DEFAULT_SMTP_*` secrets; switching it off removes `MAIL_CONFIG`.
+
+**Cloudflare Email Service** (`"provider": "cloudflare"`) sends through
+arcanum-mailer's own `send_email` binding (always uploaded; unused
+otherwise). It's offered only when the account has a domain onboarded for
+sending (Compute → Email Service → Email Sending, Workers Paid): the
+installer lists the account's zones and each zone's
+`/email/sending/subdomains`. That needs **Zone · Zone · Read** and **Zone ·
+Zone Settings · Read** on the token — not in the token template; the page
+says how to add them, like a custom domain's. The sender address must be on
+one of the listed domains.
 
 ## License
 

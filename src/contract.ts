@@ -20,7 +20,9 @@ export type DescriptorBinding =
   | { type: 'service'; name: string; service: string }
   | { type: 'ratelimit'; name: string; simple: { limit: number; period: number } }
   | { type: 'assets'; name: string }
-  | { type: 'version_metadata'; name: string };
+  | { type: 'version_metadata'; name: string }
+  // Cloudflare Email Service (arcanum-mailer, MAIL.md phase 5).
+  | { type: 'send_email'; name: string };
 
 export interface WorkerDescriptor {
   name: string;
@@ -119,6 +121,8 @@ function resourceBinding(b: DescriptorBinding, ctx: InstallContext): ApiBinding 
       return { type: 'assets', name: b.name };
     case 'version_metadata':
       return { type: 'version_metadata', name: b.name };
+    case 'send_email':
+      return { type: 'send_email', name: b.name };
     default:
       throw new ContractError((t) => t.contract.unknownBinding((b as { type: string }).type));
   }

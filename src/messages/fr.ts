@@ -102,6 +102,7 @@ export default {
     mailService_gmail_api: 'API Gmail (Google Workspace)',
     mailService_brevo: 'Brevo',
     mailService_resend: 'Resend',
+    mailService_cloudflare: 'Cloudflare Email Service (Workers Paid)',
     mailField_host: 'Serveur SMTP',
     mailField_port: 'Port (587 ou 465)',
     mailField_username: 'Nom d’utilisateur',
@@ -118,6 +119,9 @@ export default {
     mailHint_gmail_api: 'Un compte de service avec délégation au niveau du domaine (scope gmail.send) dans Google Workspace.',
     mailHint_brevo: 'L’adresse de l’expéditeur doit être vérifiée chez Brevo (un expéditeur ou tout votre domaine).',
     mailHint_resend: 'Le domaine de l’adresse de l’expéditeur doit être vérifié chez Resend.',
+    mailHint_cloudflare: 'Envoie via votre propre compte Cloudflare. L’adresse d’expéditeur doit appartenir à l’un de ces domaines : {domains}.',
+    mailCloudflareNone: 'Cloudflare Email Service : aucun domaine prêt pour l’envoi. Avec Workers Paid : Compute → Email Service → Email Sending → Onboard Domain ; il apparaîtra ensuite ici.',
+    mailCloudflarePermission: 'Cloudflare Email Service : votre jeton ne peut pas lire les domaines. Dans My Profile → API Tokens, ajoutez à arcanum-installer Zone · Zone · Read et Zone · Zone Settings · Read (Zone Resources : votre domaine ou All zones) ; le jeton reste le même.',
     mailNone: 'Aucun e-mail configuré — les invitations ne sont pas envoyées par e-mail.',
     mailSummary: '{service} · expéditeur {from}',
     mailApplied: 'Enregistré et actif. Envoyez un e-mail de test pour le vérifier.',
@@ -209,6 +213,9 @@ export default {
 
   api: {
     mailMissing: (fields: string) => `À compléter : ${fields}`,
+    mailCloudflareToken: 'Le jeton Cloudflare n’est pas disponible dans cette session — collez-le à nouveau (compte Cloudflare).',
+    mailCloudflarePermission: 'Votre jeton ne peut pas lire les domaines : ajoutez Zone · Zone · Read et Zone · Zone Settings · Read.',
+    mailCloudflareDomain: (domains: string) => (domains ? `L’adresse d’expéditeur doit appartenir à l’un de ces domaines : ${domains}` : 'Ce compte n’a aucun domaine prêt pour l’envoi (Email Service → Email Sending).'),
     noStateKey: 'INSTALLER_STATE_KEY manque',
     crossSite: 'Non autorisé depuis un autre site',
     expectJson: 'JSON attendu',

@@ -237,6 +237,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
         <p class="error" data-error></p>
       </form>
       <p class="soft" data-mail-note></p>
+      <p class="soft" data-mail-cloudflare></p>
       <p><button type="button" class="secondary" data-mail-test>${p.mailTest}</button> <button type="button" class="secondary" data-mail-off>${p.mailOff}</button></p>
     </section>
 
@@ -482,7 +483,7 @@ function mailFields(provider, s) {
     else if (!f.optional) input.required = true;
     box.append(label, input);
   }
-  $('[data-mail-hint]').textContent = M['mailHint_' + provider] || '';
+  $('[data-mail-hint]').textContent = provider === 'cloudflare' ? fmt(M.mailHint_cloudflare, { domains: cfDomains().join(', ') }) : M['mailHint_' + provider] || '';
   mailFieldsFor = provider;
 }
 // Google's service account file: read here, only its address shown; its
@@ -504,9 +505,27 @@ function serviceAccountPicker(id, name, saved) {
   return [file, text, note];
 }
 
+// Cloudflare Email Service: offered only when this account has a domain
+// onboarded for sending (api/mail/cloudflare, asked once per page) — or
+// when it's what's saved. Otherwise a line says what's missing.
+let cfSending = null, cfAsked = false;
+function cfDomains() { return (cfSending && cfSending.domains) || []; }
+async function askCloudflareSending() {
+  cfAsked = true;
+  try { cfSending = await api('api/mail/cloudflare'); } catch { cfSending = null; }
+  if (mailFieldsFor === 'cloudflare') $('[data-mail-hint]').textContent = fmt(M.mailHint_cloudflare, { domains: cfDomains().join(', ') });
+  renderMail(status || {});
+}
 function renderMail(s) {
   const sel = $('#mail-provider');
-  if (!sel.options.length) for (const value of Object.keys(s.mailServices || {})) { const o = document.createElement('option'); o.value = value; o.textContent = M['mailService_' + value] || value; sel.append(o); }
+  if (s.cloudflare && !cfAsked) askCloudflareSending();
+  const offered = Object.keys(s.mailServices || {}).filter((v) => v !== 'cloudflare' || cfDomains().length || (s.mail && s.mail.provider === 'cloudflare'));
+  if ([...sel.options].map((o) => o.value).join() !== offered.join()) {
+    const keep = sel.value; sel.innerHTML = '';
+    for (const value of offered) { const o = document.createElement('option'); o.value = value; o.textContent = M['mailService_' + value] || value; sel.append(o); }
+    if (keep && offered.includes(keep)) sel.value = keep;
+  }
+  $('[data-mail-cloudflare]').textContent = cfSending && cfSending.problem === 'permission' ? M.mailCloudflarePermission : cfSending && cfSending.domains && !cfSending.domains.length ? M.mailCloudflareNone : '';
   const current = s.mail ? s.mail.provider : (sel.value || 'smtp');
   if (mailFieldsFor === null) { sel.value = current; mailFields(current, s); }
   const el = $('#s-mail'); el.classList.toggle('done', !!s.mail);

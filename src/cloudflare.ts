@@ -184,6 +184,18 @@ export class Cloudflare {
     return list.find((d) => d.hostname === hostname)?.service ?? null;
   }
 
+  // Cloudflare Email Service (MAIL.md phase 5): the account's zones, and per
+  // zone the domains onboarded for sending. Needs Zone · Zone · Read and
+  // Zone · Zone Settings · Read on the token — not in the token template,
+  // added by hand like a custom domain's permissions.
+  listZones(accountId: string) {
+    return this.call<{ id: string; name: string }[]>('GET', `/zones?account.id=${encodeURIComponent(accountId)}&per_page=50`);
+  }
+
+  sendingDomains(zoneId: string) {
+    return this.call<{ name: string; enabled?: boolean }[]>('GET', `/zones/${zoneId}/email/sending/subdomains`);
+  }
+
   setWorkersDev(accountId: string, scriptName: string, enabled: boolean) {
     return this.call<unknown>('POST', `/accounts/${accountId}/workers/scripts/${scriptName}/subdomain`, { enabled, previews_enabled: false });
   }

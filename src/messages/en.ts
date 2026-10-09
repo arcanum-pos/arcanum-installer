@@ -102,6 +102,7 @@ export default {
     mailService_gmail_api: 'Gmail API (Google Workspace)',
     mailService_brevo: 'Brevo',
     mailService_resend: 'Resend',
+    mailService_cloudflare: 'Cloudflare Email Service (Workers Paid)',
     mailField_host: 'SMTP server',
     mailField_port: 'Port (587 or 465)',
     mailField_username: 'Username',
@@ -118,6 +119,9 @@ export default {
     mailHint_gmail_api: 'A service account with domain-wide delegation (scope gmail.send) in Google Workspace.',
     mailHint_brevo: 'The sender address must be verified at Brevo (a sender, or your whole domain).',
     mailHint_resend: 'The sender address’s domain must be verified at Resend.',
+    mailHint_cloudflare: 'Sends through your own Cloudflare account. The sender address must be on one of these domains: {domains}.',
+    mailCloudflareNone: 'Cloudflare Email Service: no domain ready for sending. On Workers Paid: Compute → Email Service → Email Sending → Onboard Domain; it then shows up here.',
+    mailCloudflarePermission: 'Cloudflare Email Service: your token can’t read the domains. In My Profile → API Tokens, add Zone · Zone · Read and Zone · Zone Settings · Read to arcanum-installer (Zone Resources: your domain or All zones); the token stays the same.',
     mailNone: 'No mail set up — invites aren’t mailed.',
     mailSummary: '{service} · sender {from}',
     mailApplied: 'Saved and active. Send a test mail to check.',
@@ -209,6 +213,9 @@ export default {
 
   api: {
     mailMissing: (fields: string) => `Still to fill in: ${fields}`,
+    mailCloudflareToken: 'The Cloudflare token isn’t available in this session — paste it again (Cloudflare account).',
+    mailCloudflarePermission: 'Your token can’t read the domains: add Zone · Zone · Read and Zone · Zone Settings · Read.',
+    mailCloudflareDomain: (domains: string) => (domains ? `The sender address must be on one of these domains: ${domains}` : 'This account has no domain ready for sending (Email Service → Email Sending).'),
     noStateKey: 'INSTALLER_STATE_KEY is missing',
     crossSite: 'Not allowed from another site',
     expectJson: 'JSON expected',

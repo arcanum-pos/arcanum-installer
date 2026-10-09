@@ -15,7 +15,7 @@ import { safeEqual } from './crypto';
 import { applyChange, changeInfo, changesIdentity, dropExpiredSnapshot, providerIdentity, readLoginProvider, TEST_CALLBACK_PATH, undoChange } from './login-change';
 import { addClientUris } from './auth-client';
 import { messageOf, textsFor, type Messages } from './i18n';
-import { buildMailConfig, MAIL_SERVICES, mailSummary, OLD_SMTP_SECRETS, type MailConfig } from './mail';
+import { buildMailConfig, cloudflareSending, MAIL_SERVICES, mailSummary, OLD_SMTP_SECRETS, sendsFrom, type MailConfig } from './mail';
 
 const TOKEN_PERMISSIONS = [
   { key: 'workers_scripts', type: 'edit' },
@@ -109,6 +109,11 @@ export async function mailConfigOf(env: Env, state: InstallerState): Promise<Mai
 // MAIL_CONFIG on arcanum-backend right away, when it exists and the token's
 // at hand (else the next Installeren/Bijwerken gives it — the backend's step
 // is redone). The old hand-set DEFAULT_SMTP_* go once it's set.
+async function cloudflareSendingOf(env: Env, state: InstallerState, sessionId: string) {
+  const token = await tokenFor(env, state, sessionId);
+  return cloudflareSending(token ? cloudflareFor(env, token) : null, state.cloudflare?.accountId);
+}
+
 async function applyMail(env: Env, state: InstallerState, sessionId: string, config: MailConfig | null): Promise<'applied' | 'later'> {
   const token = await tokenFor(env, state, sessionId);
   const accountId = state.cloudflare?.accountId;
@@ -424,10 +429,19 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const input = await body(request);
       const built = buildMailConfig(input, await mailConfigOf(env, state));
       if ('missing' in built) return json({ error: t.api.mailMissing(built.missing.join(', ')) }, 400);
+      if (built.config.provider === 'cloudflare') {
+        const sending = await cloudflareSendingOf(env, state, sessionId);
+        if ('problem' in sending) return json({ error: sending.problem === 'token' ? t.api.mailCloudflareToken : t.api.mailCloudflarePermission }, 409);
+        if (!sendsFrom(String(built.config.fromAddress), sending.domains)) return json({ error: t.api.mailCloudflareDomain(sending.domains.join(', ')) }, 400);
+      }
       state.mail = { config: await sealValue(env, state, JSON.stringify(built.config)), updatedAt: new Date().toISOString() };
       const applied = await applyMail(env, state, sessionId, built.config);
       await saveState(env, state);
       return json({ ...(await status(env, state, sessionId, access, t)), mailApplied: applied });
+    }
+    // Whether Cloudflare Email Service can be offered: the onboarded domains.
+    if (path === '/api/mail/cloudflare' && request.method === 'GET') {
+      return json(await cloudflareSendingOf(env, state, sessionId));
     }
     if (path === '/api/mail/off' && request.method === 'POST') {
       delete state.mail;

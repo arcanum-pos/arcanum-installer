@@ -929,6 +929,38 @@ describe('the installation’s mail', () => {
     expect(bad.body.error).toContain('serviceAccount');
   });
 
+  it('Cloudflare Email Service: offered with the onboarded domains; the sender must be on one; the mailer gets its send_email binding', async () => {
+    await configure();
+    expect((await call('GET', '/api/mail/cloudflare')).body).toEqual({ domains: [] });
+    fakes.cf.sendingDomains['scouts-elewijt.be'] = [
+      { name: 'scouts-elewijt.be', enabled: true },
+      { name: 'oud.scouts-elewijt.be', enabled: false },
+    ];
+    expect((await call('GET', '/api/mail/cloudflare')).body).toEqual({ domains: ['scouts-elewijt.be'] });
+
+    const elsewhere = await call('POST', '/api/mail', { provider: 'cloudflare', fromAddress: 'kassa@gmail.com' });
+    expect(elsewhere.status).toBe(400);
+    expect(elsewhere.body.error).toContain('scouts-elewijt.be');
+    expect((await call('POST', '/api/mail', { provider: 'cloudflare', fromAddress: 'oud@oud.scouts-elewijt.be' })).status).toBe(400);
+
+    const saved = await call('POST', '/api/mail', { provider: 'cloudflare', fromAddress: 'kassa@scouts-elewijt.be' });
+    expect(saved.status).toBe(200);
+    expect((await runAll()).failed).toBeNull();
+    expect(JSON.parse(binding('arcanum-backend', 'MAIL_CONFIG').text)).toEqual({ provider: 'cloudflare', fromAddress: 'kassa@scouts-elewijt.be' });
+    expect(fakes.cf.scripts.get('arcanum-mailer')!.metadata.bindings).toContainEqual({ type: 'send_email', name: 'EMAIL' });
+  });
+
+  it('Cloudflare Email Service: a token without the Zone read permissions says so, and nothing is saved', async () => {
+    await configure();
+    fakes.cf.zoneRead = false;
+    expect((await call('GET', '/api/mail/cloudflare')).body).toEqual({ problem: 'permission' });
+    const refused = await call('POST', '/api/mail', { provider: 'cloudflare', fromAddress: 'kassa@scouts-elewijt.be' });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toContain('Zone Settings');
+    expect(refused.body.mail).toBeUndefined();
+    expect((await call('GET', '/api/status')).body.mail).toBeNull();
+  });
+
   it('switched off: MAIL_CONFIG leaves the backend', async () => {
     await configure();
     await call('POST', '/api/mail', BREVO);

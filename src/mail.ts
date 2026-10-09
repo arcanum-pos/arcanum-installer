@@ -1,3 +1,5 @@
+import { CloudflareError, type Cloudflare } from './cloudflare';
+
 // The installation's mail account (MAIL.md): Geavanceerd → E-mail. One
 // service, its settings; kept sealed in the installer's state and given to
 // arcanum-backend as the secret MAIL_CONFIG ({ provider, …settings }) —
@@ -30,6 +32,9 @@ export const MAIL_SERVICES: Record<string, MailField[]> = {
   gmail_api: [{ name: 'serviceAccount', secret: true, serviceAccountFile: true }, { name: 'impersonatedUser' }, { name: 'fromName', optional: true }],
   brevo: [{ name: 'apiKey', secret: true }, { name: 'fromAddress' }, { name: 'fromName', optional: true }],
   resend: [{ name: 'apiKey', secret: true }, { name: 'fromAddress' }, { name: 'fromName', optional: true }],
+  // Through the mailer's own send_email binding: no key. Offered only when
+  // the account has a domain onboarded for sending (cloudflareSending).
+  cloudflare: [{ name: 'fromAddress' }, { name: 'fromName', optional: true }],
 };
 
 export type MailConfig = { provider: string } & Record<string, string | number>;
@@ -96,3 +101,31 @@ export function mailSummary(config: MailConfig | null) {
 
 // The old hand-set fallback (2026-10-06, the demo): gone once MAIL_CONFIG is set.
 export const OLD_SMTP_SECRETS = ['DEFAULT_SMTP_HOST', 'DEFAULT_SMTP_PORT', 'DEFAULT_SMTP_USER', 'DEFAULT_SMTP_PASS', 'DEFAULT_SMTP_FROM_ADDRESS', 'DEFAULT_SMTP_FROM_NAME'];
+
+// Cloudflare Email Service (MAIL.md phase 5): the domains this account can
+// send from — onboarded under Compute → Email Service → Email Sending, which
+// also means Workers Paid. A problem instead when it can't be told: no
+// token in this session, or a token without the Zone read permissions.
+export type CloudflareSending = { domains: string[] } | { problem: 'token' | 'permission' };
+
+// Free plan: 50 subrequests per request — the zone list plus one call per zone.
+const MAX_ZONES = 40;
+
+export async function cloudflareSending(cf: Cloudflare | null, accountId: string | undefined): Promise<CloudflareSending> {
+  if (!cf || !accountId) return { problem: 'token' };
+  try {
+    const zones = (await cf.listZones(accountId)).slice(0, MAX_ZONES);
+    const lists = await Promise.all(zones.map((z) => cf.sendingDomains(z.id)));
+    return { domains: [...new Set(lists.flat().filter((d) => d.enabled !== false).map((d) => d.name.toLowerCase()))].sort() };
+  } catch (err) {
+    if (err instanceof CloudflareError && (err.status === 401 || err.status === 403)) return { problem: 'permission' };
+    throw err;
+  }
+}
+
+// Whether an address's domain is one of them (a "*.example.com" entry
+// covers its subdomains).
+export function sendsFrom(address: string, domains: string[]): boolean {
+  const domain = address.split('@').pop()!.toLowerCase();
+  return domains.some((d) => (d.startsWith('*.') ? domain.endsWith(d.slice(1)) : domain === d));
+}

@@ -47,6 +47,10 @@ export class FakeCloudflare {
   // Zones on the account (Workers Custom Domains must be in one of them) and attached domains.
   zones = ['scouts-elewijt.be'];
   domains = new Map<string, string>(); // hostname -> service
+  // Cloudflare Email Service: per zone, its domains onboarded for sending;
+  // false = the token lacks the Zone read permissions.
+  sendingDomains: Record<string, { name: string; enabled: boolean }[]> = {};
+  zoneRead = true;
   workersDev = new Map<string, boolean>();
   assets = new Set<string>(); // uploaded hashes
   sessions = new Map<string, { needed: Set<string>; completion: string }>();
@@ -79,6 +83,13 @@ export class FakeCloudflare {
     const accounts = auth === `Bearer ${OTHER_ACCOUNT_TOKEN}` ? [{ id: 'acc-2', name: 'Ander account' }] : this.accounts;
 
     if (method === 'GET' && path === '/accounts') return ok(accounts);
+    if (method === 'GET' && path === '/zones') {
+      if (!this.zoneRead) return fail(403, 'Unauthorized to access requested resource', 9109);
+      if (!accounts.some((acc) => acc.id === url.searchParams.get('account.id'))) return ok([]);
+      return ok(this.zones.map((name) => ({ id: `zone-${name}`, name })));
+    }
+    const sending = path.match(/^\/zones\/zone-([^/]+)\/email\/sending\/subdomains$/);
+    if (sending && method === 'GET') return this.zoneRead ? ok(this.sendingDomains[sending[1]] ?? []) : fail(403, 'Unauthorized to access requested resource', 9109);
     const m = path.match(/^\/accounts\/([^/]+)(\/.*)$/);
     if (!m) return fail(404, 'Not found');
     const [, accountId, rest] = m;
