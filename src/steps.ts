@@ -124,6 +124,8 @@ export function secretsToRemove(name: string, descriptor: WorkerDescriptor, sent
 export const INSTALLER_MANAGED_SECRETS = new Set([
   // The installation's mail account (mail.ts): removed when mail is switched off.
   'MAIL_CONFIG',
+  // The installation's SMS account (sms.ts): removed when SMS is switched off.
+  'MESSAGING_CONFIG',
   'DEFAULT_IDP_SCOPES',
   'DEFAULT_IDP_AUTH_CODE_CLIENT_ID',
   'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET',
@@ -333,6 +335,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
           : {}),
         ...(linkInstaller ? { [INSTALLER_KEY_SECRET]: secrets[INSTALLER_KEY_SECRET] } : {}),
         ...(state.mail ? { MAIL_CONFIG: await unsealValue(ctx.env, state, state.mail.config) } : {}),
+        ...(state.sms ? { MESSAGING_CONFIG: await unsealValue(ctx.env, state, state.sms.config) } : {}),
       },
       secrets,
       resources: { d1: state.resources.d1, kv: state.resources.kv, ratelimitNamespaceId: state.resources.ratelimitNamespaceId! },

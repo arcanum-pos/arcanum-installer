@@ -96,6 +96,8 @@ export interface InstallerState {
   admins?: string;
   // The installation's mail account (mail.ts, MAIL.md): { provider, …settings }, sealed.
   mail?: { config: Sealed; updatedAt: string };
+  // The installation's SMS account (sms.ts, MESSAGING.md): Twilio's settings, sealed.
+  sms?: { config: Sealed; updatedAt: string };
   // The installation's own domain (a Workers Custom Domain on the bff, in a
   // zone of this account — no Cloudflare for SaaS). Unset = workers.dev only.
   customDomain?: string;

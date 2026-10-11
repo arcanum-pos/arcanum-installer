@@ -554,6 +554,24 @@ export interface Fakes {
   publicUrlFetches: () => number;
   // Makes the provider's device/token endpoints answer 503 (an outage, not a refusal).
   providerBroken: { value: boolean };
+  twilio: FakeTwilio;
+}
+
+// Twilio's API: an account with its auth token (or an API key), and the SMS sent.
+export class FakeTwilio {
+  accountSid = 'AC' + '1'.repeat(32);
+  authToken = 'twilio-token';
+  sent: { to: string; body: string; from: string | null }[] = [];
+  handle(request: Request, form: URLSearchParams | null): Response {
+    const url = new URL(request.url);
+    if (request.headers.get('Authorization') !== `Basic ${btoa(`${this.accountSid}:${this.authToken}`)}`) return Response.json({ code: 20003, message: 'Authenticate' }, { status: 401 });
+    if (request.method === 'GET' && url.pathname === `/2010-04-01/Accounts/${this.accountSid}.json`) return Response.json({ sid: this.accountSid, status: 'active' });
+    if (request.method === 'POST' && url.pathname === `/2010-04-01/Accounts/${this.accountSid}/Messages.json` && form) {
+      this.sent.push({ to: form.get('To')!, body: form.get('Body')!, from: form.get('From') });
+      return Response.json({ sid: `SM${this.sent.length}` }, { status: 201 });
+    }
+    return Response.json({ message: 'not found' }, { status: 404 });
+  }
 }
 
 // Routes every outbound fetch of the Worker under test to the fakes.
@@ -567,6 +585,7 @@ export async function installFakes(): Promise<Fakes> {
   let calls = 0;
   let publicFetches = 0;
   const providerBroken = { value: false };
+  const twilio = new FakeTwilio();
   const realFetch = globalThis.fetch;
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const request = new Request(input as RequestInfo, init);
@@ -574,6 +593,7 @@ export async function installFakes(): Promise<Fakes> {
     if (url.hostname === 'installer.test') return realFetch(input as RequestInfo, init); // SELF
     calls++;
     if (url.hostname === 'cf.test') return cf.handle(request);
+    if (url.hostname === 'api.twilio.com') return twilio.handle(request, request.method === 'POST' ? new URLSearchParams(await request.text()) : null);
     if (url.hostname === 'releases.test') {
       if (url.pathname === '/releases.json') releases.indexCacheModes.push(request.cache);
       return releases.handle(url);
@@ -606,5 +626,5 @@ export async function installFakes(): Promise<Fakes> {
     }
     throw new Error(`Unexpected outbound fetch in test: ${request.method} ${request.url}`);
   });
-  return { cf, releases, issuer, newIssuer, unreachable, fetchCalls: () => calls, publicUrlFetches: () => publicFetches, providerBroken };
+  return { cf, releases, issuer, newIssuer, unreachable, fetchCalls: () => calls, publicUrlFetches: () => publicFetches, providerBroken, twilio };
 }

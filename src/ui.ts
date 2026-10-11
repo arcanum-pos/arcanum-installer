@@ -75,7 +75,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   /* A file to pick (Google's service account JSON). */
   input[type=file] { font: inherit; font-size: 13px; color: var(--muted-foreground); }
   /* The mail service's fields (built by the page script): one under the other, like the form's own. */
-  [data-mail-fields], [data-mail-test-box] { display: grid; gap: 6px; }
+  [data-mail-fields], [data-mail-test-box], [data-sms-test-box] { display: grid; gap: 6px; }
   input::placeholder { color: var(--muted-foreground); }
   input:focus-visible, select:focus-visible, button:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent); }
   input[type=checkbox] { accent-color: var(--primary); width: 16px; height: 16px; }
@@ -244,6 +244,28 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       <p><button type="button" class="secondary" data-mail-test>${p.mailTest}</button> <button type="button" class="secondary" data-mail-off>${p.mailOff}</button></p>
     </section>
 
+    <section id="s-sms" class="card">
+      <h2>${p.smsTitle}</h2>
+      <p class="soft">${p.smsIntro}</p>
+      <p data-summary class="soft"></p>
+      <form data-form="sms">
+        <label for="sms-accountSid">${p.smsAccountSid}</label><input id="sms-accountSid" name="accountSid" type="text" autocomplete="off" required placeholder="AC…">
+        <label for="sms-apiKeySid">${p.smsApiKeySid}</label><input id="sms-apiKeySid" name="apiKeySid" type="text" autocomplete="off" placeholder="SK…">
+        <label for="sms-authToken">${p.smsAuthToken}</label><input id="sms-authToken" name="authToken" type="password" autocomplete="off">
+        <label for="sms-sender">${p.smsSender}</label><input id="sms-sender" name="sender" type="text" autocomplete="off" required>
+        <label for="sms-countries">${p.smsCountries}</label><input id="sms-countries" name="countries" type="text" autocomplete="off" placeholder="+32">
+        <p class="soft">${p.smsCountriesHint}</p>
+        <label for="sms-dailyCap">${p.smsDailyCap}</label><input id="sms-dailyCap" name="dailyCap" type="number" min="0" placeholder="300">
+        <button>${p.smsSave}</button>
+        <p class="error" data-error></p>
+      </form>
+      <p class="soft" data-sms-note></p>
+      <div data-sms-test-box class="hidden">
+        <label for="sms-test-to">${p.smsTestTo}</label><input id="sms-test-to" type="tel" autocomplete="off" placeholder="0470 12 34 56">
+      </div>
+      <p><button type="button" class="secondary" data-sms-test>${p.smsTest}</button> <button type="button" class="secondary" data-sms-off>${p.smsOff}</button></p>
+    </section>
+
     <section id="s-install" class="card">
       <h2>${p.installTitle}</h2>
       <dl class="facts">
@@ -392,7 +414,7 @@ $('[data-recovery-saved]').addEventListener('change', (ev) => { $('[data-recover
 $('[data-recovery-continue]').addEventListener('click', async () => { $('[data-recovery-code]').textContent = ''; await refresh(); show(true); await loadReleases(); });
 
 // One screen: the detailed cards under "Geavanceerd" (a new title, or their own).
-const ADVANCED = { 's-address': M.advancedAddress, 's-login': M.advancedLogin, 's-mail': M.advancedMail, 's-cloudflare': M.advancedCloudflare, 's-admins': M.advancedAdmins, 's-public': null };
+const ADVANCED = { 's-address': M.advancedAddress, 's-login': M.advancedLogin, 's-mail': M.advancedMail, 's-sms': M.advancedSms, 's-cloudflare': M.advancedCloudflare, 's-admins': M.advancedAdmins, 's-public': null };
 for (const [id, title] of Object.entries(ADVANCED)) { const el = $('#' + id); if (title) $('h2', el).textContent = title; $('[data-advanced]').append(el); }
 $('#s-install h2').textContent = M.install;
 $('[data-run]').classList.add('big');
@@ -465,6 +487,7 @@ function render() {
   $('#s-change').classList.toggle('hidden', !changing);
   if (changing) loadChange();
   renderMail(s);
+  renderSms(s);
 }
 
 // Geavanceerd → E-mail (mail.ts): the fields follow the chosen service;
@@ -555,6 +578,35 @@ $('[data-mail-test]').addEventListener('click', async (e) => {
     const r = await res.json().catch(() => ({}));
     note.textContent = res.ok && r.ok ? fmt(M.mailTestOk, { to: r.to || '' }) : fmt(M.mailTestFailed, { code: r.code || res.status, detail: r.detail || r.error || '' });
   } catch (err) { note.textContent = fmt(M.mailTestFailed, { code: '—', detail: err.message }); }
+  finally { e.target.disabled = false; }
+});
+
+// Geavanceerd → Sms (sms.ts): Twilio's settings; the token never shown —
+// left empty, the saved one is kept. A test SMS goes straight to Twilio.
+let smsFilled = false;
+function renderSms(s) {
+  const el = $('#s-sms'); el.classList.toggle('done', !!s.sms);
+  const v = s.sms ? s.sms.values : null;
+  $('[data-summary]', el).textContent = v ? fmt(M.smsSummary, { sender: v.sender, countries: v.countries, cap: v.dailyCap }) : M.smsNone;
+  if (!smsFilled) {
+    for (const name of ['accountSid', 'apiKeySid', 'sender', 'countries', 'dailyCap']) $('#sms-' + name).value = v ? v[name] : '';
+    $('#sms-authToken').placeholder = v ? M.secretKept : '';
+    $('#sms-authToken').required = !v;
+    smsFilled = true;
+  }
+  $('[data-sms-test]').classList.toggle('hidden', !s.sms);
+  $('[data-sms-test-box]').classList.toggle('hidden', !s.sms);
+  $('[data-sms-off]').classList.toggle('hidden', !s.sms);
+}
+$('[data-sms-off]').addEventListener('click', async () => {
+  const note = $('[data-sms-note]'); note.textContent = '';
+  try { const r = await api('api/sms/off', {}); status = r; smsFilled = false; render(); } catch (e) { note.textContent = e.message; }
+});
+$('[data-sms-test]').addEventListener('click', async (e) => {
+  const note = $('[data-sms-note]'); note.textContent = '';
+  e.target.disabled = true;
+  try { const r = await api('api/sms/test', { to: $('#sms-test-to').value }); note.textContent = fmt(M.smsTestOk, { to: r.to }); }
+  catch (err) { note.textContent = err.message; }
   finally { e.target.disabled = false; }
 });
 
@@ -822,6 +874,7 @@ document.addEventListener('submit', async (ev) => {
     if (form.dataset.form === 'cloudflare') form.token.value = '';
     if (form.dataset.form === 'login-provider') { form.clientSecret.value = ''; form.authCodeClientSecret.value = ''; }
     if (form.dataset.form === 'mail') { $('[data-mail-note]').textContent = result.mailApplied === 'applied' ? M.mailApplied : M.mailLater; mailFieldsFor = null; render(); }
+    if (form.dataset.form === 'sms') { $('[data-sms-note]').textContent = result.smsApplied === 'applied' ? M.smsApplied : M.smsLater; smsFilled = false; render(); }
   } catch (e) { err.textContent = e.message; if (e.data && e.data.checks) showChecks(e.data.checks); } finally { button.disabled = false; }
 });
 

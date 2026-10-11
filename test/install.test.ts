@@ -985,3 +985,54 @@ describe('the installation’s mail', () => {
     expect(secretsToRemove('arcanum-backend', descriptor, new Set([]), false)).not.toContain('DEFAULT_SMTP_HOST');
   });
 });
+
+// Geavanceerd → Sms (src/sms.ts, MESSAGING.md): Twilio, given to
+// arcanum-backend as MESSAGING_CONFIG.
+describe('the installation’s SMS', () => {
+  const SID = 'AC' + '1'.repeat(32);
+  const TWILIO = { accountSid: SID, authToken: 'twilio-token', sender: 'KABOUTERS', countries: '+32, 31', dailyCap: '150' };
+
+  it('checked with Twilio, saved, given to the backend with the install — the token never shown back', async () => {
+    await configure();
+    const wrong = await call('POST', '/api/sms', { ...TWILIO, authToken: 'nope' });
+    expect(wrong.status).toBe(400);
+    expect(wrong.body.error).toContain('Twilio');
+    const saved = await call('POST', '/api/sms', TWILIO);
+    expect(saved.status).toBe(200);
+    expect(saved.body.smsApplied).toBe('later');
+    expect(saved.body.sms).toEqual({ provider: 'twilio', values: { accountSid: SID, apiKeySid: '', sender: 'KABOUTERS', countries: '+32, +31', dailyCap: '150' }, secretsSet: ['authToken'] });
+    expect(JSON.stringify(saved.body)).not.toContain('twilio-token');
+    expect((await runAll()).failed).toBeNull();
+    expect(JSON.parse(binding('arcanum-backend', 'MESSAGING_CONFIG').text)).toEqual({ provider: 'twilio', accountSid: SID, authToken: 'twilio-token', sender: 'KABOUTERS', countries: ['+32', '+31'], dailyCap: 150 });
+  });
+
+  it('defaults: Belgium, 300 a day; the token left empty is kept; wrong fields are named', async () => {
+    await configure();
+    await call('POST', '/api/sms', { accountSid: SID, authToken: 'twilio-token', sender: '+32470000000' });
+    expect((await call('POST', '/api/sms', { accountSid: SID, authToken: '', sender: 'Kabouters' })).status).toBe(200);
+    expect((await runAll()).failed).toBeNull();
+    expect(JSON.parse(binding('arcanum-backend', 'MESSAGING_CONFIG').text)).toMatchObject({ authToken: 'twilio-token', sender: 'Kabouters', countries: ['+32'], dailyCap: 300 });
+    const bad = await call('POST', '/api/sms', { accountSid: 'xx', authToken: '', sender: 'a name far too long', countries: 'België', dailyCap: '-1' });
+    expect(bad.status).toBe(400);
+    for (const field of ['accountSid', 'authToken', 'sender', 'countries', 'dailyCap']) expect(bad.body.error).toContain(field);
+  });
+
+  it('installed: set right away; a test SMS to an allowed number; switched off, it leaves the backend', async () => {
+    await configure();
+    expect((await runAll()).failed).toBeNull();
+    const saved = await call('POST', '/api/sms', TWILIO);
+    expect(saved.body.smsApplied).toBe('applied');
+    expect(fakes.cf.secretPuts.find((p: any) => p.name === 'MESSAGING_CONFIG')).toBeTruthy();
+
+    expect((await call('POST', '/api/sms/test', { to: '+44 7700 900123' })).status).toBe(400);
+    const test = await call('POST', '/api/sms/test', { to: '0470 12 34 56' });
+    expect(test.body).toEqual({ ok: true, to: '+32470123456' });
+    expect(fakes.twilio.sent).toEqual([{ to: '+32470123456', body: expect.stringContaining('test'), from: 'KABOUTERS' }]);
+
+    fakes.cf.scripts.get('arcanum-backend')!.metadata.bindings.push({ type: 'secret_text', name: 'MESSAGING_CONFIG', text: '{}' });
+    const off = await call('POST', '/api/sms/off', {});
+    expect(off.body.sms).toBeNull();
+    expect(fakes.cf.secretDeletes).toContainEqual({ script: 'arcanum-backend', name: 'MESSAGING_CONFIG' });
+    expect((await call('POST', '/api/sms/test', { to: '0470123456' })).status).toBe(409);
+  });
+});

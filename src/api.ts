@@ -16,6 +16,7 @@ import { applyChange, changeInfo, changesIdentity, dropExpiredSnapshot, provider
 import { addClientUris } from './auth-client';
 import { messageOf, textsFor, type Messages } from './i18n';
 import { buildMailConfig, cloudflareSending, MAIL_SERVICES, mailSummary, OLD_SMTP_SECRETS, sendsFrom, type MailConfig } from './mail';
+import { buildSmsConfig, checkTwilio, normalizePhone, sendTestSms, smsSummary, type SmsConfig } from './sms';
 
 const TOKEN_PERMISSIONS = [
   { key: 'workers_scripts', type: 'edit' },
@@ -132,6 +133,27 @@ async function applyMail(env: Env, state: InstallerState, sessionId: string, con
   return 'applied';
 }
 
+export async function smsConfigOf(env: Env, state: InstallerState): Promise<SmsConfig | null> {
+  return state.sms ? (JSON.parse(await unsealValue(env, state, state.sms.config)) as SmsConfig) : null;
+}
+
+// MESSAGING_CONFIG on arcanum-backend right away, like MAIL_CONFIG (applyMail).
+async function applySms(env: Env, state: InstallerState, sessionId: string, config: SmsConfig | null): Promise<'applied' | 'later'> {
+  const token = await tokenFor(env, state, sessionId);
+  const accountId = state.cloudflare?.accountId;
+  const cf = token && accountId ? cloudflareFor(env, token) : null;
+  if (!cf || !accountId || !state.installed || !(await cf.scriptExists(accountId, 'arcanum-backend'))) {
+    delete state.steps['worker:arcanum-backend'];
+    return 'later';
+  }
+  if (config) await cf.putSecret(accountId, 'arcanum-backend', 'MESSAGING_CONFIG', JSON.stringify(config));
+  else {
+    const existing = new Set(((await cf.scriptBindings(accountId, 'arcanum-backend')) ?? []).filter((b) => b.type === 'secret_text').map((b) => b.name));
+    if (existing.has('MESSAGING_CONFIG')) await cf.deleteSecret(accountId, 'arcanum-backend', 'MESSAGING_CONFIG');
+  }
+  return 'applied';
+}
+
 export async function status(env: Env, state: InstallerState, sessionId: string, access: Access | undefined, t: Messages) {
   const url = publicUrl(state);
   const steps = state.release ? planSteps(state.release.blueprint, state, t).map((s) => ({ ...s, ...(state.steps[s.id] ?? { status: 'todo' }) })) : [];
@@ -155,6 +177,8 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
     // The service and its plain values — never a key or password.
     mail: mailSummary(await mailConfigOf(env, state)),
     mailServices: MAIL_SERVICES,
+    // Twilio's settings — never the token.
+    sms: smsSummary(await smsConfigOf(env, state)),
     release: state.release ? { version: state.release.version, components: state.release.manifest.components } : null,
     locked: installationStarted(state),
     steps,
@@ -447,6 +471,33 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const applied = await applyMail(env, state, sessionId, null);
       await saveState(env, state);
       return json({ ...(await status(env, state, sessionId, access, t)), mailApplied: applied });
+    }
+
+    // Geavanceerd → Sms (MESSAGING.md): Twilio, checked before it's saved; or off.
+    if (path === '/api/sms' && request.method === 'POST') {
+      const built = buildSmsConfig(await body(request), await smsConfigOf(env, state));
+      if ('missing' in built) return json({ error: t.api.smsMissing(built.missing.join(', ')) }, 400);
+      const refused = await checkTwilio(built.config);
+      if (refused) return json({ error: t.api.smsRefused(refused) }, 400);
+      state.sms = { config: await sealValue(env, state, JSON.stringify(built.config)), updatedAt: new Date().toISOString() };
+      const applied = await applySms(env, state, sessionId, built.config);
+      await saveState(env, state);
+      return json({ ...(await status(env, state, sessionId, access, t)), smsApplied: applied });
+    }
+    if (path === '/api/sms/off' && request.method === 'POST') {
+      delete state.sms;
+      const applied = await applySms(env, state, sessionId, null);
+      await saveState(env, state);
+      return json({ ...(await status(env, state, sessionId, access, t)), smsApplied: applied });
+    }
+    // A test SMS to the number given, straight through Twilio (it counts on the bill).
+    if (path === '/api/sms/test' && request.method === 'POST') {
+      const config = await smsConfigOf(env, state);
+      if (!config) return json({ error: t.api.smsNone }, 409);
+      const to = normalizePhone((await body(request)).to, config.countries);
+      if (!to) return json({ error: t.api.smsBadNumber(config.countries.join(', ')) }, 400);
+      const sent = await sendTestSms(config, to, t.api.smsTestText);
+      return sent.ok ? json({ ok: true, to }) : json({ error: t.api.smsTestFailed(sent.error) }, 502);
     }
 
     if (path === '/api/releases' && request.method === 'GET') {

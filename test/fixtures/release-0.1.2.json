@@ -289,6 +289,11 @@
      "source": "optional",
      "note": "mail is configured per org in the portal"
     },
+    "MESSAGING_CONFIG": {
+     "kind": "secret",
+     "source": "optional",
+     "note": "the installation's SMS account (MESSAGING.md)"
+    },
 "DEFAULT_SMTP_HOST": {
      "kind": "secret",
      "source": "optional",
