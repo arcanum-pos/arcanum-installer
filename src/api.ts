@@ -133,6 +133,22 @@ async function applyMail(env: Env, state: InstallerState, sessionId: string, con
   return 'applied';
 }
 
+// INSTANCE_ADMIN_EMAILS on arcanum-backend right away, when it exists and the
+// token's at hand (else the next Installeren/Bijwerken gives it — the
+// backend's step is redone). Without this, a new admin could open the
+// installer (it reads its own list) but the console wouldn't offer it.
+async function applyAdmins(env: Env, state: InstallerState, sessionId: string, admins: string): Promise<'applied' | 'later'> {
+  const token = await tokenFor(env, state, sessionId);
+  const accountId = state.cloudflare?.accountId;
+  const cf = token && accountId ? cloudflareFor(env, token) : null;
+  if (!cf || !accountId || !state.installed || !(await cf.scriptExists(accountId, 'arcanum-backend'))) {
+    delete state.steps['worker:arcanum-backend'];
+    return 'later';
+  }
+  await cf.putSecret(accountId, 'arcanum-backend', 'INSTANCE_ADMIN_EMAILS', admins);
+  return 'applied';
+}
+
 export async function smsConfigOf(env: Env, state: InstallerState): Promise<SmsConfig | null> {
   return state.sms ? (JSON.parse(await unsealValue(env, state, state.sms.config)) as SmsConfig) : null;
 }
@@ -443,8 +459,11 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const bad = list.filter((e) => !/^(\*|[^@\s]+)@[^@\s]+\.[^@\s]+$/.test(e));
       if (bad.length) return json({ error: t.api.badEmails(bad.join(', ')) }, 400);
       state.admins = list.join(', ');
+      // The backend's copy (INSTANCE_ADMIN_EMAILS — who may create orgs, and
+      // who the console offers the installer to) right away, like mail.
+      const applied = await applyAdmins(env, state, sessionId, state.admins);
       await saveState(env, state);
-      return json(await status(env, state, sessionId, access, t));
+      return json({ ...(await status(env, state, sessionId, access, t)), adminsApplied: applied });
     }
 
     // Geavanceerd → E-mail (MAIL.md): a service and its settings, or off.

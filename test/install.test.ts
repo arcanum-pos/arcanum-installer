@@ -879,6 +879,27 @@ describe('an installer that the bootstrapper did not hand over', () => {
   });
 });
 
+// Beheerders: the installer's own list, and the backend's copy
+// (INSTANCE_ADMIN_EMAILS) — the console offers the installer by it.
+describe('the installation admins', () => {
+  it('installed: a new admin reaches the backend right away (the console shows Installatie)', async () => {
+    await configure();
+    expect((await runAll()).failed).toBeNull();
+    const saved = await call('POST', '/api/admins', { emails: 'bert@scouts.test, an@scouts.test' });
+    expect(saved.status).toBe(200);
+    expect(saved.body.adminsApplied).toBe('applied');
+    expect(fakes.cf.secretPuts).toContainEqual({ script: 'arcanum-backend', name: 'INSTANCE_ADMIN_EMAILS', text: 'bert@scouts.test, an@scouts.test' });
+  });
+
+  it('not installed yet: kept, given with the install', async () => {
+    await configure();
+    const saved = await call('POST', '/api/admins', { emails: 'an@scouts.test' });
+    expect(saved.body.adminsApplied).toBe('later');
+    expect((await runAll()).failed).toBeNull();
+    expect(binding('arcanum-backend', 'INSTANCE_ADMIN_EMAILS').text).toBe('an@scouts.test');
+  });
+});
+
 // Geavanceerd → E-mail (src/mail.ts, MAIL.md): the installation's mail
 // account, given to arcanum-backend as MAIL_CONFIG.
 describe('the installation’s mail', () => {

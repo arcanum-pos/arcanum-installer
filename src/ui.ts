@@ -223,6 +223,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       <p class="soft">${p.adminsIntro}</p>
       <p data-summary class="soft"></p>
       <form data-form="admins"><label for="emails">${p.emails}</label><input id="emails" name="emails" type="text" placeholder="${p.emailsPlaceholder}" required><button>${p.save}</button><p class="error" data-error></p></form>
+      <p class="soft" data-admins-note></p>
     </section>
 
     <section id="s-mail" class="card">
@@ -874,6 +875,7 @@ document.addEventListener('submit', async (ev) => {
     if (result.checks) showChecks(result.checks);
     if (form.dataset.form === 'cloudflare') form.token.value = '';
     if (form.dataset.form === 'login-provider') { form.clientSecret.value = ''; form.deviceClientSecret.value = ''; }
+    if (form.dataset.form === 'admins') $('[data-admins-note]').textContent = result.adminsApplied === 'applied' ? M.adminsApplied : M.adminsLater;
     if (form.dataset.form === 'mail') { $('[data-mail-note]').textContent = result.mailApplied === 'applied' ? M.mailApplied : M.mailLater; mailFieldsFor = null; render(); }
     if (form.dataset.form === 'sms') { $('[data-sms-note]').textContent = result.smsApplied === 'applied' ? M.smsApplied : M.smsLater; smsFilled = false; render(); }
   } catch (e) { err.textContent = e.message; if (e.data && e.data.checks) showChecks(e.data.checks); } finally { button.disabled = false; }
