@@ -61,13 +61,13 @@ type Fields = Record<string, unknown>;
 
 export function providerIdentity(b: Fields) {
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
-  return { issuer: (text(b.issuer) ?? '').replace(/\/+$/, ''), clientId: text(b.clientId) ?? '', authCodeClientId: text(b.authCodeClientId) };
+  return { issuer: (text(b.issuer) ?? '').replace(/\/+$/, ''), clientId: text(b.clientId) ?? '', deviceClientId: text(b.deviceClientId) };
 }
 
 // Whether other settings mean other (issuer, sub) values for everyone: another
 // issuer, or another client (some providers give each client its own subs).
-export const changesIdentity = (a: { issuer: string; clientId: string; authCodeClientId?: string }, b: { issuer: string; clientId: string; authCodeClientId?: string }) =>
-  a.issuer !== b.issuer || a.clientId !== b.clientId || (a.authCodeClientId ?? null) !== (b.authCodeClientId ?? null);
+export const changesIdentity = (a: { issuer: string; clientId: string; deviceClientId?: string }, b: { issuer: string; clientId: string; deviceClientId?: string }) =>
+  a.issuer !== b.issuer || a.clientId !== b.clientId || (a.deviceClientId ?? null) !== (b.deviceClientId ?? null);
 
 // Validates the form and tests the provider live. `current`: the settings
 // whose secrets may be kept when a secret field is left empty (same issuer
@@ -80,17 +80,17 @@ export async function readLoginProvider(
   t: Messages
 ): Promise<{ ok: true; login: LoginSettings; checks: ClientCheck[] } | { ok: false; status: number; error: string; checks?: ClientCheck[] }> {
   const refuse = (error: string, checks?: ClientCheck[]) => ({ ok: false as const, status: 400, error, checks });
-  const { issuer, clientId, authCodeClientId } = providerIdentity(b);
+  const { issuer, clientId, deviceClientId } = providerIdentity(b);
   const clientSecret = typeof b.clientSecret === 'string' ? b.clientSecret.trim() : '';
   const isGoogle = /^https:\/\/accounts\.google\.com$/.test(issuer);
   // Google rejects the platform's default `offline_access` scope.
   const scopes = (typeof b.scopes === 'string' && b.scopes.trim().replace(/\s+/g, ' ')) || (isGoogle ? 'openid profile email' : undefined);
   if (scopes && !scopes.split(' ').includes('openid')) return refuse(t.change.scopesOpenid);
-  const authCodeClientSecret = typeof b.authCodeClientSecret === 'string' ? b.authCodeClientSecret.trim() : '';
+  const deviceClientSecret = typeof b.deviceClientSecret === 'string' ? b.deviceClientSecret.trim() : '';
   const same = current && current.issuer === issuer ? current : undefined;
   const keepSecret = !clientSecret && same?.clientId === clientId ? same.clientSecret : undefined;
-  const keepAuthCodeSecret = authCodeClientId && !authCodeClientSecret && same?.authCodeClientId === authCodeClientId ? same.authCodeClientSecret : undefined;
-  if (authCodeClientId && !authCodeClientSecret && !keepAuthCodeSecret) return refuse(t.change.browserSecret);
+  const keepDeviceSecret = deviceClientId && !deviceClientSecret && same?.deviceClientId === deviceClientId ? same.deviceClientSecret : undefined;
+  if (deviceClientId && !deviceClientSecret && !keepDeviceSecret) return refuse(t.change.deviceSecret);
   if (!/^https:\/\/[^/]+/.test(issuer)) return refuse(t.change.issuerHttps);
   if (!clientId) return refuse(t.change.noClientId);
   if (!clientSecret && !keepSecret) return refuse(t.change.noClientSecret);
@@ -100,19 +100,21 @@ export async function readLoginProvider(
   const doc = res?.ok ? ((await res.json().catch(() => null)) as Record<string, unknown> | null) : null;
   if (!doc || typeof doc.authorization_endpoint !== 'string') return refuse(t.change.noDiscovery(`${issuer}/.well-known/openid-configuration`));
   if (typeof doc.device_authorization_endpoint !== 'string') return refuse(t.change.noDeviceFlow);
-  // Test the clients with the provider before keeping anything.
-  const kassaSecret = clientSecret || (await unsealValue(env, state, keepSecret!));
-  const browserSecret = authCodeClientSecret || (keepAuthCodeSecret ? await unsealValue(env, state, keepAuthCodeSecret) : '');
+  // Test the clients with the provider before keeping anything: the QR
+  // sign-in with the separate QR client (else the primary one), and — when
+  // they're two — the browser sign-in with the primary one.
+  const mainSecret = clientSecret || (await unsealValue(env, state, keepSecret!));
+  const qrSecret = deviceClientSecret || (keepDeviceSecret ? await unsealValue(env, state, keepDeviceSecret) : '');
   const checks =
     typeof doc.token_endpoint === 'string'
       ? await checkClients({
           deviceEndpoint: doc.device_authorization_endpoint,
           tokenEndpoint: doc.token_endpoint,
           isGoogle,
-          clientId,
-          clientSecret: kassaSecret,
+          clientId: deviceClientId ?? clientId,
+          clientSecret: deviceClientId ? qrSecret : mainSecret,
           scopes: scopes ?? 'openid profile email offline_access',
-          authCode: authCodeClientId ? { clientId: authCodeClientId, clientSecret: browserSecret, redirectUri: `${publicUrl(state) ?? issuer}/callback` } : undefined,
+          authCode: deviceClientId ? { clientId, clientSecret: mainSecret, redirectUri: `${publicUrl(state) ?? issuer}/callback` } : undefined,
         }, t)
       : [];
   const refused = checks.filter((c) => c.blocking);
@@ -126,16 +128,14 @@ export async function readLoginProvider(
       clientSecret: clientSecret ? await sealValue(env, state, clientSecret) : keepSecret!,
       authorizationEndpoint: doc.authorization_endpoint,
       scopes,
-      authCodeClientId,
-      authCodeClientSecret: authCodeClientId ? (authCodeClientSecret ? await sealValue(env, state, authCodeClientSecret) : keepAuthCodeSecret) : undefined,
+      deviceClientId,
+      deviceClientSecret: deviceClientId ? (deviceClientSecret ? await sealValue(env, state, deviceClientSecret) : keepDeviceSecret) : undefined,
     },
   };
 }
 
-// Arcanum's browser login (and so this page's sign-in and the test) uses the
-// separate browser client when there is one.
-const browserClient = (login: LoginSettings) =>
-  login.authCodeClientId && login.authCodeClientSecret ? { clientId: login.authCodeClientId, clientSecret: login.authCodeClientSecret } : { clientId: login.clientId, clientSecret: login.clientSecret };
+// Arcanum's browser login (and so this page's sign-in and the test): the primary client.
+const browserClient = (login: LoginSettings) => ({ clientId: login.clientId, clientSecret: login.clientSecret });
 
 // ---------------------------------------------------------------------------
 // Memberships in the backend database.
@@ -510,7 +510,7 @@ export async function changeInfo(env: Env, state: InstallerState, sessionId: str
     installed: !!state.installed,
     current: state.login ? { issuer: state.login.issuer, clientId: state.login.clientId } : null,
     staged: staged
-      ? { issuer: staged.login.issuer, clientId: staged.login.clientId, authCodeClientId: staged.login.authCodeClientId ?? null, scopes: staged.login.scopes ?? null, at: staged.at, browserClientId: browserClient(staged.login).clientId }
+      ? { issuer: staged.login.issuer, clientId: staged.login.clientId, deviceClientId: staged.login.deviceClientId ?? null, scopes: staged.login.scopes ?? null, at: staged.at, browserClientId: browserClient(staged.login).clientId }
       : null,
     test: test ? { email: test.email, sub: test.sub, emailVerified: test.emailVerified, at: test.at, thisSession: test.sessionId === sessionId } : null,
     callbackUrls,

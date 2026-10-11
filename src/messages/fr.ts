@@ -62,9 +62,10 @@ export default {
     issuer: 'URL de l’émetteur (issuer)',
     clientId: 'Client ID',
     clientSecret: 'Client secret',
-    googleHint: 'Google a besoin de <strong>deux</strong> clients OAuth : un client du type <em>TVs and Limited Input devices</em> ci-dessus (pour la connexion sur la caisse) et un client du type <em>Web application</em> ci-dessous, avec l’URL de callback comme <em>Authorized redirect URI</em>. Les scopes deviennent <code>openid profile email</code> (Google refuse <code>offline_access</code>).',
+    googleHint: 'Google a besoin de <strong>deux</strong> clients OAuth : un client du type <em>Web application</em> ci-dessus, avec l’URL de callback comme <em>Authorized redirect URI</em> (pour la connexion dans le navigateur), et un client du type <em>TVs and Limited Input devices</em> ci-dessous (pour la connexion par code QR sur une caisse). Les scopes deviennent <code>openid profile email</code> (Google refuse <code>offline_access</code>).',
     scopes: 'Scopes (facultatif)',
-    browserClient: 'Client distinct pour la connexion dans le navigateur (facultatif)',
+    deviceClient: 'Client distinct pour la connexion par code QR (facultatif)',
+    deviceClientHint: 'Uniquement si votre fournisseur a besoin d’un client distinct pour cela (comme Google). Vide : le client ci-dessus fait aussi la connexion par QR — c’est ainsi que fonctionne login.kaboutersoft.be.',
     adminsTitle: '3. Administrateurs',
     adminsIntro: 'Seules ces personnes peuvent créer ou importer une organisation sur cette installation. D’autres personnes peuvent toutefois être invitées. Utilisez <code>*@votredomaine.be</code> pour tout un domaine.',
     emails: 'Adresses e-mail',
@@ -352,7 +353,7 @@ export default {
 
   change: {
     scopesOpenid: 'Les scopes doivent contenir au moins « openid »',
-    browserSecret: 'Indiquez aussi le secret du client distinct pour le navigateur',
+    deviceSecret: 'Indiquez aussi le secret du client QR distinct',
     issuerHttps: 'L’URL de l’émetteur doit commencer par https://',
     noClientId: 'Le client ID manque',
     noClientSecret: 'Le client secret manque',

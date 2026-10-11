@@ -210,8 +210,9 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
         <label for="clientSecret">${p.clientSecret}</label><input id="clientSecret" name="clientSecret" type="password" autocomplete="off">
         <p data-google class="soft hidden">${p.googleHint}</p>
         <label for="scopes">${p.scopes}</label><input id="scopes" name="scopes" type="text" placeholder="openid profile email offline_access">
-        <label for="authCodeClientId">${p.browserClient}</label><input id="authCodeClientId" name="authCodeClientId" type="text" placeholder="${p.clientId}">
-        <input id="authCodeClientSecret" name="authCodeClientSecret" type="password" autocomplete="off" placeholder="${p.clientSecret}">
+        <label for="deviceClientId">${p.deviceClient}</label><input id="deviceClientId" name="deviceClientId" type="text" placeholder="${p.clientId}">
+        <input id="deviceClientSecret" name="deviceClientSecret" type="password" autocomplete="off" placeholder="${p.clientSecret}">
+        <p class="soft">${p.deviceClientHint}</p>
         <button>${p.checkAndSave}</button><p class="error" data-error></p>
         <ul class="checks" data-checks></ul>
       </form>
@@ -442,8 +443,8 @@ function render() {
   $('[data-quick-admins]').textContent = s.admins || '';
   if (s.login) {
     $('#issuer').value ||= s.login.issuer; $('#clientId').value ||= s.login.clientId; $('#clientSecret').placeholder = M.secretKept;
-    $('#scopes').value ||= s.login.scopes || ''; $('#authCodeClientId').value ||= s.login.authCodeClientId || '';
-    if (s.login.authCodeClientSecretSet) $('#authCodeClientSecret').placeholder = M.secretKept;
+    $('#scopes').value ||= s.login.scopes || ''; $('#deviceClientId').value ||= s.login.deviceClientId || '';
+    if (s.login.deviceClientSecretSet) $('#deviceClientSecret').placeholder = M.secretKept;
   }
   googleHint();
   set('#s-admins', s.admins, s.admins ? s.admins : '');
@@ -847,11 +848,11 @@ document.addEventListener('submit', async (ev) => {
   const button = $('button', form); button.disabled = true;
   // Installed: another provider or client is staged first (Aanmelding wijzigen), never switched directly.
   const staging = form.dataset.form === 'login-provider' && status && status.installed && status.login && (
-    data.issuer.trim().replace(/[/]+$/, '') !== status.login.issuer || data.clientId.trim() !== status.login.clientId || (data.authCodeClientId.trim() || null) !== status.login.authCodeClientId);
+    data.issuer.trim().replace(/[/]+$/, '') !== status.login.issuer || data.clientId.trim() !== status.login.clientId || (data.deviceClientId.trim() || null) !== status.login.deviceClientId);
   try {
     if (staging) {
       const staged = await api('api/login-change/stage', data);
-      form.clientSecret.value = ''; form.authCodeClientSecret.value = '';
+      form.clientSecret.value = ''; form.deviceClientSecret.value = '';
       showChecks(staged.checks || []); testOutcome = ''; await refresh(); renderChange(staged);
       $('#s-change').scrollIntoView({ behavior: 'smooth' });
       return;
@@ -872,7 +873,7 @@ document.addEventListener('submit', async (ev) => {
     status = result; render();
     if (result.checks) showChecks(result.checks);
     if (form.dataset.form === 'cloudflare') form.token.value = '';
-    if (form.dataset.form === 'login-provider') { form.clientSecret.value = ''; form.authCodeClientSecret.value = ''; }
+    if (form.dataset.form === 'login-provider') { form.clientSecret.value = ''; form.deviceClientSecret.value = ''; }
     if (form.dataset.form === 'mail') { $('[data-mail-note]').textContent = result.mailApplied === 'applied' ? M.mailApplied : M.mailLater; mailFieldsFor = null; render(); }
     if (form.dataset.form === 'sms') { $('[data-sms-note]').textContent = result.smsApplied === 'applied' ? M.smsApplied : M.smsLater; smsFilled = false; render(); }
   } catch (e) { err.textContent = e.message; if (e.data && e.data.checks) showChecks(e.data.checks); } finally { button.disabled = false; }

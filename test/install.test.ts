@@ -179,10 +179,10 @@ describe('configuration', () => {
 
     const wrongWebSecret = await save({
       issuer: 'https://accounts.google.com',
-      clientId: 'tv-client.apps.googleusercontent.com',
-      clientSecret: 'tv-secret-value-123',
-      authCodeClientId: 'web-client.apps.googleusercontent.com',
-      authCodeClientSecret: 'fout',
+      clientId: 'web-client.apps.googleusercontent.com',
+      clientSecret: 'fout',
+      deviceClientId: 'tv-client.apps.googleusercontent.com',
+      deviceClientSecret: 'tv-secret-value-123',
     });
     expect(wrongWebSecret.status).toBe(400);
     expect(wrongWebSecret.body.error).toMatch(/browser/i);
@@ -192,10 +192,10 @@ describe('configuration', () => {
 
     const good = await save({
       issuer: 'https://accounts.google.com',
-      clientId: 'tv-client.apps.googleusercontent.com',
-      clientSecret: 'tv-secret-value-123',
-      authCodeClientId: 'web-client.apps.googleusercontent.com',
-      authCodeClientSecret: 'web-secret-value-456',
+      clientId: 'web-client.apps.googleusercontent.com',
+      clientSecret: 'web-secret-value-456',
+      deviceClientId: 'tv-client.apps.googleusercontent.com',
+      deviceClientSecret: 'tv-secret-value-123',
     });
     expect(good.status, JSON.stringify(good.body)).toBe(200);
     expect(good.body.checks.map((c: any) => c.ok)).toEqual([true, true, true]);
@@ -362,40 +362,54 @@ describe('fresh install', () => {
 });
 
 describe('login provider options', () => {
-  it("Google: scopes without offline_access by default, and a separate browser-login client", async () => {
+  it("Google: scopes without offline_access by default; the browser's client first, a separate QR client", async () => {
     await signIn();
     await call('POST', '/api/cloudflare', { token: TOKEN });
     const saved = await call('POST', '/api/login-provider', {
       issuer: 'https://accounts.google.com',
-      clientId: 'tv-client.apps.googleusercontent.com',
-      clientSecret: 'tv-secret-value-123',
-      authCodeClientId: 'web-client.apps.googleusercontent.com',
-      authCodeClientSecret: 'web-secret-value-456',
+      clientId: 'web-client.apps.googleusercontent.com',
+      clientSecret: 'web-secret-value-456',
+      deviceClientId: 'tv-client.apps.googleusercontent.com',
+      deviceClientSecret: 'tv-secret-value-123',
     });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
-    expect(saved.body.login).toMatchObject({ scopes: 'openid profile email', authCodeClientId: 'web-client.apps.googleusercontent.com', authCodeClientSecretSet: true });
+    expect(saved.body.login).toMatchObject({ scopes: 'openid profile email', clientId: 'web-client.apps.googleusercontent.com', deviceClientId: 'tv-client.apps.googleusercontent.com', deviceClientSecretSet: true });
     await call('POST', '/api/admins', { emails: 'bert@scouts.test' });
     await call('POST', '/api/release', { version: '0.1.1' });
+    expect((await runAll()).failed).toBeNull();
+    // A release whose bff declares the login settings.
+    fakes.releases.offerUpdate = true;
+    await call('POST', '/api/release', { version: NEXT_VERSION });
     const run = await runAll();
     expect(run.failed, run.detail).toBeNull();
-    expect(binding('arcanum-backend', 'DEFAULT_IDP_SCOPES')).toMatchObject({ type: 'secret_text', text: 'openid profile email' });
-    expect(binding('arcanum-backend', 'DEFAULT_IDP_AUTH_CODE_CLIENT_ID').text).toBe('web-client.apps.googleusercontent.com');
-    expect(binding('arcanum-backend', 'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET').text).toBe('web-secret-value-456');
-    expect(binding('arcanum-backend', 'DEFAULT_IDP_CLIENT_ID').text).toBe('tv-client.apps.googleusercontent.com');
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_SCOPES')).toMatchObject({ type: 'secret_text', text: 'openid profile email' });
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_CLIENT_ID').text).toBe('web-client.apps.googleusercontent.com');
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_CLIENT_SECRET').text).toBe('web-secret-value-456');
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_DEVICE_CLIENT_ID').text).toBe('tv-client.apps.googleusercontent.com');
+    expect(binding('arcanum-bff', 'DEFAULT_IDP_DEVICE_CLIENT_SECRET').text).toBe('tv-secret-value-123');
     expect(bodies.join('\n')).not.toContain('web-secret-value-456');
+  });
+
+  it('settings from before: the separate browser client becomes the primary one, the old primary the QR client', async () => {
+    const { normalizeLogin } = await import('../src/state');
+    const old = { issuer: 'https://accounts.google.com', clientId: 'tv', clientSecret: 'tv-sealed' as any, authorizationEndpoint: 'x', authCodeClientId: 'web', authCodeClientSecret: 'web-sealed' as any };
+    expect(normalizeLogin(old)).toEqual({ issuer: 'https://accounts.google.com', clientId: 'web', clientSecret: 'web-sealed', authorizationEndpoint: 'x', deviceClientId: 'tv', deviceClientSecret: 'tv-sealed' });
+    // One client (login.kaboutersoft.be): unchanged.
+    const one = { issuer: 'https://login.kaboutersoft.be', clientId: 'arcanum', clientSecret: 's' as any, authorizationEndpoint: 'x' };
+    expect(normalizeLogin(one)).toEqual(one);
   });
 
   it('other providers keep the default scopes and one client, unless given', async () => {
     await configure();
     await runAll();
-    const names = bindingsOf('arcanum-backend').map((b) => b.name);
-    for (const absent of ['DEFAULT_IDP_SCOPES', 'DEFAULT_IDP_AUTH_CODE_CLIENT_ID', 'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET']) expect(names).not.toContain(absent);
+    const names = [...bindingsOf('arcanum-backend'), ...bindingsOf('arcanum-bff')].map((b) => b.name);
+    for (const absent of ['DEFAULT_IDP_SCOPES', 'DEFAULT_IDP_AUTH_CODE_CLIENT_ID', 'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET', 'DEFAULT_IDP_DEVICE_CLIENT_ID', 'DEFAULT_IDP_DEVICE_CLIENT_SECRET']) expect(names).not.toContain(absent);
   });
 
-  it('refuses scopes without openid, and a browser-login client id without its secret', async () => {
+  it('refuses scopes without openid, and a QR client id without its secret', async () => {
     await signIn();
     expect((await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'x', clientSecret: 'y', scopes: 'profile email' })).status).toBe(400);
-    expect((await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'x', clientSecret: 'y', authCodeClientId: 'web' })).status).toBe(400);
+    expect((await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'x', clientSecret: 'y', deviceClientId: 'tv' })).status).toBe(400);
   });
 
   it('choosing another version before the install completed runs every step again, keeping resources and secrets', async () => {
@@ -979,7 +993,7 @@ describe('the installation’s mail', () => {
     // While a release still gives them, they stay. The bff keeps its own —
     // except the Auth0 connection, retired.
     expect(secretsToRemove('arcanum-backend', descriptor, new Set(['DEFAULT_IDP_ISSUER_URL', 'DEFAULT_IDP_CLIENT_ID', 'DEFAULT_IDP_CLIENT_SECRET', 'MAIL_CONFIG']), true)).not.toContain('DEFAULT_IDP_CLIENT_SECRET');
-    expect(secretsToRemove('arcanum-bff', { env: {} } as any, new Set(), false)).toEqual(['DEFAULT_IDP_CONNECTION_NAME']);
+    expect(secretsToRemove('arcanum-bff', { env: {} } as any, new Set(), false).sort()).toEqual(['DEFAULT_IDP_AUTH_CODE_CLIENT_ID', 'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET', 'DEFAULT_IDP_CONNECTION_NAME']);
     // The hand-set mail fallback only goes once MAIL_CONFIG is actually given.
     expect(secretsToRemove('arcanum-backend', descriptor, new Set(['MAIL_CONFIG']), true)).toContain('DEFAULT_SMTP_HOST');
     expect(secretsToRemove('arcanum-backend', descriptor, new Set([]), false)).not.toContain('DEFAULT_SMTP_HOST');

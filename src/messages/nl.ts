@@ -72,9 +72,10 @@ const nl = {
     issuer: 'Issuer-URL',
     clientId: 'Client ID',
     clientSecret: 'Client secret',
-    googleHint: 'Google heeft <strong>twee</strong> OAuth-clients nodig: een client van het type <em>TVs and Limited Input devices</em> hierboven (voor aanmelden op de kassa) en een client van het type <em>Web application</em> hieronder, met de callback-URL als <em>Authorized redirect URI</em>. De scopes worden <code>openid profile email</code> (Google weigert <code>offline_access</code>).',
+    googleHint: 'Google heeft <strong>twee</strong> OAuth-clients nodig: een client van het type <em>Web application</em> hierboven, met de callback-URL als <em>Authorized redirect URI</em> (voor aanmelden in de browser), en een client van het type <em>TVs and Limited Input devices</em> hieronder (voor aanmelden met de QR-code op een kassa). De scopes worden <code>openid profile email</code> (Google weigert <code>offline_access</code>).',
     scopes: 'Scopes (optioneel)',
-    browserClient: 'Aparte client voor aanmelden in de browser (optioneel)',
+    deviceClient: 'Aparte client voor aanmelden met de QR-code (optioneel)',
+    deviceClientHint: 'Alleen als je provider daar een aparte client voor nodig heeft (zoals Google). Leeg: de client hierboven doet ook de QR-aanmelding — zo werkt login.kaboutersoft.be.',
     adminsTitle: '3. Beheerders',
     adminsIntro: 'Alleen deze mensen kunnen op deze installatie een organisatie aanmaken of importeren. Anderen kunnen wel uitgenodigd worden. Gebruik <code>*@jouwdomein.be</code> voor een heel domein.',
     emails: 'E-mailadressen',
@@ -369,7 +370,7 @@ const nl = {
   // Entering a login provider, and "Aanmelding wijzigen" (login-change.ts).
   change: {
     scopesOpenid: 'De scopes moeten minstens "openid" bevatten',
-    browserSecret: 'Geef ook het secret van de aparte browser-client',
+    deviceSecret: 'Geef ook het secret van de aparte QR-client',
     issuerHttps: 'De issuer-URL moet met https:// beginnen',
     noClientId: 'Client ID ontbreekt',
     noClientSecret: 'Client secret ontbreekt',

@@ -88,8 +88,15 @@ export interface InstallerState {
     authorizationEndpoint: string;
     // Google rejects `offline_access`; unset = the platform default scopes.
     scopes?: string;
-    // A separate client for browser login (Google: "Web application"); the
-    // primary client then only does the kassa's device login.
+    // clientId/clientSecret: the client for signing in in the browser — and,
+    // without a separate one below, also for signing in with a QR code (the
+    // device grant), as with login.kaboutersoft.be. A separate client for the
+    // QR sign-in, for providers that need one (Google: "TVs and Limited Input
+    // devices") — optional (2026-10-12; before, it was the other way round:
+    // the primary client was the QR one, normalizeLogin swaps an old state).
+    deviceClientId?: string;
+    deviceClientSecret?: Sealed;
+    // Read only by normalizeLogin: the separate browser client of before.
     authCodeClientId?: string;
     authCodeClientSecret?: Sealed;
   };
@@ -149,7 +156,23 @@ export const INSTALLER_KEY_SECRET = 'INSTALLER_INTERNAL_KEY';
 
 export async function loadState(env: Env): Promise<InstallerState> {
   const stored = await env.INSTALLER_STATE.get<InstallerState>(KEY, 'json');
-  return stored ?? { v: 1, salt: toBase64(randomBytes(16)), resources: { d1: {}, kv: {} }, steps: {} };
+  if (!stored) return { v: 1, salt: toBase64(randomBytes(16)), resources: { d1: {}, kv: {} }, steps: {} };
+  if (stored.login) stored.login = normalizeLogin(stored.login);
+  if (stored.loginChange?.staged) stored.loginChange.staged.login = normalizeLogin(stored.loginChange.staged.login);
+  if (stored.loginChange?.applied?.previous) stored.loginChange.applied.previous.login = normalizeLogin(stored.loginChange.applied.previous.login);
+  return stored;
+}
+
+// Settings from before 2026-10-12, when a second client was the browser's:
+// that one becomes the primary client, the old primary (the kassa's QR
+// client) the separate QR client. One client: nothing changes.
+export function normalizeLogin(login: LoginSettings): LoginSettings {
+  if (!login.authCodeClientId || !login.authCodeClientSecret) {
+    const { authCodeClientId: _id, authCodeClientSecret: _secret, ...rest } = login;
+    return rest;
+  }
+  const { authCodeClientId, authCodeClientSecret, clientId, clientSecret, ...rest } = login;
+  return { ...rest, clientId: authCodeClientId, clientSecret: authCodeClientSecret, deviceClientId: clientId, deviceClientSecret: clientSecret };
 }
 
 export async function saveState(env: Env, state: InstallerState): Promise<void> {

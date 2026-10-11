@@ -62,9 +62,10 @@ export default {
     issuer: 'Issuer URL',
     clientId: 'Client ID',
     clientSecret: 'Client secret',
-    googleHint: 'Google needs <strong>two</strong> OAuth clients: a client of the type <em>TVs and Limited Input devices</em> above (for signing in on the till) and a client of the type <em>Web application</em> below, with the callback URL as <em>Authorized redirect URI</em>. The scopes become <code>openid profile email</code> (Google refuses <code>offline_access</code>).',
+    googleHint: 'Google needs <strong>two</strong> OAuth clients: a client of the type <em>Web application</em> above, with the callback URL as <em>Authorized redirect URI</em> (for signing in in the browser), and a client of the type <em>TVs and Limited Input devices</em> below (for signing in with the QR code on a till). The scopes become <code>openid profile email</code> (Google refuses <code>offline_access</code>).',
     scopes: 'Scopes (optional)',
-    browserClient: 'Separate client for signing in in the browser (optional)',
+    deviceClient: 'Separate client for signing in with the QR code (optional)',
+    deviceClientHint: 'Only if your provider needs a separate client for it (like Google). Empty: the client above also does the QR sign-in — that’s how login.kaboutersoft.be works.',
     adminsTitle: '3. Administrators',
     adminsIntro: 'Only these people can create or import an organisation on this installation. Others can still be invited. Use <code>*@yourdomain.be</code> for a whole domain.',
     emails: 'E-mail addresses',
@@ -352,7 +353,7 @@ export default {
 
   change: {
     scopesOpenid: 'The scopes must include at least "openid"',
-    browserSecret: 'Also give the secret of the separate browser client',
+    deviceSecret: 'Also give the secret of the separate QR client',
     issuerHttps: 'The issuer URL must start with https://',
     noClientId: 'Client ID is missing',
     noClientSecret: 'Client secret is missing',

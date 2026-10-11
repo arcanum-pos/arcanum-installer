@@ -101,8 +101,10 @@ export const RETIRED_SECRETS: Record<string, string[]> = {
     'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET',
   ],
   // The Auth0 connection (enterprise SSO, long unused; the device grant
-  // doesn't take it) — gone from the bff since 0.1.35.
-  'arcanum-bff': ['DEFAULT_IDP_CONNECTION_NAME'],
+  // doesn't take it) — gone from the bff since 0.1.35. The separate browser
+  // client of before 2026-10-12: the primary client is the browser's now,
+  // a separate one is the QR sign-in's (DEFAULT_IDP_DEVICE_CLIENT_*).
+  'arcanum-bff': ['DEFAULT_IDP_CONNECTION_NAME', 'DEFAULT_IDP_AUTH_CODE_CLIENT_ID', 'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET'],
 };
 
 // The secrets to remove from a Worker after its upload (Cloudflare keeps the
@@ -127,8 +129,8 @@ export const INSTALLER_MANAGED_SECRETS = new Set([
   // The installation's SMS account (sms.ts): removed when SMS is switched off.
   'MESSAGING_CONFIG',
   'DEFAULT_IDP_SCOPES',
-  'DEFAULT_IDP_AUTH_CODE_CLIENT_ID',
-  'DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET',
+  'DEFAULT_IDP_DEVICE_CLIENT_ID',
+  'DEFAULT_IDP_DEVICE_CLIENT_SECRET',
   INSTALLER_KEY_SECRET,
 ]);
 
@@ -327,10 +329,10 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
         // Shown in the console footer.
         ARCANUM_VERSION: release.version,
         ...(state.login?.scopes ? { DEFAULT_IDP_SCOPES: state.login.scopes } : {}),
-        ...(state.login?.authCodeClientId && state.login.authCodeClientSecret
+        ...(state.login?.deviceClientId && state.login.deviceClientSecret
           ? {
-              DEFAULT_IDP_AUTH_CODE_CLIENT_ID: state.login.authCodeClientId,
-              DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET: await unsealValue(ctx.env, state, state.login.authCodeClientSecret),
+              DEFAULT_IDP_DEVICE_CLIENT_ID: state.login.deviceClientId,
+              DEFAULT_IDP_DEVICE_CLIENT_SECRET: await unsealValue(ctx.env, state, state.login.deviceClientSecret),
             }
           : {}),
         ...(linkInstaller ? { [INSTALLER_KEY_SECRET]: secrets[INSTALLER_KEY_SECRET] } : {}),

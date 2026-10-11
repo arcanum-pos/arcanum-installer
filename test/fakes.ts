@@ -367,8 +367,8 @@ export class FakeReleases {
       DEFAULT_IDP_CLIENT_ID: { kind: 'secret', source: 'install', question: 'login.clientId' },
       DEFAULT_IDP_CLIENT_SECRET: { kind: 'secret', source: 'install', question: 'login.clientSecret' },
       DEFAULT_IDP_SCOPES: { kind: 'secret', source: 'optional' },
-      DEFAULT_IDP_AUTH_CODE_CLIENT_ID: { kind: 'secret', source: 'optional' },
-      DEFAULT_IDP_AUTH_CODE_CLIENT_SECRET: { kind: 'secret', source: 'optional' },
+      DEFAULT_IDP_DEVICE_CLIENT_ID: { kind: 'secret', source: 'optional' },
+      DEFAULT_IDP_DEVICE_CLIENT_SECRET: { kind: 'secret', source: 'optional' },
     });
     const database = structuredClone(fixture.database) as any;
     const backend = database.databases.find((d: any) => d.name === 'arcanum-backend');
