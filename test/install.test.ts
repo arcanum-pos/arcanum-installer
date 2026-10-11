@@ -1015,6 +1015,10 @@ describe('the installation’s SMS', () => {
     const bad = await call('POST', '/api/sms', { accountSid: 'xx', authToken: '', sender: 'a name far too long', countries: 'België', dailyCap: '-1' });
     expect(bad.status).toBe(400);
     for (const field of ['accountSid', 'authToken', 'sender', 'countries', 'dailyCap']) expect(bad.body.error).toContain(field);
+    // A sender name too long: says why.
+    const long = await call('POST', '/api/sms', { accountSid: SID, authToken: '', sender: 'Kaboutersoft' });
+    expect(long.status).toBe(400);
+    expect(long.body.error).toContain('11');
   });
 
   it('installed: set right away; a test SMS to an allowed number; switched off, it leaves the backend', async () => {

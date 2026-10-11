@@ -234,6 +234,7 @@ export default {
   api: {
     mailMissing: (fields: string) => `Still to fill in: ${fields}`,
     smsMissing: (fields: string) => `Still to fill in or correct: ${fields}`,
+    smsSenderTooLong: (n: number) => `A sender name has at most 11 characters (this one has ${n}) — Twilio’s and the operators’ limit`,
     smsRefused: (reason: string) => `Twilio doesn’t accept these details (${reason})`,
     smsNone: 'No SMS set up yet',
     smsBadNumber: (countries: string) => `That isn’t a mobile number from the allowed countries (${countries})`,

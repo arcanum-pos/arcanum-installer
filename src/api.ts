@@ -475,8 +475,14 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
 
     // Geavanceerd → Sms (MESSAGING.md): Twilio, checked before it's saved; or off.
     if (path === '/api/sms' && request.method === 'POST') {
-      const built = buildSmsConfig(await body(request), await smsConfigOf(env, state));
-      if ('missing' in built) return json({ error: t.api.smsMissing(built.missing.join(', ')) }, 400);
+      const input = await body(request);
+      const built = buildSmsConfig(input, await smsConfigOf(env, state));
+      if ('missing' in built) {
+        // A sender name too long (11 at most — Twilio's and the operators' limit): say so.
+        const sender = String((input as Record<string, unknown>).sender ?? '').trim();
+        if (built.missing.length === 1 && built.missing[0] === 'sender' && sender.length > 11 && !/^(\+|MG)/i.test(sender)) return json({ error: t.api.smsSenderTooLong(sender.length) }, 400);
+        return json({ error: t.api.smsMissing(built.missing.join(', ')) }, 400);
+      }
       const refused = await checkTwilio(built.config);
       if (refused) return json({ error: t.api.smsRefused(refused) }, 400);
       state.sms = { config: await sealValue(env, state, JSON.stringify(built.config)), updatedAt: new Date().toISOString() };

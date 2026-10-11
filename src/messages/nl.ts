@@ -247,6 +247,7 @@ const nl = {
   api: {
     mailMissing: (fields: string) => `Vul nog in: ${fields}`,
     smsMissing: (fields: string) => `Vul nog in of verbeter: ${fields}`,
+    smsSenderTooLong: (n: number) => `Een afzendernaam heeft hoogstens 11 tekens (deze heeft er ${n}) — dat is de grens van Twilio en de operatoren`,
     smsRefused: (reason: string) => `Twilio aanvaardt deze gegevens niet (${reason})`,
     smsNone: 'Er is nog geen sms ingesteld',
     smsBadNumber: (countries: string) => `Dat is geen gsm-nummer uit de toegelaten landen (${countries})`,

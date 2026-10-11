@@ -234,6 +234,7 @@ export default {
   api: {
     mailMissing: (fields: string) => `À compléter : ${fields}`,
     smsMissing: (fields: string) => `À compléter ou corriger : ${fields}`,
+    smsSenderTooLong: (n: number) => `Un nom d’expéditeur a au plus 11 caractères (celui-ci en a ${n}) — la limite de Twilio et des opérateurs`,
     smsRefused: (reason: string) => `Twilio n’accepte pas ces données (${reason})`,
     smsNone: 'Aucun SMS configuré',
     smsBadNumber: (countries: string) => `Ce n’est pas un numéro de GSM des pays autorisés (${countries})`,
