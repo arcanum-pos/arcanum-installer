@@ -91,6 +91,10 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   button.big, a.button.big { height: 2.75rem; padding: 0 20px; font-size: 1rem; }
   .recovery-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.35rem; font-weight: 600; letter-spacing: 0.06em; text-align: center; background: var(--muted); border-radius: var(--radius); padding: 12px; margin: 8px 0; user-select: all; }
   details.card > summary { font-weight: 600; cursor: pointer; }
+  /* The optional QR (device code flow) client: folded away unless needed. */
+  details.device-client { display: grid; gap: 6px; }
+  details.device-client > summary { cursor: pointer; font-weight: 500; }
+  details.device-client[open] { display: grid; gap: 6px; }
   details.card[open] > summary { margin-bottom: 8px; }
   /* The install's steps, one by one: there when wanted, folded away by default. */
   details[data-steps-box] > summary { cursor: pointer; }
@@ -197,6 +201,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       <p data-login-default class="soft">${p.loginDefault}</p>
       <p>${p.loginIntro}</p>
       <p>${p.loginUrls}</p>
+      <p class="soft"><a href="https://github.com/arcanum-pos/arcanum-installer/blob/main/docs/login-provider.md" target="_blank" rel="noopener">${p.loginDocs}</a></p>
       <p data-summary class="soft"></p>
       <p data-login-installed class="soft hidden">${p.loginInstalled}</p>
       <div data-back-to-start class="hidden" style="display:grid;gap:6px">
@@ -210,9 +215,12 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
         <label for="clientSecret">${p.clientSecret}</label><input id="clientSecret" name="clientSecret" type="password" autocomplete="off">
         <p data-google class="soft hidden">${p.googleHint}</p>
         <label for="scopes">${p.scopes}</label><input id="scopes" name="scopes" type="text" placeholder="openid profile email offline_access">
-        <label for="deviceClientId">${p.deviceClient}</label><input id="deviceClientId" name="deviceClientId" type="text" placeholder="${p.clientId}">
-        <input id="deviceClientSecret" name="deviceClientSecret" type="password" autocomplete="off" placeholder="${p.clientSecret}">
-        <p class="soft">${p.deviceClientHint}</p>
+        <details data-device-client class="device-client">
+          <summary>${p.deviceClient}</summary>
+          <p class="soft">${p.deviceClientHint}</p>
+          <label for="deviceClientId">${p.clientId}</label><input id="deviceClientId" name="deviceClientId" type="text" autocomplete="off">
+          <label for="deviceClientSecret">${p.clientSecret}</label><input id="deviceClientSecret" name="deviceClientSecret" type="password" autocomplete="off">
+        </details>
         <button>${p.checkAndSave}</button><p class="error" data-error></p>
         <ul class="checks" data-checks></ul>
       </form>
@@ -443,6 +451,7 @@ function render() {
   $('[data-quick-account]').textContent = s.cloudflare ? s.cloudflare.accountName : '';
   $('[data-quick-admins]').textContent = s.admins || '';
   if (s.login) {
+    if (s.login.deviceClientId) $('[data-device-client]').open = true;
     $('#issuer').value ||= s.login.issuer; $('#clientId').value ||= s.login.clientId; $('#clientSecret').placeholder = M.secretKept;
     $('#scopes').value ||= s.login.scopes || ''; $('#deviceClientId').value ||= s.login.deviceClientId || '';
     if (s.login.deviceClientSecretSet) $('#deviceClientSecret').placeholder = M.secretKept;
@@ -795,6 +804,8 @@ function googleHint() {
   // No regex here: this page is a template string, where \/ would collapse to / .
   let google = false; try { google = new URL($('#issuer').value.trim()).host === 'accounts.google.com'; } catch {}
   $('[data-google]').classList.toggle('hidden', !google);
+  // Google needs a separate QR client: the fold-out opens by itself.
+  if (google) $('[data-device-client]').open = true;
   if (google && !$('#scopes').value) $('#scopes').value = 'openid profile email';
 }
 document.addEventListener('input', (ev) => { if (ev.target.id === 'issuer') googleHint(); });

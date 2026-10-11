@@ -138,6 +138,13 @@ to the installation's client at `login.kaboutersoft.be` (`PATCH
 /clients/self`, with the client's own id and secret — the workers.dev
 addresses keep working).
 
+## Filling in a login provider
+
+[docs/login-provider.md](docs/login-provider.md) explains the fields
+(the primary client signs in in the browser — and with the QR code too,
+unless an optional separate QR client is given) and what to set up at
+Google, Keycloak, Microsoft and Auth0. The installer's login section links to it.
+
 ## Changing the login provider ("Aanmelding wijzigen")
 
 Arcanum binds every membership to the `(issuer, sub)` of its first login,
