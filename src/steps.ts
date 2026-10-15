@@ -215,7 +215,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     let added = 0;
     for (const [name, format] of Object.entries(needed)) {
       if (!existing[name]) {
-        existing[name] = generateSecret(format);
+        existing[name] = await generateSecret(format);
         added++;
       }
     }
@@ -324,7 +324,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     // The installer moves behind Arcanum by itself: the first bff that can
     // forward /installer/* is linked to this installer, with a new shared key.
     if (worker.public_entry && !state.behindArcanum && bffSupportsInstaller(descriptor) && ctx.installerScript && (await cf.scriptExists(accountId, ctx.installerScript))) {
-      secrets[INSTALLER_KEY_SECRET] ??= generateSecret('hex32');
+      secrets[INSTALLER_KEY_SECRET] ??= await generateSecret('hex32');
       state.secrets = await sealValue(ctx.env, state, JSON.stringify(secrets));
       state.behindArcanum = { script: ctx.installerScript };
     }

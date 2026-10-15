@@ -229,6 +229,11 @@
      "source": "generate",
      "format": "base64-32"
     },
+    "WEB_PUSH_KEY": {
+     "kind": "secret",
+     "source": "generate",
+     "format": "p256-pkcs8"
+    },
     "INTERNAL_API_KEY": {
      "kind": "secret",
      "source": "shared",

@@ -307,6 +307,9 @@ describe('fresh install', () => {
     // ENCRYPTION_KEY must be base64 of exactly 32 bytes — never hex.
     expect(atob(secret('arcanum-backend', 'ENCRYPTION_KEY')).length).toBe(32);
     expect(secret('arcanum-devicehub', 'WS_TOKEN_SECRET')).toMatch(/^[0-9a-f]{64}$/);
+    // WEB_PUSH_KEY: a P-256 private key, PKCS#8 in base64 (the installation's Web Push key).
+    const der = Uint8Array.from(atob(secret('arcanum-backend', 'WEB_PUSH_KEY')), (c) => c.charCodeAt(0));
+    await expect(crypto.subtle.importKey('pkcs8', der, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign'])).resolves.toBeTruthy();
     for (const [, s] of fakes.cf.scripts) for (const b of s.metadata.bindings) if (b.type === 'secret_text') expect(b.text, b.name).toBeTruthy();
   });
 

@@ -32,8 +32,14 @@ export function toHex(bytes: Uint8Array): string {
 
 // A generated Arcanum secret. `base64-32` is what ENCRYPTION_KEY must be
 // (never hex: a hex string silently decodes to the wrong length).
-export function generateSecret(format: string | undefined): string {
+// `p256-pkcs8`: a P-256 private key, PKCS#8 in base64 — WEB_PUSH_KEY, the
+// installation's Web Push (VAPID) key; its public half goes with it.
+export async function generateSecret(format: string | undefined): Promise<string> {
   if (format === 'base64-32') return toBase64(randomBytes(32));
+  if (format === 'p256-pkcs8') {
+    const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair;
+    return toBase64(new Uint8Array((await crypto.subtle.exportKey('pkcs8', pair.privateKey)) as ArrayBuffer));
+  }
   return toHex(randomBytes(32));
 }
 
