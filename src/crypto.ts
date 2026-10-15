@@ -43,6 +43,22 @@ export async function generateSecret(format: string | undefined): Promise<string
   return toHex(randomBytes(32));
 }
 
+// Whether a stored secret still fits its format. Only checked for
+// p256-pkcs8: an installer from before that format existed stored a hex
+// value under WEB_PUSH_KEY, which no browser can subscribe with — replacing
+// it costs nothing (no subscription can exist yet). Never used for the other
+// formats: ENCRYPTION_KEY must never change after install.
+export async function secretFits(format: string | undefined, value: string): Promise<boolean> {
+  if (format !== 'p256-pkcs8') return true;
+  try {
+    const der = Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
+    await crypto.subtle.importKey('pkcs8', der, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function hkdfKey(secret: string, salt: string, info: string, usage: 'encrypt' | 'sign'): Promise<CryptoKey> {
   const base = await crypto.subtle.importKey('raw', enc.encode(secret), 'HKDF', false, ['deriveKey']);
   return crypto.subtle.deriveKey(

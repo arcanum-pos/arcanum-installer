@@ -6,7 +6,7 @@
 import { OLD_SMTP_SECRETS } from './mail';
 import type { Env } from './env';
 import { Cloudflare, CloudflareError } from './cloudflare';
-import { generateSecret, randomBytes } from './crypto';
+import { generateSecret, randomBytes, secretFits } from './crypto';
 import { installerUploadMetadata, secretsNeeded, uploadMetadata, type InstallContext, type WorkerDescriptor } from './contract';
 import { fetchReleaseJson, type Manifest } from './releases';
 import { addClientUris } from './auth-client';
@@ -214,7 +214,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     const needed = secretsNeeded(await Promise.all(release.blueprint.workers.map((w) => fetchReleaseJson<WorkerDescriptor>(release.manifestUrl, release.manifest, w.file))));
     let added = 0;
     for (const [name, format] of Object.entries(needed)) {
-      if (!existing[name]) {
+      if (!existing[name] || !(await secretFits(format, existing[name]))) {
         existing[name] = await generateSecret(format);
         added++;
       }
