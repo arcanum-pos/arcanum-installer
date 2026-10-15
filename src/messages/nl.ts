@@ -46,7 +46,7 @@ const nl = {
     recoveryTitle: 'Bewaar je herstelcode',
     recoveryIntro: 'Je bent aangemeld als <strong data-recovery-email></strong>. Voortaan meld je je hier aan met dat account. Lukt dat ooit niet (bijvoorbeeld omdat de login-provider onbereikbaar is), dan kom je binnen met deze herstelcode:',
     recoveryOnce: 'Hij wordt maar één keer getoond — bewaar hem op een veilige plek, bijvoorbeeld in je wachtwoordbeheerder. Wie hem heeft, kan deze installer bedienen. De vorige herstelcode (als er een was) werkt niet meer.',
-    recoveryRollback: 'Start de installer na een update ooit niet meer? Zet hem terug in het Cloudflare-dashboard: <em>Workers &amp; Pages → arcanum-installer → Deployments</em> → de vorige versie → <em>Rollback</em>.',
+    recoveryRollback: 'Start de installer na een update ooit niet meer? Zet hem terug in het Cloudflare-dashboard: <em>Workers &amp; Pages → …-installer → Deployments</em> → de vorige versie → <em>Rollback</em>.',
     recoverySaved: 'Ik heb de herstelcode bewaard',
     continue: 'Verder',
     deniedTitle: 'Geen toegang',
@@ -56,7 +56,7 @@ const nl = {
     token: 'API-token',
     account: 'Account',
     subdomain: 'Kies je workers.dev-naam',
-    subdomainHint: 'Dit account heeft nog geen workers.dev-adres. Arcanum komt dan op <code>arcanum-bff.<span data-subdomain-preview>…</span>.workers.dev</code>. De naam geldt voor het hele Cloudflare-account en is later moeilijk te wijzigen.',
+    subdomainHint: 'Dit account heeft nog geen workers.dev-adres. Arcanum komt dan op <code>…-bff.<span data-subdomain-preview>…</span>.workers.dev</code>. De naam geldt voor het hele Cloudflare-account en is later moeilijk te wijzigen.',
     rememberToken: 'Token onthouden voor latere updates (veilig versleuteld, nooit opnieuw zichtbaar)',
     checkAndSave: 'Controleren en bewaren',
     addressTitle: 'Adres',
@@ -403,6 +403,7 @@ const nl = {
     wrong: 'Deze link klopt niet. Open de installer via de link van arcanum.kaboutersoft.be.',
     expired: 'Deze link is verlopen. Start "Eigen installatie" op arcanum.kaboutersoft.be opnieuw — wat al klaarstaat blijft bewaard.',
     otherAccount: (installed: string, offered: string) => `Arcanum is al (deels) geïnstalleerd op account ${installed} — niet op ${offered}.`,
+    otherName: (installed: string, offered: string) => `Deze installatie heet ${installed} — haar Workers en databanken dragen die naam. Ze kan niet ${offered} gaan heten.`,
   },
 
   // Reading a release (releases.ts).

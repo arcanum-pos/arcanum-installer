@@ -177,6 +177,8 @@ export class FakeCloudflare {
       return ok({ id: svc[1], default_environment: { script: tag ? { migration_tag: tag } : {} } });
     }
 
+    if (rest === '/workers/scripts' && method === 'GET') return ok([...this.scripts.keys()].map((id) => ({ id })));
+
     const script = rest.match(/^\/workers\/scripts\/([^/]+)$/);
     if (script && method === 'PUT') return this.putScript(script[1], request);
 

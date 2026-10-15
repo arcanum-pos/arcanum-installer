@@ -13,6 +13,10 @@
 //     instance?: { kind: 'single'|'admins'|'internal', channel: 'stable'|'dev' },
 //                         // only from the bootstrapper for the platform's own
 //                         // installations; absent: this installer's own stays
+//     instanceName?: string,  // the start of every name on the account
+//                         // (`<name>-bff` …, state.ts); absent: "arcanum".
+//                         // Taken only before anything exists; another name
+//                         // for an installation already under way is refused.
 //   }
 //
 // A valid code imports the config into the state (the token sealed like a
@@ -28,7 +32,7 @@ import type { Env } from './env';
 import { Cloudflare } from './cloudflare';
 import { randomBytes, safeEqual, sha256Hex } from './crypto';
 import { newSessionCookie, normalizeRecoveryCode } from './auth';
-import { installationStarted, isAdmin, sealValue, type InstallerState, type InstanceSettings } from './state';
+import { installationStarted, INSTANCE_NAME, instanceOf, isAdmin, sealValue, type InstallerState, type InstanceSettings } from './state';
 import type { Messages } from './i18n';
 
 export interface BootstrapConfig {
@@ -42,6 +46,7 @@ export interface BootstrapConfig {
   handoffCodeHash: string;
   handoffExpiresAt: string;
   instance?: InstanceSettings;
+  instanceName?: string;
 }
 
 const KINDS = ['single', 'admins', 'internal'];
@@ -69,6 +74,7 @@ export function readBootstrapConfig(env: Env): Parsed {
     text(value.cloudflareToken) && text(value.accountId) && text(value.subdomain) && text(value.handoffCodeHash) && text(value.handoffExpiresAt) &&
     !!owner && text(owner.email) && text(owner.sub) &&
     (login === null || (!!login && text(login.issuer) && text(login.clientId) && text(login.clientSecret))) &&
+    (value.instanceName === undefined || INSTANCE_NAME.test(String(value.instanceName))) &&
     (value.instance === undefined ||
       (KINDS.includes((value.instance as InstanceSettings)?.kind) &&
         CHANNELS.includes((value.instance as InstanceSettings)?.channel) &&
@@ -88,7 +94,7 @@ export function newRecoveryCode(): string {
 
 export type HandoffOutcome =
   | { ok: true; recoveryCode: string; email: string; cookie: string; firstImport: boolean }
-  | { ok: false; status: number; error: string; reason: 'none' | 'used' | 'expired' | 'wrong' | 'account' };
+  | { ok: false; status: number; error: string; reason: 'none' | 'used' | 'expired' | 'wrong' | 'account' | 'name' };
 
 export async function handoff(env: Env, state: InstallerState, code: string, installerScript: string, t: Messages): Promise<HandoffOutcome> {
   const parsed = readBootstrapConfig(env);
@@ -106,6 +112,11 @@ export async function handoff(env: Env, state: InstallerState, code: string, ins
   if (state.cloudflare && installationStarted(state) && state.cloudflare.accountId !== config.accountId) {
     return { ok: false, status: 409, reason: 'account', error: t.handoff.otherAccount(state.cloudflare.accountName, config.accountName) };
   }
+  // The name is in every Worker and database: it can't change once they exist.
+  if (installationStarted(state) && config.instanceName && config.instanceName !== instanceOf(state)) {
+    return { ok: false, status: 409, reason: 'name', error: t.handoff.otherName(instanceOf(state), config.instanceName) };
+  }
+  if (!installationStarted(state) && config.instanceName) state.instanceName = config.instanceName;
 
   const firstImport = !state.bootstrap;
   const owner = { email: config.owner.email.trim().toLowerCase(), sub: config.owner.sub };

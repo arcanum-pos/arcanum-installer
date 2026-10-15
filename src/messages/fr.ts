@@ -36,7 +36,7 @@ export default {
     recoveryTitle: 'Conservez votre code de récupération',
     recoveryIntro: 'Vous êtes connecté en tant que <strong data-recovery-email></strong>. Désormais, vous vous connectez ici avec ce compte. Si cela ne fonctionne pas un jour (par exemple parce que le fournisseur de connexion est injoignable), vous entrez avec ce code de récupération :',
     recoveryOnce: 'Il n’est affiché qu’une seule fois — conservez-le en lieu sûr, par exemple dans votre gestionnaire de mots de passe. Quiconque le possède peut utiliser cet installateur. Le code de récupération précédent (s’il y en avait un) ne fonctionne plus.',
-    recoveryRollback: 'L’installateur ne démarre plus après une mise à jour ? Rétablissez-le dans le tableau de bord Cloudflare : <em>Workers &amp; Pages → arcanum-installer → Deployments</em> → la version précédente → <em>Rollback</em>.',
+    recoveryRollback: 'L’installateur ne démarre plus après une mise à jour ? Rétablissez-le dans le tableau de bord Cloudflare : <em>Workers &amp; Pages → …-installer → Deployments</em> → la version précédente → <em>Rollback</em>.',
     recoverySaved: 'J’ai conservé le code de récupération',
     continue: 'Continuer',
     deniedTitle: 'Accès refusé',
@@ -46,7 +46,7 @@ export default {
     token: 'Jeton d’API',
     account: 'Compte',
     subdomain: 'Choisissez votre nom workers.dev',
-    subdomainHint: 'Ce compte n’a pas encore d’adresse workers.dev. Arcanum sera alors sur <code>arcanum-bff.<span data-subdomain-preview>…</span>.workers.dev</code>. Le nom vaut pour tout le compte Cloudflare et est difficile à changer ensuite.',
+    subdomainHint: 'Ce compte n’a pas encore d’adresse workers.dev. Arcanum sera alors sur <code>…-bff.<span data-subdomain-preview>…</span>.workers.dev</code>. Le nom vaut pour tout le compte Cloudflare et est difficile à changer ensuite.',
     rememberToken: 'Mémoriser le jeton pour les mises à jour ultérieures (chiffré de manière sûre, plus jamais visible)',
     checkAndSave: 'Vérifier et enregistrer',
     addressTitle: 'Adresse',
@@ -385,6 +385,7 @@ export default {
     wrong: 'Ce lien n’est pas correct. Ouvrez l’installateur via le lien de arcanum.kaboutersoft.be.',
     expired: 'Ce lien a expiré. Relancez « Propre installation » sur arcanum.kaboutersoft.be — ce qui est déjà prêt est conservé.',
     otherAccount: (installed: string, offered: string) => `Arcanum est déjà (partiellement) installé sur le compte ${installed} — pas sur ${offered}.`,
+    otherName: (installed: string, offered: string) => `Cette installation s’appelle ${installed} — ses Workers et bases de données portent ce nom. Elle ne peut pas devenir ${offered}.`,
   },
 
   release: {

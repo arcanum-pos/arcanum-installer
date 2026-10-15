@@ -35,8 +35,9 @@ only supported way to install it.
 
 ### The contract with the bootstrapper
 
-Two secrets on the Worker (plus its KV `INSTALLER_STATE`, title
-`arcanum-installer-INSTALLER_STATE`, reused when it exists):
+Two secrets on the Worker `<name>-installer` (plus its KV
+`INSTALLER_STATE`, title `<name>-installer-INSTALLER_STATE`, reused when it
+exists — `<name>` is the installation's, below):
 
 - `INSTALLER_STATE_KEY` — random, set on the first upload and **never
   changed** (a re-run of the bootstrapper keeps it with `keep_bindings`):
@@ -64,11 +65,21 @@ Two secrets on the Worker (plus its KV `INSTALLER_STATE`, title
   self-update keeps it; there's no setting for it in the installer itself.
   Absent: the installation keeps what it has (new: `single`, `stable`).
 
+  Optionally `"instanceName": "wildferret"` — several installations can
+  live on one Cloudflare account, each with its own Workers, databases and
+  KV: the name starts every one of them (`wildferret-bff`,
+  `wildferret-backend`, `wildferret-devices`, …; the bff's service bindings
+  point at its own). Lower case letters, digits and hyphens, at most 20,
+  starting with a letter. Taken only before anything exists; another name
+  for an installation under way is refused (409). Absent: `arcanum`, the
+  names every installation had before — releases still name their parts
+  `arcanum-…`, and the installer maps those to the instance's names.
+
   `login` is `null` when the bootstrapper reuses the client this installer
   already has (it reads `state.bootstrap.login.clientId` from the KV). The
-  client has the redirect URIs `https://arcanum-bff.<sub>.workers.dev/callback`
-  and `https://arcanum-installer.<sub>.workers.dev/auth/callback`, logout URL
-  `https://arcanum-bff.<sub>.workers.dev`.
+  client has the redirect URIs `https://<name>-bff.<sub>.workers.dev/callback`
+  and `https://<name>-installer.<sub>.workers.dev/auth/callback`, logout URL
+  `https://<name>-bff.<sub>.workers.dev`.
 
 Paths: `GET /handoff?code=…` (the page, which posts the code to
 `POST /api/handoff`), `GET /auth/login` → the provider → `GET /auth/callback`.

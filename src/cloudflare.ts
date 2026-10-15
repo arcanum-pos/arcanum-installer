@@ -158,6 +158,21 @@ export class Cloudflare {
     return this.call<unknown>('PUT', `/accounts/${accountId}/workers/scripts/${scriptName}/secrets`, { name, text, type: 'secret_text' });
   }
 
+  // Every Worker on the account, by name.
+  async listScripts(accountId: string): Promise<string[]> {
+    return (await this.call<{ id: string }[]>('GET', `/accounts/${accountId}/workers/scripts`)).map((s) => s.id);
+  }
+
+  // The rate-limit namespace ids the account's bffs use — one account, one
+  // set of ids, shared by every installation on it (`<instance>-bff`).
+  async ratelimitIdsInUse(accountId: string): Promise<Set<string>> {
+    const ids = new Set<string>();
+    for (const name of (await this.listScripts(accountId)).filter((n) => n.endsWith('-bff'))) {
+      for (const b of (await this.scriptBindings(accountId, name)) ?? []) if (b.type === 'ratelimit' && b.namespace_id) ids.add(String(b.namespace_id));
+    }
+    return ids;
+  }
+
   async scriptExists(accountId: string, scriptName: string): Promise<boolean> {
     try {
       await this.call<unknown>('GET', `/accounts/${accountId}/workers/services/${scriptName}`);

@@ -39,7 +39,7 @@ export interface WorkerDescriptor {
 }
 
 export interface InstallContext {
-  publicUrl: string; // https://arcanum-bff.<subdomain>.workers.dev
+  publicUrl: string; // https://<instance>-bff.<subdomain>.workers.dev
   issuerUrl: string;
   // Answers to 'install' questions, by question id (login.issuer, login.clientId, …).
   answers: Record<string, string>;
@@ -56,6 +56,9 @@ export interface InstallContext {
   orgCreation?: OrgCreation;
   // The demo only: the backend's DEMO_INSTALL_URL.
   demoInstallUrl?: string;
+  // A release's Worker name (`arcanum-backend`) → the one on this account
+  // (state.ts deployedName). Unset: the same name.
+  serviceName?: (logical: string) => string;
 }
 
 export type OrgCreation = 'single' | 'admins' | 'internal';
@@ -114,7 +117,8 @@ function resourceBinding(b: DescriptorBinding, ctx: InstallContext): ApiBinding 
     case 'durable_object_namespace':
       return { type: 'durable_object_namespace', name: b.name, class_name: b.class_name };
     case 'service':
-      return { type: 'service', name: b.name, service: b.service };
+      // The Worker it points at, as this installation named it.
+      return { type: 'service', name: b.name, service: ctx.serviceName ? ctx.serviceName(b.service) : b.service };
     case 'ratelimit':
       return { type: 'ratelimit', name: b.name, namespace_id: ctx.resources.ratelimitNamespaceId, simple: b.simple };
     case 'assets':

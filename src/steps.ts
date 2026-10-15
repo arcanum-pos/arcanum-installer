@@ -10,7 +10,7 @@ import { generateSecret, randomBytes } from './crypto';
 import { installerUploadMetadata, secretsNeeded, uploadMetadata, type InstallContext, type WorkerDescriptor } from './contract';
 import { fetchReleaseJson, type Manifest } from './releases';
 import { addClientUris } from './auth-client';
-import { directShouldClose, INSTALLER_KEY_SECRET, publicUrl, sealValue, unsealValue, type Blueprint, type InstallerState } from './state';
+import { deployedName, directShouldClose, INSTALLER_KEY_SECRET, publicUrl, sealValue, unsealValue, type Blueprint, type InstallerState } from './state';
 import { messageOf, type Messages } from './i18n';
 
 export interface StepDef {
@@ -220,23 +220,33 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
       }
     }
     state.secrets = await sealValue(ctx.env, state, JSON.stringify(existing));
-    // Any number that's unique within the account; 1000–9999 stays clear of hand-picked ids like 1001/1002.
-    state.resources.ratelimitNamespaceId ??= String(1000 + (new DataView(randomBytes(2).buffer).getUint16(0) % 9000));
+    // A number unique within the account — shared by every installation on
+    // it, so not one another bff already uses. 1000–9999 stays clear of
+    // hand-picked ids like 1001/1002.
+    if (!state.resources.ratelimitNamespaceId) {
+      const taken = await cf.ratelimitIdsInUse(accountId);
+      let id: string;
+      do id = String(1000 + (new DataView(randomBytes(2).buffer).getUint16(0) % 9000));
+      while (taken.has(id) || id === '1001' || id === '1002');
+      state.resources.ratelimitNamespaceId = id;
+    }
     return { status: 'done', detail: s.secretsMade(added, Object.keys(existing).length) };
   }
 
   if (id.startsWith('d1:')) {
     const name = id.slice(3);
     if (state.resources.d1[name]) return { status: 'done', detail: s.exists };
-    const found = await cf.findD1(accountId, name);
-    state.resources.d1[name] = found ?? (await cf.createD1(accountId, name));
+    // Found by its name on the account: a re-run of this installation's own
+    // step (the name carries the instance's, so never another installation's).
+    const found = await cf.findD1(accountId, deployedName(state, name));
+    state.resources.d1[name] = found ?? (await cf.createD1(accountId, deployedName(state, name)));
     return { status: 'done', detail: found ? s.reused : s.created };
   }
 
   if (id.startsWith('kv:')) {
     const ns = id.slice(3);
     if (state.resources.kv[ns]) return { status: 'done', detail: s.exists };
-    const title = ns.replace(':', '-');
+    const title = deployedName(state, ns.replace(':', '-'));
     const found = await cf.findKv(accountId, title);
     state.resources.kv[ns] = found ?? (await cf.createKv(accountId, title));
     return { status: 'done', detail: found ? s.reused : s.created };
@@ -273,7 +283,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     state.probePath = paths.find((p) => /^\/assets\/kabouter[^/]*\.png$/.test(p)) ?? paths.find((p) => /^\/assets\/.*\.(png|svg)$/.test(p));
     const session = await cf.assetsUploadSession(
       accountId,
-      assetWorker.name,
+      deployedName(state, assetWorker.name),
       Object.fromEntries(Object.entries(manifest.files).map(([path, f]) => [path, { hash: f.hash, size: f.size }]))
     );
     const needed = (session.buckets ?? []).flat();
@@ -307,6 +317,8 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     const worker = release.blueprint.workers.find((w) => w.name === name);
     if (!worker) throw new Error(s.notInRelease(name));
     const descriptor = await fetchReleaseJson<WorkerDescriptor>(release.manifestUrl, release.manifest, worker.file);
+    // The release's name (`arcanum-bff`) is the step's; on the account it's the instance's.
+    const script = deployedName(state, name);
     const url = publicUrl(state)!;
     const secrets = await secretsOf(ctx);
     // The installer moves behind Arcanum by itself: the first bff that can
@@ -341,15 +353,16 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
       },
       secrets,
       resources: { d1: state.resources.d1, kv: state.resources.kv, ratelimitNamespaceId: state.resources.ratelimitNamespaceId! },
-      currentMigrationTag: descriptor.durable_object_migrations.length ? await cf.getMigrationTag(accountId, name) : null,
+      currentMigrationTag: descriptor.durable_object_migrations.length ? await cf.getMigrationTag(accountId, script) : null,
       assetsJwt: worker.assets ? state.assets?.completionJwt : undefined,
       orgCreation: state.instance?.kind,
       demoInstallUrl: state.instance?.startUrl,
+      serviceName: (logical) => deployedName(state, logical),
     };
     if (worker.assets && !context.assetsJwt) throw new Error(s.assetsIncomplete);
     const metadata = uploadMetadata(descriptor, context);
     if (linkInstaller) (metadata.bindings as unknown[]).push({ type: 'service', name: 'ARCANUM_INSTALLER_SERVICE', service: state.behindArcanum!.script });
-    await cf.uploadScript(accountId, name, metadata, descriptor.modules ?? []);
+    await cf.uploadScript(accountId, script, metadata, descriptor.modules ?? []);
     // Cloudflare keeps a Worker's secrets that an upload doesn't mention: an
     // optional one this installer set before but no longer does (Google's
     // separate browser client and scopes after moving to another provider,
@@ -359,15 +372,15 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     const sent = new Set((metadata.bindings as { name: string }[]).map((b) => b.name));
     const optionalSecrets = secretsToRemove(name, descriptor, sent, !!state.mail);
     if (optionalSecrets.length) {
-      const existing = new Set(((await cf.scriptBindings(accountId, name)) ?? []).filter((b) => b.type === 'secret_text').map((b) => b.name));
-      for (const stale of optionalSecrets.filter((n) => existing.has(n))) await cf.deleteSecret(accountId, name, stale);
+      const existing = new Set(((await cf.scriptBindings(accountId, script)) ?? []).filter((b) => b.type === 'secret_text').map((b) => b.name));
+      for (const stale of optionalSecrets.filter((n) => existing.has(n))) await cf.deleteSecret(accountId, script, stale);
     }
     // Only the public entry gets a workers.dev address; everything else is
     // reachable solely through service bindings.
-    await cf.setWorkersDev(accountId, name, worker.public_entry);
+    await cf.setWorkersDev(accountId, script, worker.public_entry);
     if (worker.public_entry && state.customDomain) {
       try {
-        await cf.attachCustomDomain(accountId, state.customDomain, name);
+        await cf.attachCustomDomain(accountId, state.customDomain, script);
       } catch (err) {
         const denied = err instanceof CloudflareError && (err.status === 401 || err.status === 403);
         throw new Error(
@@ -393,12 +406,12 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     // of the same account via its workers.dev URL (Cloudflare error 1042,
     // seen as a 404) — the setup page checks it's live from the browser.
     const missing: string[] = [];
-    for (const w of release.blueprint.workers) if (!(await cf.scriptExists(accountId, w.name))) missing.push(w.name);
+    for (const w of release.blueprint.workers) if (!(await cf.scriptExists(accountId, deployedName(state, w.name)))) missing.push(deployedName(state, w.name));
     if (missing.length) throw new Error(s.stillMissing(missing.join(', ')));
-    const entry = release.blueprint.workers.find((w) => w.public_entry)!;
-    if (!(await cf.isOnWorkersDev(accountId, entry.name))) throw new Error(s.notOnWorkersDev(entry.name));
-    if (state.customDomain && (await cf.customDomainService(accountId, state.customDomain)) !== entry.name) {
-      throw new Error(s.domainNotLinked(state.customDomain, entry.name));
+    const entry = deployedName(state, release.blueprint.workers.find((w) => w.public_entry)!.name);
+    if (!(await cf.isOnWorkersDev(accountId, entry))) throw new Error(s.notOnWorkersDev(entry));
+    if (state.customDomain && (await cf.customDomainService(accountId, state.customDomain)) !== entry) {
+      throw new Error(s.domainNotLinked(state.customDomain, entry));
     }
     const database = await fetchReleaseJson<{ databases: { name: string; tracked: boolean; migrations: unknown[] }[] }>(release.manifestUrl, release.manifest, 'database.json');
     for (const db of database.databases.filter((d) => d.tracked)) {

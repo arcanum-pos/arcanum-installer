@@ -80,6 +80,12 @@ export interface LoginChange {
 export interface InstallerState {
   v: 1;
   salt: string;
+  // Several installations can live on one Cloudflare account (ROADMAP.md
+  // §2): this one's name is the start of every Worker, database and KV
+  // namespace it makes — `<name>-bff`, `<name>-devices`. Set once, by the
+  // bootstrapper's handover, before anything exists. Unset = "arcanum", the
+  // names every installation had before (nothing of theirs is renamed).
+  instanceName?: string;
   cloudflare?: { accountId: string; accountName: string; subdomain: string; remember: boolean; token?: Sealed };
   login?: {
     issuer: string;
@@ -188,9 +194,19 @@ export function rootSecret(env: Env): string {
 export const sealValue = (env: Env, state: InstallerState, value: string) => seal(value, rootSecret(env), state.salt);
 export const unsealValue = (env: Env, state: InstallerState, value: Sealed) => unseal(value, rootSecret(env), state.salt);
 
+// Releases name their parts `arcanum-…` (the logical names, also the keys
+// of this state's steps and resources); on the account they carry the
+// instance's name. With the default name that's the same name.
+export const DEFAULT_INSTANCE = 'arcanum';
+export const INSTANCE_NAME = /^[a-z][a-z0-9-]{0,19}$/;
+export const instanceOf = (state: InstallerState) => state.instanceName ?? DEFAULT_INSTANCE;
+export function deployedName(state: InstallerState, logical: string): string {
+  return logical.replace(/^arcanum-/, `${instanceOf(state)}-`);
+}
+
 // The bff on the account's workers.dev subdomain — always there, also as a fallback.
 export function workersDevUrl(state: InstallerState): string | null {
-  return state.cloudflare?.subdomain ? `https://arcanum-bff.${state.cloudflare.subdomain}.workers.dev` : null;
+  return state.cloudflare?.subdomain ? `https://${deployedName(state, 'arcanum-bff')}.${state.cloudflare.subdomain}.workers.dev` : null;
 }
 
 // The installation's address: its own domain if it has one, else workers.dev.

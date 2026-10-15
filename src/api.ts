@@ -9,7 +9,7 @@ import { canSignInWithAccount } from './oidc';
 import { Cloudflare, CloudflareError } from './cloudflare';
 import type { WorkerDescriptor } from './contract';
 import { compareVersions, fetchManifest, fetchReleaseJson, installable, ReleaseError, releaseIndexFor } from './releases';
-import { directShouldClose, startClientOf, INSTALLER_KEY_SECRET, installationStarted, isAdmin, loadState, loginChangeActive, publicUrl, rootSecret, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
+import { deployedName, directShouldClose, startClientOf, INSTALLER_KEY_SECRET, installationStarted, isAdmin, loadState, loginChangeActive, publicUrl, rootSecret, saveState, sealValue, unsealValue, workersDevUrl, type InstallerState } from './state';
 import { blueprintFrom, planSteps, runStep } from './steps';
 import { safeEqual } from './crypto';
 import { applyChange, changeInfo, changesIdentity, dropExpiredSnapshot, providerIdentity, readLoginProvider, TEST_CALLBACK_PATH, undoChange } from './login-change';
@@ -100,7 +100,7 @@ export function installerScript(state: InstallerState, request: Request): string
   const suffix = `.${state.cloudflare?.subdomain}.workers.dev`;
   const label = host.endsWith(suffix) ? host.slice(0, -suffix.length) : '';
   if (/^[a-z0-9-]+$/.test(label)) return label;
-  return state.behindArcanum?.script ?? 'arcanum-installer';
+  return state.behindArcanum?.script ?? deployedName(state, 'arcanum-installer');
 }
 
 export async function mailConfigOf(env: Env, state: InstallerState): Promise<MailConfig | null> {
@@ -119,16 +119,16 @@ async function applyMail(env: Env, state: InstallerState, sessionId: string, con
   const token = await tokenFor(env, state, sessionId);
   const accountId = state.cloudflare?.accountId;
   const cf = token && accountId ? cloudflareFor(env, token) : null;
-  if (!cf || !accountId || !state.installed || !(await cf.scriptExists(accountId, 'arcanum-backend'))) {
+  if (!cf || !accountId || !state.installed || !(await cf.scriptExists(accountId, deployedName(state, 'arcanum-backend')))) {
     delete state.steps['worker:arcanum-backend'];
     return 'later';
   }
-  const existing = new Set(((await cf.scriptBindings(accountId, 'arcanum-backend')) ?? []).filter((b) => b.type === 'secret_text').map((b) => b.name));
+  const existing = new Set(((await cf.scriptBindings(accountId, deployedName(state, 'arcanum-backend'))) ?? []).filter((b) => b.type === 'secret_text').map((b) => b.name));
   if (config) {
-    await cf.putSecret(accountId, 'arcanum-backend', 'MAIL_CONFIG', JSON.stringify(config));
-    for (const old of OLD_SMTP_SECRETS.filter((n) => existing.has(n))) await cf.deleteSecret(accountId, 'arcanum-backend', old);
+    await cf.putSecret(accountId, deployedName(state, 'arcanum-backend'), 'MAIL_CONFIG', JSON.stringify(config));
+    for (const old of OLD_SMTP_SECRETS.filter((n) => existing.has(n))) await cf.deleteSecret(accountId, deployedName(state, 'arcanum-backend'), old);
   } else if (existing.has('MAIL_CONFIG')) {
-    await cf.deleteSecret(accountId, 'arcanum-backend', 'MAIL_CONFIG');
+    await cf.deleteSecret(accountId, deployedName(state, 'arcanum-backend'), 'MAIL_CONFIG');
   }
   return 'applied';
 }
@@ -141,11 +141,11 @@ async function applyAdmins(env: Env, state: InstallerState, sessionId: string, a
   const token = await tokenFor(env, state, sessionId);
   const accountId = state.cloudflare?.accountId;
   const cf = token && accountId ? cloudflareFor(env, token) : null;
-  if (!cf || !accountId || !state.installed || !(await cf.scriptExists(accountId, 'arcanum-backend'))) {
+  if (!cf || !accountId || !state.installed || !(await cf.scriptExists(accountId, deployedName(state, 'arcanum-backend')))) {
     delete state.steps['worker:arcanum-backend'];
     return 'later';
   }
-  await cf.putSecret(accountId, 'arcanum-backend', 'INSTANCE_ADMIN_EMAILS', admins);
+  await cf.putSecret(accountId, deployedName(state, 'arcanum-backend'), 'INSTANCE_ADMIN_EMAILS', admins);
   return 'applied';
 }
 
@@ -158,14 +158,14 @@ async function applySms(env: Env, state: InstallerState, sessionId: string, conf
   const token = await tokenFor(env, state, sessionId);
   const accountId = state.cloudflare?.accountId;
   const cf = token && accountId ? cloudflareFor(env, token) : null;
-  if (!cf || !accountId || !state.installed || !(await cf.scriptExists(accountId, 'arcanum-backend'))) {
+  if (!cf || !accountId || !state.installed || !(await cf.scriptExists(accountId, deployedName(state, 'arcanum-backend')))) {
     delete state.steps['worker:arcanum-backend'];
     return 'later';
   }
-  if (config) await cf.putSecret(accountId, 'arcanum-backend', 'MESSAGING_CONFIG', JSON.stringify(config));
+  if (config) await cf.putSecret(accountId, deployedName(state, 'arcanum-backend'), 'MESSAGING_CONFIG', JSON.stringify(config));
   else {
-    const existing = new Set(((await cf.scriptBindings(accountId, 'arcanum-backend')) ?? []).filter((b) => b.type === 'secret_text').map((b) => b.name));
-    if (existing.has('MESSAGING_CONFIG')) await cf.deleteSecret(accountId, 'arcanum-backend', 'MESSAGING_CONFIG');
+    const existing = new Set(((await cf.scriptBindings(accountId, deployedName(state, 'arcanum-backend'))) ?? []).filter((b) => b.type === 'secret_text').map((b) => b.name));
+    if (existing.has('MESSAGING_CONFIG')) await cf.deleteSecret(accountId, deployedName(state, 'arcanum-backend'), 'MESSAGING_CONFIG');
   }
   return 'applied';
 }
@@ -328,7 +328,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
         }
       }
       // A cheap read of D1 checks the token reaches D1 at all; write rights show during the install.
-      await cf.findD1(account.id, 'arcanum-backend');
+      await cf.findD1(account.id, deployedName(state, 'arcanum-backend'));
       const keep = remember !== false;
       state.cloudflare = {
         accountId: account.id,

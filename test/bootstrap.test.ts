@@ -10,6 +10,8 @@ import worker from '../src/index';
 import { DEV_VERSION, INSTALLER_LOGO, INSTANCE_CLIENT, installFakes, PUBLIC_URL, SELF_UPDATE_VERSION, SUBDOMAIN, TOKEN, type Fakes } from './fakes';
 
 const ORIGIN = `https://arcanum-installer.${SUBDOMAIN}.workers.dev`;
+// Where the installer under test runs (another instance: `<name>-installer`).
+let origin = ORIGIN;
 const STATE_KEY = 'test-state-key-0123456789abcdef0123456789abcdef';
 const CODE = 'handoff-code-0123456789abcdefghijklmnopqrstuv';
 const OWNER = { email: 'jan@example.test', sub: 'user-123' };
@@ -47,6 +49,7 @@ async function useConfig(config: string | undefined, extra: Record<string, unkno
 beforeEach(async () => {
   for (const key of (await env.INSTALLER_STATE.list()).keys) await env.INSTALLER_STATE.delete(key.name);
   fakes = await installFakes();
+  origin = ORIGIN;
   cookie = '';
   bodies.length = 0;
   await useConfig(await bootstrapConfig());
@@ -71,7 +74,7 @@ afterEach(() => vi.restoreAllMocks());
 async function call(method: string, path: string, body?: unknown, opts: { cookie?: string | null; headers?: Record<string, string> } = {}) {
   const sent = opts.cookie === undefined ? cookie : opts.cookie;
   const res = await worker.fetch(
-    new Request(`${ORIGIN}${path}`, {
+    new Request(`${origin}${path}`, {
       method,
       redirect: 'manual',
       headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(sent ? { Cookie: sent } : {}), ...opts.headers },
@@ -446,6 +449,75 @@ describe('the kind of installation and its channel (only from the bootstrapper)'
     await useConfig(await bootstrapConfig({ instance: { kind: 'everything', channel: 'stable' } }));
     expect((await handoff()).status).toBe(404);
     await useConfig(await bootstrapConfig({ instance: { kind: 'internal', channel: 'stable', startUrl: 'javascript:alert(1)' } }));
+    expect((await handoff()).status).toBe(404);
+  });
+});
+
+describe('several installations on one Cloudflare account', () => {
+  const NAME = 'wildferret';
+
+  // A second installation next to an existing one: the bootstrapper uploaded
+  // `wildferret-installer` with its own KV, and names it in the handover.
+  async function secondInstallation() {
+    origin = `https://${NAME}-installer.${SUBDOMAIN}.workers.dev`;
+    fakes.cf.kv.set('kv-installer-2', `${NAME}-installer-INSTALLER_STATE`);
+    fakes.cf.scripts.set(`${NAME}-installer`, { ...fakes.cf.scripts.get('arcanum-installer')!, order: 0 });
+    // What the first installation already has on the account.
+    fakes.cf.d1.set('db-existing', { name: 'arcanum-backend', queries: [], params: [] });
+    fakes.cf.scripts.set('arcanum-bff', { metadata: { bindings: [{ type: 'ratelimit', name: 'PUBLIC_RATE_LIMITER', namespace_id: '1005', simple: { limit: 20, period: 60 } }] }, modules: {}, order: 0 });
+    await useConfig(await bootstrapConfig({ instanceName: NAME }));
+  }
+
+  it("every Worker, database and KV namespace carries the installation's name; its bff points at its own Workers", async () => {
+    await secondInstallation();
+    // The first random rate-limit id is the one the other bff has: another is picked.
+    const real = crypto.getRandomValues.bind(crypto);
+    const picks = [[0, 5], [0, 7]];
+    vi.spyOn(crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView | null>(array: T): T => {
+      if (array instanceof Uint8Array && array.length === 2 && picks.length) array.set(picks.shift()!);
+      else real(array as never);
+      return array;
+    });
+    await handoff();
+    await call('POST', '/api/release', { version: (await call('GET', '/api/releases')).body.releases[0].version });
+    const run = await runAll();
+    expect(run.failed, run.detail ?? '').toBeNull();
+
+    const ours = [...fakes.cf.scripts].filter(([n]) => n.startsWith(`${NAME}-`) && n !== `${NAME}-installer`).sort((a, b) => a[1].order - b[1].order).map(([n]) => n);
+    expect(ours).toEqual([`${NAME}-mailer`, `${NAME}-devicehub`, `${NAME}-frontends`, `${NAME}-backend`, `${NAME}-bff`]);
+    // Its own databases and KV — the first installation's are left alone.
+    const dbNames = [...fakes.cf.d1.values()].map((d) => d.name).sort();
+    expect(dbNames).toEqual(['arcanum-backend', `${NAME}-backend`, `${NAME}-devices`]);
+    expect(fakes.cf.d1.get('db-existing')!.queries).toEqual([]);
+    expect([...fakes.cf.kv.values()]).toContain(`${NAME}-bff-ARCANUM_SESSIONS`);
+    // Its bff's service bindings point at its own Workers.
+    const services = (fakes.cf.scripts.get(`${NAME}-bff`)!.metadata.bindings as any[]).filter((b) => b.type === 'service').map((b) => b.service);
+    expect(services.length).toBeGreaterThan(0);
+    expect(services.every((s: string) => s.startsWith(`${NAME}-`))).toBe(true);
+    expect(binding(`${NAME}-bff`, 'FRONTEND_URL').text).toBe(`https://${NAME}-bff.${SUBDOMAIN}.workers.dev`);
+    expect(binding(`${NAME}-bff`, 'LOGIN_RATE_LIMITER').namespace_id).toBe('1007');
+    expect(fakes.cf.workersDev.get(`${NAME}-bff`)).toBe(true);
+    expect((await call('GET', '/api/status')).body.address.publicUrl).toBe(`https://${NAME}-bff.${SUBDOMAIN}.workers.dev`);
+  });
+
+  it('the name is set once: another name for an installation under way is refused', async () => {
+    await secondInstallation();
+    await handoff();
+    await call('POST', '/api/release', { version: (await call('GET', '/api/releases')).body.releases[0].version });
+    await runAll();
+    const code2 = 'second-handoff-code-0123456789abcdefghijklmnop';
+    await useConfig(await bootstrapConfig({ instanceName: 'goodpanda' }, code2));
+    const other = await handoff(code2);
+    expect(other.status).toBe(409);
+    expect(other.body.reason).toBe('name');
+    // The same name again is fine (the bootstrapper run again for this installation).
+    const code3 = 'third-handoff-code-0123456789abcdefghijklmnopq';
+    await useConfig(await bootstrapConfig({ instanceName: NAME }, code3));
+    expect((await handoff(code3)).status).toBe(200);
+  });
+
+  it('a name that is no Worker name is refused as a whole', async () => {
+    await useConfig(await bootstrapConfig({ instanceName: 'Wild Ferret' }));
     expect((await handoff()).status).toBe(404);
   });
 });

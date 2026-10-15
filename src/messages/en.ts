@@ -36,7 +36,7 @@ export default {
     recoveryTitle: 'Keep your recovery code',
     recoveryIntro: 'You are signed in as <strong data-recovery-email></strong>. From now on you sign in here with that account. If that ever fails (for example because the login provider can’t be reached), you get in with this recovery code:',
     recoveryOnce: 'It is shown only once — keep it somewhere safe, for example in your password manager. Anyone who has it can operate this installer. The previous recovery code (if there was one) no longer works.',
-    recoveryRollback: 'Installer won’t start after an update? Roll it back in the Cloudflare dashboard: <em>Workers &amp; Pages → arcanum-installer → Deployments</em> → the previous version → <em>Rollback</em>.',
+    recoveryRollback: 'Installer won’t start after an update? Roll it back in the Cloudflare dashboard: <em>Workers &amp; Pages → …-installer → Deployments</em> → the previous version → <em>Rollback</em>.',
     recoverySaved: 'I have kept the recovery code',
     continue: 'Continue',
     deniedTitle: 'No access',
@@ -46,7 +46,7 @@ export default {
     token: 'API token',
     account: 'Account',
     subdomain: 'Choose your workers.dev name',
-    subdomainHint: 'This account has no workers.dev address yet. Arcanum will then be at <code>arcanum-bff.<span data-subdomain-preview>…</span>.workers.dev</code>. The name applies to the whole Cloudflare account and is hard to change later.',
+    subdomainHint: 'This account has no workers.dev address yet. Arcanum will then be at <code>…-bff.<span data-subdomain-preview>…</span>.workers.dev</code>. The name applies to the whole Cloudflare account and is hard to change later.',
     rememberToken: 'Remember the token for later updates (securely encrypted, never shown again)',
     checkAndSave: 'Check and save',
     addressTitle: 'Address',
@@ -385,6 +385,7 @@ export default {
     wrong: 'This link is not right. Open the installer with the link from arcanum.kaboutersoft.be.',
     expired: 'This link has expired. Start "Own installation" on arcanum.kaboutersoft.be again — what is already there is kept.',
     otherAccount: (installed: string, offered: string) => `Arcanum is already (partly) installed on account ${installed} — not on ${offered}.`,
+    otherName: (installed: string, offered: string) => `This installation is called ${installed} — its Workers and databases carry that name. It can’t become ${offered}.`,
   },
 
   release: {
