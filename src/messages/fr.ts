@@ -304,6 +304,7 @@ export default {
     noInstallerState: (script: string) => `${script} n’a pas de stockage INSTALLER_STATE — l’installateur n’a pas pu se mettre à jour lui-même`,
     selfUpdateFailed: (error: string) => `L’installateur n’a pas pu se mettre à jour lui-même (${error}). Rien n’a été modifié : cet installateur continue de fonctionner — réessayez.`,
     selfUpdated: (version: string) => `l’installateur ${version} est prêt — il exécute les étapes suivantes`,
+    newInstallerPending: (version: string) => `en attente de la réponse de l’installateur ${version}`,
     urisAdded: (count: number, host: string) => `${count} adresse(s) ajoutée(s) chez ${host}`,
     urisThere: 'y figurait déjà',
     secretsMade: (added: number, total: number) => `${added} nouvelle(s), ${total} au total`,

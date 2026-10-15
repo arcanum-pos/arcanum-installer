@@ -103,8 +103,11 @@ async function runAll() {
   for (const step of status.steps) {
     for (let attempt = 0; attempt < 10; attempt++) {
       const r = await call('POST', '/api/step', { id: step.id });
-      if (r.body.status === 'done') break;
       if (r.body.status === 'failed') return { failed: step.id, detail: r.body.detail };
+      if (r.body.status !== 'done') continue;
+      // From now on the requests reach the installer it just uploaded.
+      if (step.id === 'installer:self') workerEnv = { ...workerEnv, INSTALLER_RELEASE: binding('arcanum-installer', 'INSTALLER_RELEASE').text };
+      break;
     }
   }
   return { failed: null, detail: null };
@@ -367,6 +370,18 @@ describe('the one-screen install', () => {
     // Once it works, the update continues.
     expect((await runAll()).failed).toBeNull();
     expect((await call('GET', '/api/status')).body.installed.version).toBe(SELF_UPDATE_VERSION);
+  });
+
+  it('after its self-update, the next steps wait until the new installer answers', async () => {
+    expect((await installLatest()).failed).toBeNull();
+    fakes.releases.offerSelfUpdate = true;
+    await call('POST', '/api/release', { version: SELF_UPDATE_VERSION });
+    expect((await call('POST', '/api/step', { id: 'installer:self' })).body.status).toBe('done');
+    // Still the old installer answering (Cloudflare hasn't switched yet).
+    const early = await call('POST', '/api/step', { id: 'secrets' });
+    expect(early.body).toMatchObject({ status: 'retry', detail: `wacht tot installer ${SELF_UPDATE_VERSION} antwoordt` });
+    workerEnv = { ...workerEnv, INSTALLER_RELEASE: SELF_UPDATE_VERSION };
+    expect((await call('POST', '/api/step', { id: 'secrets' })).body.status).toBe('done');
   });
 
   it('no self-update when this installer already comes from that release', async () => {

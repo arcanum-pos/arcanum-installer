@@ -200,6 +200,13 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     return { status: 'done', detail: s.selfUpdated(release.version) };
   }
 
+  // Right after its own update, a step can still reach the old installer
+  // for a few seconds — which wouldn't know what the new release needs (it
+  // once kept a Web Push key in the old format). Wait for the new one.
+  if (release.blueprint.installer && state.selfUpdate?.to === release.version && ctx.env.INSTALLER_RELEASE !== release.version) {
+    return { status: 'retry', detail: s.newInstallerPending(release.version) };
+  }
+
   if (id === 'login:uris') {
     const login = state.bootstrap!.login!;
     const url = `https://${state.customDomain}`;

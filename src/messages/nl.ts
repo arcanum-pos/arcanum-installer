@@ -319,6 +319,7 @@ const nl = {
     noInstallerState: (script: string) => `${script} heeft geen INSTALLER_STATE-opslag — de installer kon zichzelf niet bijwerken`,
     selfUpdateFailed: (error: string) => `De installer kon zichzelf niet bijwerken (${error}). Er is niets gewijzigd: deze installer blijft werken — probeer het opnieuw.`,
     selfUpdated: (version: string) => `installer ${version} staat klaar — hij voert de volgende stappen uit`,
+    newInstallerPending: (version: string) => `wacht tot installer ${version} antwoordt`,
     urisAdded: (count: number, host: string) => `${count} adres(sen) toegevoegd bij ${host}`,
     urisThere: 'stond er al',
     secretsMade: (added: number, total: number) => `${added} nieuw, ${total} in totaal`,
