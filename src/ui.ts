@@ -137,7 +137,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
     <nav class="langs" aria-label="${p.language}"><a href="?lang=nl" hreflang="nl" lang="nl" data-lang="nl" title="Nederlands"${current(lang, 'nl')}>NL</a><span aria-hidden="true">·</span><a href="?lang=fr" hreflang="fr" lang="fr" data-lang="fr" title="Français"${current(lang, 'fr')}>FR</a><span aria-hidden="true">·</span><a href="?lang=en" hreflang="en" lang="en" data-lang="en" title="English"${current(lang, 'en')}>EN</a></nav>
     <div class="brand"><img src="assets/kabouter.png" alt=""><span>arcanum</span></div>
     <h1>${p.heading}</h1>
-    <p class="soft">${p.intro}</p>
+    <p class="soft" data-intro>${p.intro}</p>
   </header>
 
   <section id="login" class="card hidden">
@@ -448,6 +448,7 @@ function render() {
   const set = (id, done, summary) => { const el = $(id); el.classList.toggle('done', !!done); $('[data-summary]', el) && ($('[data-summary]', el).textContent = summary || ''); };
   // Self-hosted on Kubernetes: the public address instead of Cloudflare's token and domain.
   const kube = s.kubernetes;
+  if (kube) $('[data-intro]').textContent = M.kubeIntroLine;
   $('#s-kube').classList.toggle('hidden', !kube);
   $('#s-cloudflare').classList.toggle('hidden', !!kube);
   $('#s-address').classList.toggle('hidden', !!kube);

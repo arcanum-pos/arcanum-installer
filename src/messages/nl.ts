@@ -126,6 +126,7 @@ const nl = {
   },
 
   script: {
+    kubeIntroLine: 'Installeert Arcanum in je eigen Kubernetes-cluster. Je gegevens blijven daar.',
     kubeSummary: 'Adres: {url} · namespace {namespace}',
     kubeAccountLabel: 'Kubernetes-namespace',
     cloudflareAccountLabel: 'Cloudflare-account',

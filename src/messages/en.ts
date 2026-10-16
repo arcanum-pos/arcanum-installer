@@ -116,6 +116,7 @@ export default {
   },
 
   script: {
+    kubeIntroLine: 'Installs Arcanum in your own Kubernetes cluster. Your data stays there.',
     kubeSummary: 'Address: {url} · namespace {namespace}',
     kubeAccountLabel: 'Kubernetes namespace',
     cloudflareAccountLabel: 'Cloudflare account',
