@@ -80,7 +80,7 @@ describe('a Worker on Kubernetes', () => {
     expect(init.image).toBe('ghcr.io/arcanum-pos/tresjr-backend:0.1.70');
     expect(init.command.at(-1)).toBe(migrateScript('backend', '0.1.70'));
     expect(init.command.at(-1)).toContain('cp /data/$f /data/$f.before-0.1.70');
-    expect(init.command.at(-1)).toMatch(/node dist\/node\.mjs migrate$/);
+    expect(init.command.at(-1)).toMatch(/node dist\/node\.mjs migrate --reset-login$/);
     // Going back: the copies put back before anything runs.
     expect(migrateScript('backend', '0.1.69', '0.1.70')).toContain('cp /data/$f.before-0.1.70 /data/$f');
   });

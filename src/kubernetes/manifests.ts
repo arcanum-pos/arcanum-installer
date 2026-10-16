@@ -80,7 +80,9 @@ export function migrateScript(short: string, version: string, restoreFrom?: stri
   const restore = restoreFrom
     ? `if [ -f /data/${short}.db.before-${restoreFrom} ]; then for f in ${files}; do rm -f /data/$f; [ -f /data/$f.before-${restoreFrom} ] && cp /data/$f.before-${restoreFrom} /data/$f; done; fi; `
     : `for f in ${files}; do [ -f /data/$f ] && cp /data/$f /data/$f.before-${version}; done; `;
-  return `${restore}node dist/node.mjs migrate`;
+  // --reset-login: the default login provider re-seeds from the current
+  // settings (the Cloudflare target's login:reset step).
+  return `${restore}node dist/node.mjs migrate --reset-login`;
 }
 
 // `extraEnv`: what the installer adds itself (the bff's INSTALLER_URL).
