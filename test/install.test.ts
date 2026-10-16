@@ -829,7 +829,7 @@ describe("behind Arcanum (the installer's own address)", () => {
 
   it('the page lists what the install will use, one per line, in one style', async () => {
     const html = await (await SELF.fetch('https://installer.test/')).text();
-    expect(html).toMatch(/<dl class="facts">\s*<dt>Adres<\/dt><dd data-quick-url><\/dd>\s*<dt>Cloudflare-account<\/dt><dd data-quick-account><\/dd>\s*<dt>Beheerders<\/dt><dd data-quick-admins><\/dd>\s*<\/dl>/);
+    expect(html).toMatch(/<dl class="facts">\s*<dt>Adres<\/dt><dd data-quick-url><\/dd>\s*<dt data-quick-account-label>Cloudflare-account<\/dt><dd data-quick-account><\/dd>\s*<dt>Beheerders<\/dt><dd data-quick-admins><\/dd>\s*<\/dl>/);
   });
 
   it('the page passes "Open je Arcanum" by the installer behind Arcanum while its own address is still to be closed', async () => {

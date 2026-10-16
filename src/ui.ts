@@ -189,6 +189,13 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       </form>
     </section>
 
+    <section id="s-kube" class="card hidden">
+      <h2>${p.kubeTitle}</h2>
+      <p>${p.kubeIntro}</p>
+      <p data-summary class="soft"></p>
+      <form data-form="address"><label for="publicUrl">${p.kubePublicUrl}</label><input id="publicUrl" name="publicUrl" type="url" placeholder="https://kassa.jouwdomein.be" autocomplete="off" required><button>${p.save}</button><p class="error" data-error></p></form>
+    </section>
+
     <section id="s-address" class="card">
       <h2>${p.addressTitle}</h2>
       <p class="soft">${p.addressIntro}</p>
@@ -280,7 +287,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       <h2>${p.installTitle}</h2>
       <dl class="facts">
         <dt>${p.quickAddress}</dt><dd data-quick-url></dd>
-        <dt>${p.quickAccount}</dt><dd data-quick-account></dd>
+        <dt data-quick-account-label>${p.quickAccount}</dt><dd data-quick-account></dd>
         <dt>${p.quickAdmins}</dt><dd data-quick-admins></dd>
       </dl>
       <p>${p.quickRest}</p>
@@ -439,6 +446,15 @@ function render() {
   $('[data-installer-version]').textContent = [fmt(M.installerRelease, { release: s.installer && s.installer.release ? s.installer.release : M.noReleaseNumber }), kind, channel].filter(Boolean).join(' · ');
   $('#token-link').href = s.tokenTemplateUrl;
   const set = (id, done, summary) => { const el = $(id); el.classList.toggle('done', !!done); $('[data-summary]', el) && ($('[data-summary]', el).textContent = summary || ''); };
+  // Self-hosted on Kubernetes: the public address instead of Cloudflare's token and domain.
+  const kube = s.kubernetes;
+  $('#s-kube').classList.toggle('hidden', !kube);
+  $('#s-cloudflare').classList.toggle('hidden', !!kube);
+  $('#s-address').classList.toggle('hidden', !!kube);
+  if (kube) {
+    set('#s-kube', kube.publicUrl, kube.publicUrl ? fmt(M.kubeSummary, { url: kube.publicUrl, namespace: kube.namespace }) : '');
+    if (kube.publicUrl) $('#publicUrl').value ||= kube.publicUrl;
+  }
   set('#s-cloudflare', s.cloudflare && s.cloudflare.tokenAvailable, s.cloudflare ? fmt(M.cloudflareSummary, { account: s.cloudflare.accountName, url: s.address ? s.address.publicUrl : '' }) + (s.cloudflare.tokenAvailable ? '' : M.tokenNeeded) : '');
   $('[data-workersdev]').textContent = s.address ? s.address.workersDevUrl : M.stepOneFirst;
   set('#s-address', false, s.address && s.address.customDomain ? fmt(M.addressSummary, { url: s.address.publicUrl }) : '');
@@ -448,7 +464,8 @@ function render() {
   set('#s-login', s.login, s.login ? fmt(M.loginSummary, { issuer: s.login.issuer, client: s.login.clientId }) : '');
   if (s.login) $('[data-login-current]').textContent = new URL(s.login.issuer).host;
   $('[data-quick-url]').textContent = s.address ? s.address.publicUrl : '';
-  $('[data-quick-account]').textContent = s.cloudflare ? s.cloudflare.accountName : '';
+  $('[data-quick-account-label]').textContent = kube ? M.kubeAccountLabel : M.cloudflareAccountLabel;
+  $('[data-quick-account]').textContent = kube ? kube.namespace : s.cloudflare ? s.cloudflare.accountName : '';
   $('[data-quick-admins]').textContent = s.admins || '';
   if (s.login) {
     if (s.login.deviceClientId) $('[data-device-client]').open = true;
@@ -467,7 +484,7 @@ function render() {
     list.append(li);
   }
   // The version is chosen right here, when Installeren is clicked.
-  const ready = s.cloudflare && s.login && s.admins;
+  const ready = (kube ? kube.publicUrl : s.cloudflare) && s.login && s.admins;
   $('[data-run]').disabled = !ready || running;
   const chosen = $('#quick-version').value;
   const updating = s.installed && chosen && s.installed.version !== chosen;
@@ -482,8 +499,9 @@ function render() {
   $('[data-access]').classList.toggle('hidden', !(s.access && s.access.email));
   if (s.access && s.access.email) $('[data-access]').textContent = fmt(viaArcanum ? M.signedInViaArcanum : M.signedInAs, { email: s.access.email });
   $('[data-logout-button]').classList.toggle('hidden', !!viaArcanum);
-  $('#s-public').classList.toggle('hidden', !s.installed);
-  if (s.installed) loadPublicAccess();
+  // The installer's own workers.dev address: Cloudflare only.
+  $('#s-public').classList.toggle('hidden', !s.installed || !!kube);
+  if (s.installed && !kube) loadPublicAccess();
   $('[data-login-installed]').classList.toggle('hidden', !s.installed);
   // Arcanum on another provider than this installation's own client at login.kaboutersoft.be: one click back.
   const start = s.bootstrapped && s.bootstrapped.startClient;
@@ -912,7 +930,8 @@ async function runAll() {
         const li = $('[data-id="' + CSS.escape(step.id) + '"]'); if (li) li.className = 'running';
         const r = await api('api/step', { id: step.id });
         if (r.status === 'done') break;
-        if (r.status === 'retry' && attempt < 20) { progress(at + ' — ' + r.detail + M.retryIn); if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
+        // Kubernetes: a first pull of the images can take a few minutes.
+        if (r.status === 'retry' && attempt < (status.kubernetes ? 60 : 20)) { progress(at + ' — ' + r.detail + M.retryIn); if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
         await refresh(); throw new Error(fmt(M.stepFailed, { title: step.title, detail: r.detail }));
       }
       // The new installer takes over from the next request: give Cloudflare a moment.

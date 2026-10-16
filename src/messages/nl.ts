@@ -13,6 +13,9 @@
 // passed through inside these sentences.
 const nl = {
   page: {
+    kubeTitle: 'Publiek adres',
+    kubeIntro: 'Arcanum draait in je eigen cluster. Leid je eigen adres naar de Service <code>tresjr-bff</code>, poort 8080 (ook WebSockets) — met je Ingress, Gateway of een Cloudflare Tunnel — en geef dat adres hier.',
+    kubePublicUrl: 'Publiek adres (https)',
     mailTitle: 'E-mail',
     mailIntro: 'Waarmee deze installatie mails verstuurt (uitnodigingen) — voor al haar organisaties; de naam van de afzender is die van de organisatie. Zonder e-mail werken uitnodigingen gewoon, maar gaan ze niet per mail.',
     mailService: 'Dienst',
@@ -123,6 +126,9 @@ const nl = {
   },
 
   script: {
+    kubeSummary: 'Adres: {url} · namespace {namespace}',
+    kubeAccountLabel: 'Kubernetes-namespace',
+    cloudflareAccountLabel: 'Cloudflare-account',
     advancedMail: 'E-mail',
     mailService_smtp: 'SMTP (bv. iCloud+, je eigen mailserver)',
     mailService_gmail_api: 'Gmail API (Google Workspace)',

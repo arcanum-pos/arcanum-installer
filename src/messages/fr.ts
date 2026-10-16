@@ -3,6 +3,9 @@ import type { Messages } from './nl';
 // French (Belgian, formal "vous") — the same keys as nl.ts.
 export default {
   page: {
+    kubeTitle: 'Adresse publique',
+    kubeIntro: 'Arcanum tourne dans votre propre cluster. Dirigez votre adresse vers le Service <code>tresjr-bff</code>, port 8080 (WebSockets aussi) — avec votre Ingress, Gateway ou un Cloudflare Tunnel — et indiquez cette adresse ici.',
+    kubePublicUrl: 'Adresse publique (https)',
     mailTitle: 'E-mail',
     mailIntro: 'Avec quoi cette installation envoie ses e-mails (invitations) — pour toutes ses organisations ; le nom de l’expéditeur est celui de l’organisation. Sans e-mail, les invitations fonctionnent, mais ne sont pas envoyées par e-mail.',
     mailService: 'Service',
@@ -113,6 +116,9 @@ export default {
   },
 
   script: {
+    kubeSummary: 'Adresse : {url} · namespace {namespace}',
+    kubeAccountLabel: 'Namespace Kubernetes',
+    cloudflareAccountLabel: 'Compte Cloudflare',
     advancedMail: 'E-mail',
     mailService_smtp: 'SMTP (p. ex. iCloud+, votre propre serveur)',
     mailService_gmail_api: 'API Gmail (Google Workspace)',
