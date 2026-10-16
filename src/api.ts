@@ -264,6 +264,8 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       account: canSignInWithAccount(state) ? { issuer: state.bootstrap!.login!.issuer } : null,
       // Uploaded by the bootstrapper, not handed over yet: only its link gets in.
       awaitingHandoff: !state.bootstrap && isBootstrapped(env, state),
+      // In a cluster: the page talks about Kubernetes, not Cloudflare.
+      ...(env.KUBE ? { kubernetes: true } : {}),
     });
   }
 

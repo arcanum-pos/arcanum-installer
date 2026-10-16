@@ -404,6 +404,7 @@ async function loadLoginOptions() {
   $('[data-login-account]').classList.toggle('hidden', !o.account);
   if (o.account) $('[data-login-issuer]').textContent = new URL(o.account.issuer).host;
   $('[data-login-handoff]').classList.toggle('hidden', !o.awaitingHandoff);
+  if (o.kubernetes) { $('[data-intro]').textContent = M.kubeIntroLine; $('[data-login-handoff]').textContent = M.kubeAwaitingHandoff; }
   $('form[data-form="login"]').classList.toggle('hidden', !o.recoveryCode);
   $('[data-login-label]').textContent = M.recoveryCode;
   $('[data-login-hint]').textContent = M.recoveryCodeHint;

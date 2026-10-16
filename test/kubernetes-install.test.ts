@@ -179,6 +179,12 @@ describe('the handoff for a Kubernetes installation', () => {
     expect((await post({ code })).status).toBe(410);
   });
 
+  it('before the handoff, the sign-in page knows it is in a cluster', async () => {
+    const config = { version: 1, target: 'kubernetes', login: null, owner: { email: 'b@s.test', sub: 's' }, handoffCodeHash: 'x'.repeat(64), handoffExpiresAt: new Date(Date.now() + 600_000).toISOString() };
+    const res = await worker.fetch(new Request('https://installer.test/api/login-options'), { ...kubeEnv(), BOOTSTRAP_CONFIG: JSON.stringify(config) } as never);
+    expect(await res.json()).toEqual({ recoveryCode: false, account: null, awaitingHandoff: true, kubernetes: true });
+  });
+
   it('a Cloudflare handoff on a Kubernetes installer (or the other way round): refused', async () => {
     const config = { version: 1, cloudflareToken: 't', accountId: 'a', accountName: 'A', subdomain: 's', login: null, owner: { email: 'b@s.test', sub: 's' }, handoffCodeHash: 'x'.repeat(64), handoffExpiresAt: new Date(Date.now() + 600_000).toISOString() };
     const code = 'CODE';

@@ -127,6 +127,7 @@ const nl = {
 
   script: {
     kubeIntroLine: 'Installeert Arcanum in je eigen Kubernetes-cluster. Je gegevens blijven daar.',
+    kubeAwaitingHandoff: 'Deze installer staat klaar in je cluster, maar werd nog niet overgedragen. Open hem via de link uit stap 4 op arcanum.kaboutersoft.be (http://localhost:8080/handoff?code=…) terwijl de port-forward loopt. Die pagina al gesloten? Haal daar een nieuwe overdracht en installeer die met helm upgrade.',
     kubeSummary: 'Adres: {url} · namespace {namespace}',
     kubeAccountLabel: 'Kubernetes-namespace',
     cloudflareAccountLabel: 'Cloudflare-account',

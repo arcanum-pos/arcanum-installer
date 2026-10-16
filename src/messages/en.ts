@@ -117,6 +117,7 @@ export default {
 
   script: {
     kubeIntroLine: 'Installs Arcanum in your own Kubernetes cluster. Your data stays there.',
+    kubeAwaitingHandoff: 'This installer is ready in your cluster, but has not been handed over yet. Open it with the link from step 4 on arcanum.kaboutersoft.be (http://localhost:8080/handoff?code=…) while the port-forward runs. Closed that page? Get a new handoff there and install it with helm upgrade.',
     kubeSummary: 'Address: {url} · namespace {namespace}',
     kubeAccountLabel: 'Kubernetes namespace',
     cloudflareAccountLabel: 'Cloudflare account',
