@@ -11,7 +11,7 @@ import { planKubernetesSteps, runKubernetesStep } from './kubernetes/steps';
 import { installerUploadMetadata, secretsNeeded, uploadMetadata, type InstallContext, type WorkerDescriptor } from './contract';
 import { fetchReleaseJson, type Manifest } from './releases';
 import { addClientUris } from './auth-client';
-import { deployedName, directShouldClose, INSTALLER_KEY_SECRET, publicUrl, sealValue, unsealValue, type Blueprint, type InstallerState } from './state';
+import { deployedName, directShouldClose, INSTALLER_KEY_SECRET, publicUrl, sealValue, selfHosted, unsealValue, type Blueprint, type InstallerState } from './state';
 import { messageOf, type Messages } from './i18n';
 
 export interface StepDef {
@@ -26,7 +26,7 @@ export const needsClientUris = (state: InstallerState) => !!state.bootstrap?.log
 
 // The titles in the request's language: they're worded for every status, never stored.
 export function planSteps(blueprint: Blueprint, state: InstallerState | undefined, t: Messages): StepDef[] {
-  if (state?.kubernetes) return planKubernetesSteps(blueprint, state, t);
+  if (state && selfHosted(state)) return planKubernetesSteps(blueprint, state, t);
   const s = t.steps;
   const steps: StepDef[] = [];
   // An update with a newer installer: that one first, over this one — the
@@ -229,7 +229,7 @@ export async function installContext(
 }
 
 export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome> {
-  if (ctx.state.kubernetes) return runKubernetesStep(id, ctx);
+  if (selfHosted(ctx.state)) return runKubernetesStep(id, ctx);
   const { state, cf } = ctx;
   const s = ctx.t.steps;
   const release = state.release!;

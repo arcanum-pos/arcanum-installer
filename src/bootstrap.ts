@@ -13,7 +13,7 @@
 //     instance?: { kind: 'single'|'admins'|'internal', channel: 'stable'|'dev' },
 //                         // only from the bootstrapper for the platform's own
 //                         // installations; absent: this installer's own stays
-//     target?: 'kubernetes',  // self-hosted (SELF_HOSTING.md): no Cloudflare
+//     target?: 'kubernetes' | 'docker',  // self-hosted (SELF_HOSTING.md): no Cloudflare
 //                         // fields — the installer already runs in the
 //                         // cluster it installs in (the Helm chart put it
 //                         // there, BOOTSTRAP_CONFIG in a Secret)
@@ -41,7 +41,7 @@ import type { Messages } from './i18n';
 
 export interface BootstrapConfig {
   version: 1;
-  target?: 'kubernetes';
+  target?: 'kubernetes' | 'docker';
   // Cloudflare only.
   cloudflareToken: string;
   accountId: string;
@@ -76,10 +76,10 @@ export function readBootstrapConfig(env: Env): Parsed {
   const text = (v: unknown) => typeof v === 'string' && v.length > 0;
   const owner = value.owner as BootstrapConfig['owner'] | undefined;
   const login = value.login as BootstrapConfig['login'] | undefined;
-  const kubernetes = value.target === 'kubernetes';
+  const hosted = value.target === 'kubernetes' || value.target === 'docker';
   const ok =
-    (kubernetes || (text(value.cloudflareToken) && text(value.accountId) && text(value.subdomain))) &&
-    (value.target === undefined || kubernetes) &&
+    (hosted || (text(value.cloudflareToken) && text(value.accountId) && text(value.subdomain))) &&
+    (value.target === undefined || hosted) &&
     text(value.handoffCodeHash) && text(value.handoffExpiresAt) &&
     !!owner && text(owner.email) && text(owner.sub) &&
     (login === null || (!!login && text(login.issuer) && text(login.clientId) && text(login.clientSecret))) &&
@@ -118,9 +118,9 @@ export async function handoff(env: Env, state: InstallerState, code: string, ins
   if (!(Date.parse(config.handoffExpiresAt) > Date.now())) {
     return { ok: false, status: 410, reason: 'expired', error: t.handoff.expired };
   }
-  const kubernetes = config.target === 'kubernetes';
+  const kubernetes = config.target === 'kubernetes' || config.target === 'docker';
   // A handoff for the other kind of installation than this one is.
-  if (kubernetes !== !!state.kubernetes) return { ok: false, status: 409, reason: 'account', error: t.handoff.otherTarget };
+  if (config.target !== (state.kubernetes ? 'kubernetes' : state.docker ? 'docker' : undefined)) return { ok: false, status: 409, reason: 'account', error: t.handoff.otherTarget };
   if (!kubernetes && state.cloudflare && installationStarted(state) && state.cloudflare.accountId !== config.accountId) {
     return { ok: false, status: 409, reason: 'account', error: t.handoff.otherAccount(state.cloudflare.accountName, config.accountName) };
   }

@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc && tsc -p tsconfig.node.json && tsc -p test",
+    "typecheck": "tsc && tsc -p tsconfig.node.json && tsc -p test && tsc -p test/node",
     "test": "node test/check-page-script.mjs && vitest run",
     "test:watch": "vitest",
     "build:node": "esbuild src/node-main.ts --bundle --platform=node --format=esm --target=node22 --loader:.png=binary --loader:.woff2=binary --outfile=dist/node.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",

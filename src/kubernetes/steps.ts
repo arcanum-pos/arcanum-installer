@@ -16,19 +16,20 @@ import type { WorkerDescriptor } from '../contract';
 import { generateSecret } from '../crypto';
 import type { Messages } from '../i18n';
 import { fetchReleaseJson } from '../releases';
-import { deployedName, INSTALLER_KEY_SECRET, publicUrl, sealValue, unsealValue, type Blueprint, type InstallerState } from '../state';
+import { runDockerStep } from '../docker/steps';
+import { deployedName, INSTALLER_KEY_SECRET, publicUrl, sealValue, selfHosted, unsealValue, type Blueprint, type InstallerState } from '../state';
 import { bffSupportsInstaller, installContext, makeSecrets, secretsOf, type StepContext, type StepDef, type StepOutcome } from '../steps';
 import type { Kube } from './client';
 import { objectName, PORT, shortName, workerManifests, type KubeContext } from './manifests';
 
 export const DEFAULT_IMAGE_PREFIX = 'ghcr.io/arcanum-pos/tresjr-';
-// The installer's own names (the Helm chart's), unless told otherwise.
-export const installerDeployment = (ctx: { env: { INSTALLER_DEPLOYMENT?: string }; state: InstallerState }) =>
-  ctx.env.INSTALLER_DEPLOYMENT || deployedName(ctx.state, 'arcanum-installer');
+// The installer's own names (the Helm chart's, compose.yaml's container), unless told otherwise.
+export const installerDeployment = (ctx: { env: { INSTALLER_DEPLOYMENT?: string; INSTALLER_CONTAINER?: string }; state: InstallerState }) =>
+  ctx.env.INSTALLER_DEPLOYMENT || ctx.env.INSTALLER_CONTAINER || deployedName(ctx.state, 'arcanum-installer');
 
 // The login provider gets the address once it's known (and only this
 // installation's own client at login.kaboutersoft.be).
-export const needsKubeClientUris = (state: InstallerState) => !!state.bootstrap?.login && state.bootstrap.login.selfService !== false && !!state.kubernetes?.publicUrl;
+export const needsKubeClientUris = (state: InstallerState) => !!state.bootstrap?.login && state.bootstrap.login.selfService !== false && !!selfHosted(state)?.publicUrl;
 
 export function planKubernetesSteps(blueprint: Blueprint, state: InstallerState, t: Messages): StepDef[] {
   const s = t.steps;
@@ -37,7 +38,7 @@ export function planKubernetesSteps(blueprint: Blueprint, state: InstallerState,
   steps.push({ id: 'secrets', title: s.secrets });
   for (const w of blueprint.workers) {
     steps.push({ id: `worker:${w.name}`, title: s.worker(w.name) });
-    if (w.public_entry && needsKubeClientUris(state)) steps.push({ id: 'login:uris', title: s.loginUris(new URL(state.kubernetes!.publicUrl!).host) });
+    if (w.public_entry && needsKubeClientUris(state)) steps.push({ id: 'login:uris', title: s.loginUris(new URL(selfHosted(state)!.publicUrl!).host) });
   }
   steps.push({ id: 'verify', title: s.verify });
   return steps;
@@ -60,11 +61,11 @@ function kubeOf(ctx: StepContext): Kube {
   return ctx.env.KUBE;
 }
 
-// A Worker's manifests, applied — what the step and a settings change both do.
-export async function applyWorker(ctx: StepContext, name: string): Promise<{ deployment: string; selector: string }> {
+// What a Worker gets, on either platform: its descriptor, its settings,
+// and what the installer adds itself (the bff's INSTALLER_URL).
+export async function prepareWorker(ctx: StepContext, name: string) {
   const { state } = ctx;
   const release = state.release!;
-  const kube = kubeOf(ctx);
   const worker = release.blueprint.workers.find((w) => w.name === name);
   if (!worker) throw new Error(ctx.t.steps.notInRelease(name));
   const descriptor = await fetchReleaseJson<WorkerDescriptor>(release.manifestUrl, release.manifest, worker.file);
@@ -81,15 +82,26 @@ export async function applyWorker(ctx: StepContext, name: string): Promise<{ dep
     state.behindArcanum = { script: installerDeployment(ctx) };
   }
   const context = await installContext(ctx, name, secrets, linkInstaller);
-  const manifests = await workerManifests(descriptor, context, k, linkInstaller ? { INSTALLER_URL: `http://${installerDeployment(ctx)}:${PORT}` } : {});
+  const extraEnv: Record<string, string> = linkInstaller ? { INSTALLER_URL: `http://${installerDeployment(ctx)}:${PORT}` } : {};
+  return { descriptor, context, k, extraEnv };
+}
+
+// A Worker's manifests, applied — what the step and a settings change both do.
+export async function applyWorker(ctx: StepContext, name: string): Promise<{ deployment: string; selector: string }> {
+  const kube = kubeOf(ctx);
+  const { descriptor, context, k, extraEnv } = await prepareWorker(ctx, name);
+  const manifests = await workerManifests(descriptor, context, k, extraEnv);
   for (const m of manifests) await kube.apply(m);
   return { deployment: objectName(k, name), selector: `app.kubernetes.io/name=${shortName(name)},app.kubernetes.io/instance=${k.instance}` };
 }
 
+// Kubernetes and Docker share the steps; only the installer's own update
+// and putting a Worker up differ (docker/steps.ts).
 export async function runKubernetesStep(id: string, ctx: StepContext): Promise<StepOutcome> {
   const { state } = ctx;
   const release = state.release!;
   const s = ctx.t.steps;
+  if (state.docker && (id === 'installer:self' || id.startsWith('worker:'))) return runDockerStep(id, ctx);
 
   if (id === 'installer:self') {
     const kube = kubeOf(ctx);

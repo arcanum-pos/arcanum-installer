@@ -1,3 +1,4 @@
+import type { Docker } from './docker/client';
 import type { Kube } from './kubernetes/client';
 
 export interface Env {
@@ -24,6 +25,14 @@ export interface Env {
   // and the Secret its BOOTSTRAP_CONFIG comes from (emptied after the handoff).
   INSTALLER_DEPLOYMENT?: string;
   BOOTSTRAP_SECRET?: string;
+  // Self-hosted with Docker or Podman (compose): the engine's API, its
+  // network (set by node.ts); this installer's own container; where the bff
+  // is published on the machine (default 127.0.0.1:8000).
+  DOCKER?: Docker;
+  INSTALLER_CONTAINER?: string;
+  PUBLISH_BFF?: string;
+  // The engine over tcp instead of the socket (passed on to the self-update helper).
+  DOCKER_HOST?: string;
   // Where the images come from: `<prefix><worker>:<version>` (default
   // ghcr.io/arcanum-pos/tresjr-), and a tag to use instead of the version
   // (a test cluster with images built on the spot).

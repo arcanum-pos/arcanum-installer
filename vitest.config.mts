@@ -1,22 +1,34 @@
 import { cloudflareTest } from '@cloudflare/vitest-pool-workers';
 import { defineConfig } from 'vitest/config';
 
+// Two projects (SELF_HOSTING.md): the installer in the Workers runtime as on
+// Cloudflare (with fake clusters and engines for the self-hosted targets),
+// and the Node-only pieces (src/node/) on Node.
 export default defineConfig({
-  // A full install (and an update after it) runs ~40 steps through the fakes.
-  test: { testTimeout: 30_000 },
-  plugins: [
-    cloudflareTest({
-      wrangler: { configPath: './wrangler.jsonc' },
-      miniflare: {
-        // The fake Cloudflare API runs the backend's membership queries here (test/fakes.ts).
-        d1Databases: ['TEST_BACKEND_DB'],
-        bindings: {
-          INSTALLER_STATE_KEY: 'test-installer-state-key-0123456789abcdef',
-          // Served by the fakes in test/fakes.ts — nothing reaches the network.
-          RELEASES_INDEX_URL: 'https://releases.test/releases.json',
-          CLOUDFLARE_API_BASE: 'https://cf.test/client/v4',
-        },
+  test: {
+    projects: [
+      {
+        // A full install (and an update after it) runs ~40 steps through the fakes.
+        test: { name: 'cloudflare', include: ['test/*.test.ts'], testTimeout: 30_000 },
+        plugins: [
+          cloudflareTest({
+            wrangler: { configPath: './wrangler.jsonc' },
+            miniflare: {
+              // The fake Cloudflare API runs the backend's membership queries here (test/fakes.ts).
+              d1Databases: ['TEST_BACKEND_DB'],
+              bindings: {
+                INSTALLER_STATE_KEY: 'test-installer-state-key-0123456789abcdef',
+                // Served by the fakes in test/fakes.ts — nothing reaches the network.
+                RELEASES_INDEX_URL: 'https://releases.test/releases.json',
+                CLOUDFLARE_API_BASE: 'https://cf.test/client/v4',
+              },
+            },
+          }),
+        ],
       },
-    }),
-  ],
+      {
+        test: { name: 'node', environment: 'node', include: ['test/node/*.test.ts'] },
+      },
+    ],
+  },
 });

@@ -191,7 +191,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
 
     <section id="s-kube" class="card hidden">
       <h2>${p.kubeTitle}</h2>
-      <p>${p.kubeIntro}</p>
+      <p data-kube-intro>${p.kubeIntro}</p>
       <p data-summary class="soft"></p>
       <form data-form="address"><label for="publicUrl">${p.kubePublicUrl}</label><input id="publicUrl" name="publicUrl" type="url" placeholder="https://kassa.jouwdomein.be" autocomplete="off" required><button>${p.save}</button><p class="error" data-error></p></form>
     </section>
@@ -405,6 +405,7 @@ async function loadLoginOptions() {
   if (o.account) $('[data-login-issuer]').textContent = new URL(o.account.issuer).host;
   $('[data-login-handoff]').classList.toggle('hidden', !o.awaitingHandoff);
   if (o.kubernetes) { $('[data-intro]').textContent = M.kubeIntroLine; $('[data-login-handoff]').textContent = M.kubeAwaitingHandoff; }
+  if (o.docker) { $('[data-intro]').textContent = M.dockerIntroLine; $('[data-login-handoff]').textContent = M.dockerAwaitingHandoff; }
   $('form[data-form="login"]').classList.toggle('hidden', !o.recoveryCode);
   $('[data-login-label]').textContent = M.recoveryCode;
   $('[data-login-hint]').textContent = M.recoveryCodeHint;
@@ -447,14 +448,15 @@ function render() {
   $('[data-installer-version]').textContent = [fmt(M.installerRelease, { release: s.installer && s.installer.release ? s.installer.release : M.noReleaseNumber }), kind, channel].filter(Boolean).join(' · ');
   $('#token-link').href = s.tokenTemplateUrl;
   const set = (id, done, summary) => { const el = $(id); el.classList.toggle('done', !!done); $('[data-summary]', el) && ($('[data-summary]', el).textContent = summary || ''); };
-  // Self-hosted on Kubernetes: the public address instead of Cloudflare's token and domain.
-  const kube = s.kubernetes;
-  if (kube) $('[data-intro]').textContent = M.kubeIntroLine;
+  // Self-hosted (Kubernetes, or Docker / Podman): the public address instead of Cloudflare's token and domain.
+  const kube = s.kubernetes || s.docker;
+  if (s.kubernetes) $('[data-intro]').textContent = M.kubeIntroLine;
+  if (s.docker) { $('[data-intro]').textContent = M.dockerIntroLine; $('[data-kube-intro]').textContent = fmt(M.dockerCardIntro, { publish: s.docker.publish }); }
   $('#s-kube').classList.toggle('hidden', !kube);
   $('#s-cloudflare').classList.toggle('hidden', !!kube);
   $('#s-address').classList.toggle('hidden', !!kube);
   if (kube) {
-    set('#s-kube', kube.publicUrl, kube.publicUrl ? fmt(M.kubeSummary, { url: kube.publicUrl, namespace: kube.namespace }) : '');
+    set('#s-kube', kube.publicUrl, kube.publicUrl ? (s.docker ? fmt(M.dockerSummary, { url: kube.publicUrl, publish: s.docker.publish }) : fmt(M.kubeSummary, { url: kube.publicUrl, namespace: kube.namespace })) : '');
     if (kube.publicUrl) $('#publicUrl').value ||= kube.publicUrl;
   }
   set('#s-cloudflare', s.cloudflare && s.cloudflare.tokenAvailable, s.cloudflare ? fmt(M.cloudflareSummary, { account: s.cloudflare.accountName, url: s.address ? s.address.publicUrl : '' }) + (s.cloudflare.tokenAvailable ? '' : M.tokenNeeded) : '');
@@ -466,8 +468,8 @@ function render() {
   set('#s-login', s.login, s.login ? fmt(M.loginSummary, { issuer: s.login.issuer, client: s.login.clientId }) : '');
   if (s.login) $('[data-login-current]').textContent = new URL(s.login.issuer).host;
   $('[data-quick-url]').textContent = s.address ? s.address.publicUrl : '';
-  $('[data-quick-account-label]').textContent = kube ? M.kubeAccountLabel : M.cloudflareAccountLabel;
-  $('[data-quick-account]').textContent = kube ? kube.namespace : s.cloudflare ? s.cloudflare.accountName : '';
+  $('[data-quick-account-label]').textContent = s.docker ? M.dockerAccountLabel : kube ? M.kubeAccountLabel : M.cloudflareAccountLabel;
+  $('[data-quick-account]').textContent = s.docker ? M.dockerAccountValue : kube ? kube.namespace : s.cloudflare ? s.cloudflare.accountName : '';
   $('[data-quick-admins]').textContent = s.admins || '';
   if (s.login) {
     if (s.login.deviceClientId) $('[data-device-client]').open = true;
@@ -932,8 +934,8 @@ async function runAll() {
         const li = $('[data-id="' + CSS.escape(step.id) + '"]'); if (li) li.className = 'running';
         const r = await api('api/step', { id: step.id });
         if (r.status === 'done') break;
-        // Kubernetes: a first pull of the images can take a few minutes.
-        if (r.status === 'retry' && attempt < (status.kubernetes ? 60 : 20)) { progress(at + ' — ' + r.detail + M.retryIn); if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
+        // Self-hosted: a first download of the images can take a few minutes.
+        if (r.status === 'retry' && attempt < (status.kubernetes ? 60 : status.docker ? 120 : 20)) { progress(at + ' — ' + r.detail + M.retryIn); if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
         await refresh(); throw new Error(fmt(M.stepFailed, { title: step.title, detail: r.detail }));
       }
       // The new installer takes over from the next request: give Cloudflare a moment.
