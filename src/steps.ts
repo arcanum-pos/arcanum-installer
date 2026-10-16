@@ -7,6 +7,7 @@ import { OLD_SMTP_SECRETS } from './mail';
 import type { Env } from './env';
 import { Cloudflare, CloudflareError } from './cloudflare';
 import { generateSecret, randomBytes, secretFits } from './crypto';
+import { planKubernetesSteps, runKubernetesStep } from './kubernetes/steps';
 import { installerUploadMetadata, secretsNeeded, uploadMetadata, type InstallContext, type WorkerDescriptor } from './contract';
 import { fetchReleaseJson, type Manifest } from './releases';
 import { addClientUris } from './auth-client';
@@ -25,6 +26,7 @@ export const needsClientUris = (state: InstallerState) => !!state.bootstrap?.log
 
 // The titles in the request's language: they're worded for every status, never stored.
 export function planSteps(blueprint: Blueprint, state: InstallerState | undefined, t: Messages): StepDef[] {
+  if (state?.kubernetes) return planKubernetesSteps(blueprint, state, t);
   const s = t.steps;
   const steps: StepDef[] = [];
   // An update with a newer installer: that one first, over this one — the
@@ -150,7 +152,7 @@ export type StepOutcome = { status: 'done' | 'retry'; detail?: string };
 
 const ASSET_SESSION_MAX_AGE_MS = 50 * 60 * 1000; // upload JWTs are valid for an hour
 
-async function secretsOf(ctx: StepContext): Promise<Record<string, string>> {
+export async function secretsOf(ctx: StepContext): Promise<Record<string, string>> {
   return ctx.state.secrets ? JSON.parse(await unsealValue(ctx.env, ctx.state, ctx.state.secrets)) : {};
 }
 
@@ -164,7 +166,70 @@ async function answersOf(ctx: StepContext): Promise<Record<string, string>> {
   };
 }
 
+// The release's generated secrets — once, never regenerated: ENCRYPTION_KEY
+// in particular must never change after install. The same on Cloudflare and
+// on Kubernetes (kubernetes/steps.ts).
+export async function makeSecrets(ctx: StepContext): Promise<{ added: number; total: number }> {
+  const { state } = ctx;
+  const release = state.release!;
+  const existing = await secretsOf(ctx);
+  const needed = secretsNeeded(await Promise.all(release.blueprint.workers.map((w) => fetchReleaseJson<WorkerDescriptor>(release.manifestUrl, release.manifest, w.file))));
+  let added = 0;
+  for (const [name, format] of Object.entries(needed)) {
+    if (!existing[name] || !(await secretFits(format, existing[name]))) {
+      existing[name] = await generateSecret(format);
+      added++;
+    }
+  }
+  state.secrets = await sealValue(ctx.env, state, JSON.stringify(existing));
+  return { added, total: Object.keys(existing).length };
+}
+
+// What a Worker of the release gets (contract.ts) — the same on Cloudflare
+// and on Kubernetes (kubernetes/steps.ts): the address, the login provider,
+// the optional settings this installer manages, the generated secrets.
+export async function installContext(
+  ctx: StepContext,
+  name: string,
+  secrets: Record<string, string>,
+  linkInstaller: boolean,
+  cloudflare: { currentMigrationTag: string | null; assetsJwt?: string } = { currentMigrationTag: null }
+): Promise<InstallContext> {
+  const { state } = ctx;
+  const release = state.release!;
+  const url = publicUrl(state)!;
+  return {
+    publicUrl: url,
+    issuerUrl: state.login!.issuer,
+    answers: await answersOf(ctx),
+    optional: {
+      // AGPL §13: where users find the source of exactly what runs here.
+      SOURCE_URL: `https://github.com/arcanum-pos/arcanum-releases/releases/tag/v${release.version}`,
+      GIT_COMMIT_SHA: release.manifest.components[name]?.commit ?? '',
+      // Shown in the console footer.
+      ARCANUM_VERSION: release.version,
+      ...(state.login?.scopes ? { DEFAULT_IDP_SCOPES: state.login.scopes } : {}),
+      ...(state.login?.deviceClientId && state.login.deviceClientSecret
+        ? {
+            DEFAULT_IDP_DEVICE_CLIENT_ID: state.login.deviceClientId,
+            DEFAULT_IDP_DEVICE_CLIENT_SECRET: await unsealValue(ctx.env, state, state.login.deviceClientSecret),
+          }
+        : {}),
+      ...(linkInstaller ? { [INSTALLER_KEY_SECRET]: secrets[INSTALLER_KEY_SECRET] } : {}),
+      ...(state.mail ? { MAIL_CONFIG: await unsealValue(ctx.env, state, state.mail.config) } : {}),
+      ...(state.sms ? { MESSAGING_CONFIG: await unsealValue(ctx.env, state, state.sms.config) } : {}),
+    },
+    secrets,
+    resources: { d1: state.resources.d1, kv: state.resources.kv, ratelimitNamespaceId: state.resources.ratelimitNamespaceId! },
+    orgCreation: state.instance?.kind,
+    demoInstallUrl: state.instance?.startUrl,
+    serviceName: (logical) => deployedName(state, logical),
+    ...cloudflare,
+  };
+}
+
 export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome> {
+  if (ctx.state.kubernetes) return runKubernetesStep(id, ctx);
   const { state, cf } = ctx;
   const s = ctx.t.steps;
   const release = state.release!;
@@ -215,18 +280,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
   }
 
   if (id === 'secrets') {
-    // Generated once, never regenerated: ENCRYPTION_KEY in particular must
-    // never change after install.
-    const existing = await secretsOf(ctx);
-    const needed = secretsNeeded(await Promise.all(release.blueprint.workers.map((w) => fetchReleaseJson<WorkerDescriptor>(release.manifestUrl, release.manifest, w.file))));
-    let added = 0;
-    for (const [name, format] of Object.entries(needed)) {
-      if (!existing[name] || !(await secretFits(format, existing[name]))) {
-        existing[name] = await generateSecret(format);
-        added++;
-      }
-    }
-    state.secrets = await sealValue(ctx.env, state, JSON.stringify(existing));
+    const { added, total } = await makeSecrets(ctx);
     // A number unique within the account — shared by every installation on
     // it, so not one another bff already uses. 1000–9999 stays clear of
     // hand-picked ids like 1001/1002.
@@ -237,7 +291,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
       while (taken.has(id) || id === '1001' || id === '1002');
       state.resources.ratelimitNamespaceId = id;
     }
-    return { status: 'done', detail: s.secretsMade(added, Object.keys(existing).length) };
+    return { status: 'done', detail: s.secretsMade(added, total) };
   }
 
   if (id.startsWith('d1:')) {
@@ -337,35 +391,10 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     }
     // Behind Arcanum: the bff forwards /installer/* to this installer.
     const linkInstaller = worker.public_entry && !!state.behindArcanum && bffSupportsInstaller(descriptor);
-    const context: InstallContext = {
-      publicUrl: url,
-      issuerUrl: state.login!.issuer,
-      answers: await answersOf(ctx),
-      optional: {
-        // AGPL §13: where users find the source of exactly what runs here.
-        SOURCE_URL: `https://github.com/arcanum-pos/arcanum-releases/releases/tag/v${release.version}`,
-        GIT_COMMIT_SHA: release.manifest.components[name]?.commit ?? '',
-        // Shown in the console footer.
-        ARCANUM_VERSION: release.version,
-        ...(state.login?.scopes ? { DEFAULT_IDP_SCOPES: state.login.scopes } : {}),
-        ...(state.login?.deviceClientId && state.login.deviceClientSecret
-          ? {
-              DEFAULT_IDP_DEVICE_CLIENT_ID: state.login.deviceClientId,
-              DEFAULT_IDP_DEVICE_CLIENT_SECRET: await unsealValue(ctx.env, state, state.login.deviceClientSecret),
-            }
-          : {}),
-        ...(linkInstaller ? { [INSTALLER_KEY_SECRET]: secrets[INSTALLER_KEY_SECRET] } : {}),
-        ...(state.mail ? { MAIL_CONFIG: await unsealValue(ctx.env, state, state.mail.config) } : {}),
-        ...(state.sms ? { MESSAGING_CONFIG: await unsealValue(ctx.env, state, state.sms.config) } : {}),
-      },
-      secrets,
-      resources: { d1: state.resources.d1, kv: state.resources.kv, ratelimitNamespaceId: state.resources.ratelimitNamespaceId! },
+    const context = await installContext(ctx, name, secrets, linkInstaller, {
       currentMigrationTag: descriptor.durable_object_migrations.length ? await cf.getMigrationTag(accountId, script) : null,
       assetsJwt: worker.assets ? state.assets?.completionJwt : undefined,
-      orgCreation: state.instance?.kind,
-      demoInstallUrl: state.instance?.startUrl,
-      serviceName: (logical) => deployedName(state, logical),
-    };
+    });
     if (worker.assets && !context.assetsJwt) throw new Error(s.assetsIncomplete);
     const metadata = uploadMetadata(descriptor, context);
     if (linkInstaller) (metadata.bindings as unknown[]).push({ type: 'service', name: 'ARCANUM_INSTALLER_SERVICE', service: state.behindArcanum!.script });

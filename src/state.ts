@@ -87,6 +87,11 @@ export interface InstallerState {
   // names every installation had before (nothing of theirs is renamed).
   instanceName?: string;
   cloudflare?: { accountId: string; accountName: string; subdomain: string; remember: boolean; token?: Sealed };
+  // Self-hosted on Kubernetes instead (SELF_HOSTING.md, kubernetes/steps.ts):
+  // the installer runs in the cluster, in `namespace`, and deploys there.
+  // `publicUrl`: where the self-hoster routes Arcanum (their Ingress, a
+  // Cloudflare Tunnel, …) — the bff's address, like a custom domain.
+  kubernetes?: { namespace: string; publicUrl?: string; storageClassName?: string };
   login?: {
     issuer: string;
     clientId: string;
@@ -160,9 +165,20 @@ const KEY = 'state';
 // The shared key the bff sends with every forwarded /installer/* request.
 export const INSTALLER_KEY_SECRET = 'INSTALLER_INTERNAL_KEY';
 
+// Running in a Kubernetes cluster (node.ts): it installs there, under the
+// new name (SELF_HOSTING.md: tresjr-…), unless the handoff named it.
+function onKubernetes(env: Env, state: InstallerState): InstallerState {
+  if (env.KUBE && !state.cloudflare && !state.kubernetes) {
+    state.kubernetes = { namespace: env.KUBE.namespace };
+    state.instanceName ??= 'tresjr';
+  }
+  return state;
+}
+
 export async function loadState(env: Env): Promise<InstallerState> {
   const stored = await env.INSTALLER_STATE.get<InstallerState>(KEY, 'json');
-  if (!stored) return { v: 1, salt: toBase64(randomBytes(16)), resources: { d1: {}, kv: {} }, steps: {} };
+  if (!stored) return onKubernetes(env, { v: 1, salt: toBase64(randomBytes(16)), resources: { d1: {}, kv: {} }, steps: {} });
+  onKubernetes(env, stored);
   if (stored.login) stored.login = normalizeLogin(stored.login);
   if (stored.loginChange?.staged) stored.loginChange.staged.login = normalizeLogin(stored.loginChange.staged.login);
   if (stored.loginChange?.applied?.previous) stored.loginChange.applied.previous.login = normalizeLogin(stored.loginChange.applied.previous.login);
@@ -211,6 +227,7 @@ export function workersDevUrl(state: InstallerState): string | null {
 
 // The installation's address: its own domain if it has one, else workers.dev.
 export function publicUrl(state: InstallerState): string | null {
+  if (state.kubernetes) return state.kubernetes.publicUrl ?? null;
   if (!state.cloudflare) return null;
   return state.customDomain ? `https://${state.customDomain}` : workersDevUrl(state);
 }

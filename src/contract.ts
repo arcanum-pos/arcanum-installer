@@ -67,7 +67,7 @@ export class ContractError extends TextError {}
 
 type ApiBinding = Record<string, unknown> & { type: string; name: string };
 
-function envBinding(name: string, spec: EnvSpec, ctx: InstallContext): ApiBinding | null {
+export function envBinding(name: string, spec: EnvSpec, ctx: InstallContext): ApiBinding | null {
   const text = (value: string): ApiBinding => ({ type: spec.kind === 'secret' ? 'secret_text' : 'plain_text', name, text: value });
   switch (spec.source) {
     case 'fixed':

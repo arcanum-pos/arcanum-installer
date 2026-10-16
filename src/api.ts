@@ -14,7 +14,8 @@ import { blueprintFrom, planSteps, runStep } from './steps';
 import { safeEqual } from './crypto';
 import { applyChange, changeInfo, changesIdentity, dropExpiredSnapshot, providerIdentity, readLoginProvider, TEST_CALLBACK_PATH, undoChange } from './login-change';
 import { addClientUris } from './auth-client';
-import { messageOf, textsFor, type Messages } from './i18n';
+import { MESSAGES, messageOf, textsFor, type Messages } from './i18n';
+import { applyWorker } from './kubernetes/steps';
 import { buildMailConfig, cloudflareSending, MAIL_SERVICES, mailSummary, OLD_SMTP_SECRETS, sendsFrom, type MailConfig } from './mail';
 import { buildSmsConfig, checkTwilio, normalizePhone, sendTestSms, smsSummary, type SmsConfig } from './sms';
 
@@ -115,7 +116,19 @@ async function cloudflareSendingOf(env: Env, state: InstallerState, sessionId: s
   return cloudflareSending(token ? cloudflareFor(env, token) : null, state.cloudflare?.accountId);
 }
 
+// Self-hosted on Kubernetes: a setting goes into the backend's Secret, and
+// its pods roll with it (kubernetes/steps.ts applyWorker).
+async function applyOnKubernetes(env: Env, state: InstallerState): Promise<'applied' | 'later'> {
+  if (!env.KUBE || !state.installed || !state.release) {
+    delete state.steps['worker:arcanum-backend'];
+    return 'later';
+  }
+  await applyWorker({ env, state, cf: null as unknown as Cloudflare, t: MESSAGES.nl }, 'arcanum-backend');
+  return 'applied';
+}
+
 async function applyMail(env: Env, state: InstallerState, sessionId: string, config: MailConfig | null): Promise<'applied' | 'later'> {
+  if (state.kubernetes) return applyOnKubernetes(env, state);
   const token = await tokenFor(env, state, sessionId);
   const accountId = state.cloudflare?.accountId;
   const cf = token && accountId ? cloudflareFor(env, token) : null;
@@ -138,6 +151,7 @@ async function applyMail(env: Env, state: InstallerState, sessionId: string, con
 // backend's step is redone). Without this, a new admin could open the
 // installer (it reads its own list) but the console wouldn't offer it.
 async function applyAdmins(env: Env, state: InstallerState, sessionId: string, admins: string): Promise<'applied' | 'later'> {
+  if (state.kubernetes) return applyOnKubernetes(env, state);
   const token = await tokenFor(env, state, sessionId);
   const accountId = state.cloudflare?.accountId;
   const cf = token && accountId ? cloudflareFor(env, token) : null;
@@ -155,6 +169,7 @@ export async function smsConfigOf(env: Env, state: InstallerState): Promise<SmsC
 
 // MESSAGING_CONFIG on arcanum-backend right away, like MAIL_CONFIG (applyMail).
 async function applySms(env: Env, state: InstallerState, sessionId: string, config: SmsConfig | null): Promise<'applied' | 'later'> {
+  if (state.kubernetes) return applyOnKubernetes(env, state);
   const token = await tokenFor(env, state, sessionId);
   const accountId = state.cloudflare?.accountId;
   const cf = token && accountId ? cloudflareFor(env, token) : null;
@@ -179,6 +194,8 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
       ? { accountId: state.cloudflare.accountId, accountName: state.cloudflare.accountName, subdomain: state.cloudflare.subdomain, remember: state.cloudflare.remember, tokenAvailable: !!(await tokenFor(env, state, sessionId)) }
       : null,
     address: url ? { publicUrl: url, callbackUrl: `${url}/callback`, logoutUrl: url, customDomain: state.customDomain ?? null, workersDevUrl: workersDevUrl(state) } : null,
+    // Self-hosted on Kubernetes: where it installs, and the address the self-hoster routes.
+    kubernetes: state.kubernetes ? { namespace: state.kubernetes.namespace, publicUrl: state.kubernetes.publicUrl ?? null } : null,
     login: state.login
       ? {
           issuer: state.login.issuer,
@@ -432,6 +449,26 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       }
     }
 
+    // Kubernetes: the public address the self-hoster routes to the bff
+    // (their Ingress, a Cloudflare Tunnel, …) — what a custom domain is on Cloudflare.
+    if (path === '/api/address' && request.method === 'POST' && state.kubernetes) {
+      const { publicUrl: given } = await body(request);
+      let url: URL | null = null;
+      try {
+        url = typeof given === 'string' && given.trim() ? new URL(given.trim()) : null;
+      } catch {
+        url = null;
+      }
+      if (!url || url.protocol !== 'https:' || url.pathname !== '/' || url.search || url.hash) return json({ error: t.api.badPublicUrl }, 400);
+      const origin = url.origin;
+      if (state.kubernetes.publicUrl !== origin) {
+        state.kubernetes.publicUrl = origin;
+        for (const step of ['worker:arcanum-backend', 'worker:arcanum-bff', 'login:uris', 'verify']) delete state.steps[step];
+      }
+      await saveState(env, state);
+      return json(await status(env, state, sessionId, access, t));
+    }
+
     if (path === '/api/address' && request.method === 'POST') {
       const { customDomain } = await body(request);
       const host = typeof customDomain === 'string' ? customDomain.trim().toLowerCase().replace(/\.$/, '') : '';
@@ -626,17 +663,23 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const stepId = stepMatch ? decodeURIComponent(stepMatch[1]) : (await body(request)).id;
       if (typeof stepId !== 'string') return json({ error: t.api.giveStep }, 400);
       const id = stepId;
-      const missing = [!state.cloudflare && t.api.missing.cloudflare, !state.login && t.api.missing.login, !state.admins && t.api.missing.admins, !state.release && t.api.missing.release].filter(Boolean);
+      const missing = [
+        state.kubernetes ? !state.kubernetes.publicUrl && t.api.missing.publicUrl : !state.cloudflare && t.api.missing.cloudflare,
+        !state.login && t.api.missing.login,
+        !state.admins && t.api.missing.admins,
+        !state.release && t.api.missing.release,
+      ].filter(Boolean);
       if (missing.length) return json({ error: t.api.firstStill(missing.join(', ')) }, 409);
       if (!planSteps(state.release!.blueprint, state, t).some((s) => s.id === id)) return json({ error: t.api.unknownStep(id) }, 404);
       // The self-update comes first; nothing of Arcanum changes until it's done.
       if (state.release!.blueprint.installer && id !== 'installer:self' && state.steps['installer:self']?.status !== 'done') {
         return json({ error: t.api.selfUpdateFirst }, 409);
       }
-      const token = await tokenFor(env, state, sessionId);
-      if (!token) return json({ error: t.api.tokenAgain, needsToken: true }, 409);
+      // Kubernetes: no Cloudflare token — the installer talks to its own cluster.
+      const token = state.kubernetes ? null : await tokenFor(env, state, sessionId);
+      if (!state.kubernetes && !token) return json({ error: t.api.tokenAgain, needsToken: true }, 409);
       try {
-        const outcome = await runStep(id, { env, state, cf: cloudflareFor(env, token), t, installerScript: installerScript(state, request), viaArcanum: access.via === 'arcanum' });
+        const outcome = await runStep(id, { env, state, cf: token ? cloudflareFor(env, token) : (null as unknown as Cloudflare), t, installerScript: installerScript(state, request), viaArcanum: access.via === 'arcanum' });
         if (outcome.status === 'done') state.steps[id] = { status: 'done', at: new Date().toISOString(), detail: outcome.detail };
         await saveState(env, state);
         return json({ id, ...outcome });

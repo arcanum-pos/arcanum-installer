@@ -1,3 +1,5 @@
+import type { Kube } from './kubernetes/client';
+
 export interface Env {
   // The installer's own state (see state.ts). Created by the bootstrapper
   // (title arcanum-installer-INSTALLER_STATE).
@@ -15,4 +17,14 @@ export interface Env {
   RELEASES_INDEX_URL: string;
   // Tests only: the Cloudflare API base URL.
   CLOUDFLARE_API_BASE?: string;
+  // Self-hosted on Kubernetes (SELF_HOSTING.md): the cluster's API, in this
+  // installer's own namespace (set by node.ts; never on Cloudflare).
+  KUBE?: Kube;
+  // This installer's own Deployment and Service (the Helm chart's names).
+  INSTALLER_DEPLOYMENT?: string;
+  // Where the images come from: `<prefix><worker>:<version>` (default
+  // ghcr.io/arcanum-pos/tresjr-), and a tag to use instead of the version
+  // (a test cluster with images built on the spot).
+  IMAGE_PREFIX?: string;
+  IMAGE_TAG?: string;
 }
