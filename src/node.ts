@@ -6,6 +6,7 @@
 //   BOOTSTRAP_CONFIG      the bootstrapper's handoff, imported once
 //   INSTALLER_RELEASE     the release this installer comes from
 //   INSTALLER_DEPLOYMENT  its own Deployment/Service (default <instance>-installer)
+//   BOOTSTRAP_SECRET      the Secret BOOTSTRAP_CONFIG comes from (emptied after the handoff)
 //   STATE_SECRET          the Secret its state lives in (default tresjr-installer-state)
 //   RELEASES_INDEX_URL    the releases (default arcanum-releases' releases.json)
 //   IMAGE_PREFIX / IMAGE_TAG   where the images come from (a test cluster)
@@ -35,6 +36,7 @@ export function nodeEnv(environment: NodeJS.ProcessEnv, kube?: Kube): Env {
     RELEASES_INDEX_URL: environment.RELEASES_INDEX_URL || DEFAULT_RELEASES_INDEX,
     KUBE: cluster,
     INSTALLER_DEPLOYMENT: environment.INSTALLER_DEPLOYMENT,
+    BOOTSTRAP_SECRET: environment.BOOTSTRAP_SECRET,
     IMAGE_PREFIX: environment.IMAGE_PREFIX,
     IMAGE_TAG: environment.IMAGE_TAG,
   };

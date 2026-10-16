@@ -13,6 +13,10 @@
 //     instance?: { kind: 'single'|'admins'|'internal', channel: 'stable'|'dev' },
 //                         // only from the bootstrapper for the platform's own
 //                         // installations; absent: this installer's own stays
+//     target?: 'kubernetes',  // self-hosted (SELF_HOSTING.md): no Cloudflare
+//                         // fields — the installer already runs in the
+//                         // cluster it installs in (the Helm chart put it
+//                         // there, BOOTSTRAP_CONFIG in a Secret)
 //     instanceName?: string,  // the start of every name on the account
 //                         // (`<name>-bff` …, state.ts); absent: "arcanum".
 //                         // Taken only before anything exists; another name
@@ -37,6 +41,8 @@ import type { Messages } from './i18n';
 
 export interface BootstrapConfig {
   version: 1;
+  target?: 'kubernetes';
+  // Cloudflare only.
   cloudflareToken: string;
   accountId: string;
   accountName: string;
@@ -70,8 +76,11 @@ export function readBootstrapConfig(env: Env): Parsed {
   const text = (v: unknown) => typeof v === 'string' && v.length > 0;
   const owner = value.owner as BootstrapConfig['owner'] | undefined;
   const login = value.login as BootstrapConfig['login'] | undefined;
+  const kubernetes = value.target === 'kubernetes';
   const ok =
-    text(value.cloudflareToken) && text(value.accountId) && text(value.subdomain) && text(value.handoffCodeHash) && text(value.handoffExpiresAt) &&
+    (kubernetes || (text(value.cloudflareToken) && text(value.accountId) && text(value.subdomain))) &&
+    (value.target === undefined || kubernetes) &&
+    text(value.handoffCodeHash) && text(value.handoffExpiresAt) &&
     !!owner && text(owner.email) && text(owner.sub) &&
     (login === null || (!!login && text(login.issuer) && text(login.clientId) && text(login.clientSecret))) &&
     (value.instanceName === undefined || INSTANCE_NAME.test(String(value.instanceName))) &&
@@ -109,7 +118,10 @@ export async function handoff(env: Env, state: InstallerState, code: string, ins
   if (!(Date.parse(config.handoffExpiresAt) > Date.now())) {
     return { ok: false, status: 410, reason: 'expired', error: t.handoff.expired };
   }
-  if (state.cloudflare && installationStarted(state) && state.cloudflare.accountId !== config.accountId) {
+  const kubernetes = config.target === 'kubernetes';
+  // A handoff for the other kind of installation than this one is.
+  if (kubernetes !== !!state.kubernetes) return { ok: false, status: 409, reason: 'account', error: t.handoff.otherTarget };
+  if (!kubernetes && state.cloudflare && installationStarted(state) && state.cloudflare.accountId !== config.accountId) {
     return { ok: false, status: 409, reason: 'account', error: t.handoff.otherAccount(state.cloudflare.accountName, config.accountName) };
   }
   // The name is in every Worker and database: it can't change once they exist.
@@ -120,13 +132,15 @@ export async function handoff(env: Env, state: InstallerState, code: string, ins
 
   const firstImport = !state.bootstrap;
   const owner = { email: config.owner.email.trim().toLowerCase(), sub: config.owner.sub };
-  state.cloudflare = {
-    accountId: config.accountId,
-    accountName: config.accountName,
-    subdomain: config.subdomain,
-    remember: true,
-    token: await sealValue(env, state, config.cloudflareToken),
-  };
+  if (!kubernetes) {
+    state.cloudflare = {
+      accountId: config.accountId,
+      accountName: config.accountName,
+      subdomain: config.subdomain,
+      remember: true,
+      token: await sealValue(env, state, config.cloudflareToken),
+    };
+  }
   const login = config.login
     ? { issuer: config.login.issuer.replace(/\/+$/, ''), clientId: config.login.clientId, clientSecret: await sealValue(env, state, config.login.clientSecret) }
     : state.bootstrap?.login;
@@ -160,9 +174,14 @@ export async function handoff(env: Env, state: InstallerState, code: string, ins
   };
 
   // The token (and client secret) now live sealed in the state; take them
-  // off the Worker. Not fatal: the handoff code is spent either way.
+  // off the Worker — or out of the chart's Secret on Kubernetes. Not fatal:
+  // the handoff code is spent either way.
   try {
-    await new Cloudflare(config.cloudflareToken, env.CLOUDFLARE_API_BASE).putSecret(config.accountId, installerScript, 'BOOTSTRAP_CONFIG', JSON.stringify(IMPORTED_STUB));
+    if (kubernetes) {
+      if (env.KUBE && env.BOOTSTRAP_SECRET) await env.KUBE.apply({ apiVersion: 'v1', kind: 'Secret', metadata: { name: env.BOOTSTRAP_SECRET }, stringData: { BOOTSTRAP_CONFIG: JSON.stringify(IMPORTED_STUB) } });
+    } else {
+      await new Cloudflare(config.cloudflareToken, env.CLOUDFLARE_API_BASE).putSecret(config.accountId, installerScript, 'BOOTSTRAP_CONFIG', JSON.stringify(IMPORTED_STUB));
+    }
   } catch (err) {
     console.warn('arcanum-installer: could not replace BOOTSTRAP_CONFIG after the handoff', (err as Error).message);
   }

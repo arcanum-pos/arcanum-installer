@@ -149,6 +149,45 @@ describe('installing on Kubernetes', () => {
   });
 });
 
+describe('the handoff for a Kubernetes installation', () => {
+  it("signs the owner in with a recovery code, takes the login provider, and empties the chart's Secret", async () => {
+    const code = 'K8S-HANDOFF-CODE-123';
+    const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    const config = {
+      version: 1,
+      target: 'kubernetes',
+      login: { issuer: 'https://login.test', clientId: 'arc_k8s', clientSecret: 'k8s-client-secret' },
+      owner: { email: 'Bert@Scouts.test', sub: 'sub-bert' },
+      handoffCodeHash: hash,
+      handoffExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+    };
+    const handoffEnv = { ...kubeEnv(), BOOTSTRAP_CONFIG: JSON.stringify(config), BOOTSTRAP_SECRET: 'tresjr-installer-bootstrap' };
+    const post = (body: unknown) =>
+      worker.fetch(new Request('https://installer.test/api/handoff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), handoffEnv as never);
+    expect((await post({ code: 'wrong' })).status).toBe(401);
+    const res = await post({ code });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as any).toMatchObject({ email: 'bert@scouts.test', firstImport: true, recoveryCode: expect.stringMatching(/^([A-Z2-9]{4}-){4}[A-Z2-9]{4}$/) });
+    const state = await env.INSTALLER_STATE.get<any>('state', 'json');
+    expect(state.cloudflare).toBeUndefined();
+    expect(state.kubernetes).toEqual({ namespace: 'tresjr' });
+    expect(state.instanceName).toBe('tresjr');
+    expect(state.login).toMatchObject({ issuer: 'https://login.test', clientId: 'arc_k8s' });
+    expect(state.admins).toBe('bert@scouts.test');
+    expect(JSON.parse(api.get('Secret', 'tresjr-installer-bootstrap')!.stringData.BOOTSTRAP_CONFIG)).toEqual({ version: 1, imported: true });
+    // Not twice.
+    expect((await post({ code })).status).toBe(410);
+  });
+
+  it('a Cloudflare handoff on a Kubernetes installer (or the other way round): refused', async () => {
+    const config = { version: 1, cloudflareToken: 't', accountId: 'a', accountName: 'A', subdomain: 's', login: null, owner: { email: 'b@s.test', sub: 's' }, handoffCodeHash: 'x'.repeat(64), handoffExpiresAt: new Date(Date.now() + 600_000).toISOString() };
+    const code = 'CODE';
+    config.handoffCodeHash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    const res = await worker.fetch(new Request('https://installer.test/api/handoff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }), { ...kubeEnv(), BOOTSTRAP_CONFIG: JSON.stringify(config) } as never);
+    expect(res.status).toBe(409);
+  });
+});
+
 describe("the installer's state in a Secret", () => {
   it('get, put with an expiry, delete — and a write that lost a race tries again', async () => {
     const kv = new KubeSecretKV(api.kube(), 'tresjr-installer-state');

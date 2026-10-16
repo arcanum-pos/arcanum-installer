@@ -382,6 +382,7 @@ export default {
   },
 
   handoff: {
+    otherTarget: 'Ce lien est pour un autre type d’installation (Cloudflare ou Kubernetes) que cet installateur — demandez-en un nouveau sur arcanum.kaboutersoft.be',
     used: 'Ce lien a déjà été utilisé. Connectez-vous avec votre compte ou avec votre code de récupération.',
     none: 'Cet installateur n’a pas été préparé via arcanum.kaboutersoft.be — il n’y a rien à transmettre.',
     wrong: 'Ce lien n’est pas correct. Ouvrez l’installateur via le lien de arcanum.kaboutersoft.be.',

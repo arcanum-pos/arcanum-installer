@@ -400,6 +400,7 @@ const nl = {
 
   // The bootstrapper's link (bootstrap.ts).
   handoff: {
+    otherTarget: 'Deze link is voor een ander soort installatie (Cloudflare of Kubernetes) dan deze installer — vraag een nieuwe aan op arcanum.kaboutersoft.be',
     used: 'Deze link werd al gebruikt. Meld je aan met je account of met je herstelcode.',
     none: 'Deze installer werd niet via arcanum.kaboutersoft.be klaargezet — er is niets over te dragen.',
     wrong: 'Deze link klopt niet. Open de installer via de link van arcanum.kaboutersoft.be.',
