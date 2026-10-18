@@ -14,7 +14,8 @@ export function noEngine(socketPath: string, code: string): Error {
 
 export function dockerTransport(environment: NodeJS.ProcessEnv): DockerTransport {
   const tcp = /^tcp:\/\/([^:/]+):(\d+)/.exec(environment.DOCKER_HOST ?? '');
-  const target = tcp ? { host: tcp[1], port: Number(tcp[2]) } : { socketPath: environment.DOCKER_SOCKET || '/var/run/docker.sock' };
+  const socketPath = tcp ? null : environment.DOCKER_SOCKET || '/var/run/docker.sock';
+  const target = tcp ? { host: tcp[1], port: Number(tcp[2]) } : { socketPath: socketPath! };
   return (method, path, body) =>
     new Promise<DockerResponse>((resolve, reject) => {
       const payload = body === undefined ? undefined : JSON.stringify(body);
@@ -37,7 +38,7 @@ export function dockerTransport(environment: NodeJS.ProcessEnv): DockerTransport
         }
       );
       // Nothing listening there: say what's needed rather than "connect ECONNREFUSED".
-      req.on('error', (err: NodeJS.ErrnoException) => reject('socketPath' in target && ['ECONNREFUSED', 'ENOENT', 'EACCES'].includes(err.code ?? '') ? noEngine(target.socketPath, err.code!) : err));
+      req.on('error', (err: NodeJS.ErrnoException) => reject(socketPath && ['ECONNREFUSED', 'ENOENT', 'EACCES'].includes(err.code ?? '') ? noEngine(socketPath, err.code!) : err));
       // A pull can take minutes; everything else answers quickly.
       req.setTimeout(path.startsWith('/images/create') ? 15 * 60_000 : 60_000, () => req.destroy(new Error(`Docker: no answer to ${method} ${path}`)));
       if (payload) req.write(payload);
