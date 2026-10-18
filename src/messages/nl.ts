@@ -15,7 +15,7 @@ const nl = {
   page: {
     kubeTitle: 'Publiek adres',
     kubeIntro: 'Arcanum draait in je eigen cluster. Leid je eigen adres naar de Service <code>tresjr-bff</code>, poort 8080 (ook WebSockets) — met je Ingress, Gateway of een Cloudflare Tunnel — en geef dat adres hier.',
-    kubePublicUrl: 'Publiek adres (https)',
+    kubePublicUrl: 'Publiek adres (https — of http://localhost om te testen)',
     mailTitle: 'E-mail',
     mailIntro: 'Waarmee deze installatie mails verstuurt (uitnodigingen) — voor al haar organisaties; de naam van de afzender is die van de organisatie. Zonder e-mail werken uitnodigingen gewoon, maar gaan ze niet per mail.',
     mailService: 'Dienst',
@@ -294,7 +294,7 @@ const nl = {
     finishChangeFirst: 'Een vorige wijziging is halverwege gestopt — maak ze eerst af (Toepassen) of zet ze terug',
     changeHalfway: 'Deze wijziging is halverwege — maak ze af (Toepassen) of zet ze terug',
     tokenAgain: 'Plak het Cloudflare-token opnieuw (het werd niet onthouden)',
-    badPublicUrl: 'Geef het volledige publieke adres, bv. https://kassa.jouwdomein.be (https, zonder pad)',
+    badPublicUrl: 'Geef het volledige publieke adres, bv. https://kassa.jouwdomein.be (https, zonder pad) — of om te testen op deze computer http://localhost:8000',
     badDomain: 'Geef alleen de domeinnaam, bv. arcanum.jouwdomein.be (zonder https:// of pad)',
     noEmails: 'Geef minstens één e-mailadres (of *@jouwdomein.be)',
     badEmails: (list: string) => `Geen geldig adres: ${list}`,

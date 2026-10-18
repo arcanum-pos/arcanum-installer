@@ -58,6 +58,11 @@ describe('the Docker environment', () => {
 });
 
 describe('the engine over its socket', () => {
+  it('nothing there (nerdctl has no API socket): says what the installer needs instead of ENOENT/ECONNREFUSED', async () => {
+    const transport = dockerTransport({ DOCKER_SOCKET: join(tempDir(), 'docker.sock') });
+    await expect(transport('GET', '/version')).rejects.toThrow(/No container engine at .*docker\.sock \(ENOENT\)\..*nerdctl has none.*dockerd \(moby\)/);
+  });
+
   it('JSON answers, a 404, and a container log unframed', async () => {
     const socket = join(tempDir(), 'docker.sock');
     const seen: string[] = [];

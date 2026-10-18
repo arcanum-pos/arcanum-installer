@@ -5,7 +5,7 @@ export default {
   page: {
     kubeTitle: 'Public address',
     kubeIntro: 'Arcanum runs in your own cluster. Route your own address to the Service <code>tresjr-bff</code>, port 8080 (WebSockets too) — with your Ingress, Gateway or a Cloudflare Tunnel — and give that address here.',
-    kubePublicUrl: 'Public address (https)',
+    kubePublicUrl: 'Public address (https — or http://localhost to try it out)',
     mailTitle: 'E-mail',
     mailIntro: 'What this installation sends its mail with (invites) — for all its organisations; the sender’s name is the organisation’s. Without mail, invites still work, but aren’t mailed.',
     mailService: 'Service',
@@ -281,7 +281,7 @@ export default {
     finishChangeFirst: 'A previous change stopped half way — finish it first (Apply) or undo it',
     changeHalfway: 'This change is half way — finish it (Apply) or undo it',
     tokenAgain: 'Paste the Cloudflare token again (it was not remembered)',
-    badPublicUrl: 'Give the full public address, e.g. https://till.yourdomain.be (https, no path)',
+    badPublicUrl: 'Give the full public address, e.g. https://till.yourdomain.be (https, no path) — or, to try it out on this computer, http://localhost:8000',
     badDomain: 'Give just the domain name, e.g. arcanum.yourdomain.be (without https:// or a path)',
     noEmails: 'Give at least one e-mail address (or *@yourdomain.be)',
     badEmails: (list: string) => `Not a valid address: ${list}`,

@@ -81,6 +81,12 @@ describe('installing on Kubernetes', () => {
     expect(status.kubernetes).toEqual({ namespace: 'tresjr', publicUrl: null });
     expect((await call('POST', '/api/address', { publicUrl: 'http://kassa.scouts.test' })).status).toBe(400);
     expect((await call('POST', '/api/address', { publicUrl: 'https://kassa.scouts.test/pad' })).status).toBe(400);
+    // http only to try it out on one machine: localhost (the browser treats it as secure).
+    for (const local of ['http://localhost:8000', 'http://127.0.0.1:8000']) {
+      expect((await call('POST', '/api/address', { publicUrl: local })).status, local).toBe(200);
+    }
+    expect((await call('GET', '/api/status')).body.kubernetes.publicUrl).toBe('http://127.0.0.1:8000');
+    expect((await call('POST', '/api/address', { publicUrl: 'http://kassa.local:8000' })).status).toBe(400);
     await configure();
     const ids = (await call('GET', '/api/status')).body.steps.map((s: any) => s.id);
     expect(ids).toEqual(['secrets', 'worker:arcanum-mailer', 'worker:arcanum-devicehub', 'worker:arcanum-frontends', 'worker:arcanum-backend', 'worker:arcanum-bff', 'verify']);

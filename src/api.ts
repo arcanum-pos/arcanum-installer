@@ -27,6 +27,15 @@ const TOKEN_PERMISSIONS = [
   { key: 'account_settings', type: 'read' },
 ];
 
+// A self-hosted installation's public address: https — or, to try it out on
+// one machine, http on localhost (the browser treats that as secure; the
+// login provider accepts it there only). Payment providers' callbacks and
+// other devices need a real https address.
+export function publicUrlAllowed(url: URL): boolean {
+  if (url.protocol === 'https:') return true;
+  return url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname);
+}
+
 export const TOKEN_TEMPLATE_URL =
   'https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=' +
   encodeURIComponent(JSON.stringify(TOKEN_PERMISSIONS)) +
@@ -478,7 +487,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       } catch {
         url = null;
       }
-      if (!url || url.protocol !== 'https:' || url.pathname !== '/' || url.search || url.hash) return json({ error: t.api.badPublicUrl }, 400);
+      if (!url || !publicUrlAllowed(url) || url.pathname !== '/' || url.search || url.hash) return json({ error: t.api.badPublicUrl }, 400);
       const origin = url.origin;
       if (hosted.publicUrl !== origin) {
         hosted.publicUrl = origin;

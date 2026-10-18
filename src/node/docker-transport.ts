@@ -4,6 +4,14 @@
 import http from 'node:http';
 import type { DockerResponse, DockerTransport } from '../docker/client';
 
+// No Docker or Podman API at the socket — typically nerdctl (Rancher Desktop
+// on containerd), which has none: the installer can't manage containers there.
+export function noEngine(socketPath: string, code: string): Error {
+  return new Error(
+    `No container engine at ${socketPath} (${code}). The installer needs the Docker or Podman API socket — nerdctl has none: with Rancher Desktop, choose the container engine "dockerd (moby)"; with Podman, start podman.socket and set DOCKER_SOCKET (see the compose page).`
+  );
+}
+
 export function dockerTransport(environment: NodeJS.ProcessEnv): DockerTransport {
   const tcp = /^tcp:\/\/([^:/]+):(\d+)/.exec(environment.DOCKER_HOST ?? '');
   const target = tcp ? { host: tcp[1], port: Number(tcp[2]) } : { socketPath: environment.DOCKER_SOCKET || '/var/run/docker.sock' };
@@ -28,7 +36,8 @@ export function dockerTransport(environment: NodeJS.ProcessEnv): DockerTransport
           });
         }
       );
-      req.on('error', reject);
+      // Nothing listening there: say what's needed rather than "connect ECONNREFUSED".
+      req.on('error', (err: NodeJS.ErrnoException) => reject('socketPath' in target && ['ECONNREFUSED', 'ENOENT', 'EACCES'].includes(err.code ?? '') ? noEngine(target.socketPath, err.code!) : err));
       // A pull can take minutes; everything else answers quickly.
       req.setTimeout(path.startsWith('/images/create') ? 15 * 60_000 : 60_000, () => req.destroy(new Error(`Docker: no answer to ${method} ${path}`)));
       if (payload) req.write(payload);

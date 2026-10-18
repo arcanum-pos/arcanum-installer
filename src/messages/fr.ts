@@ -5,7 +5,7 @@ export default {
   page: {
     kubeTitle: 'Adresse publique',
     kubeIntro: 'Arcanum tourne dans votre propre cluster. Dirigez votre adresse vers le Service <code>tresjr-bff</code>, port 8080 (WebSockets aussi) — avec votre Ingress, Gateway ou un Cloudflare Tunnel — et indiquez cette adresse ici.',
-    kubePublicUrl: 'Adresse publique (https)',
+    kubePublicUrl: 'Adresse publique (https — ou http://localhost pour essayer)',
     mailTitle: 'E-mail',
     mailIntro: 'Avec quoi cette installation envoie ses e-mails (invitations) — pour toutes ses organisations ; le nom de l’expéditeur est celui de l’organisation. Sans e-mail, les invitations fonctionnent, mais ne sont pas envoyées par e-mail.',
     mailService: 'Service',
@@ -281,7 +281,7 @@ export default {
     finishChangeFirst: 'Une modification précédente s’est arrêtée à mi-chemin — terminez-la d’abord (Appliquer) ou annulez-la (Rétablir)',
     changeHalfway: 'Cette modification est à mi-chemin — terminez-la (Appliquer) ou annulez-la (Rétablir)',
     tokenAgain: 'Collez à nouveau le jeton Cloudflare (il n’a pas été mémorisé)',
-    badPublicUrl: 'Indiquez l’adresse publique complète, p. ex. https://caisse.votredomaine.be (https, sans chemin)',
+    badPublicUrl: 'Indiquez l’adresse publique complète, p. ex. https://caisse.votredomaine.be (https, sans chemin) — ou, pour essayer sur cet ordinateur, http://localhost:8000',
     badDomain: 'Indiquez uniquement le nom de domaine, p. ex. arcanum.votredomaine.be (sans https:// ni chemin)',
     noEmails: 'Indiquez au moins une adresse e-mail (ou *@votredomaine.be)',
     badEmails: (list: string) => `Adresse non valable : ${list}`,
