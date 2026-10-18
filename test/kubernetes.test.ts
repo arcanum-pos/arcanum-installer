@@ -5,7 +5,7 @@
 // and the backend's migration before its new version starts.
 import { describe, expect, it } from 'vitest';
 import type { InstallContext, WorkerDescriptor } from '../src/contract';
-import { migrateScript, workerEnv, workerManifests, type KubeContext } from '../src/kubernetes/manifests';
+import { migrateArgs, workerEnv, workerManifests, type KubeContext } from '../src/kubernetes/manifests';
 import fixture from './fixtures/release-0.1.2.json';
 
 const workers = fixture.workers as unknown as Record<string, WorkerDescriptor>;
@@ -78,11 +78,11 @@ describe('a Worker on Kubernetes', () => {
     const [deployment] = byKind(await workerManifests(workers['arcanum-backend'], ctx, kube), 'Deployment');
     const [init] = deployment.spec.template.spec.initContainers;
     expect(init.image).toBe('ghcr.io/arcanum-pos/tresjr-backend:0.1.70');
-    expect(init.command.at(-1)).toBe(migrateScript('backend', '0.1.70'));
-    expect(init.command.at(-1)).toContain('cp /data/$f /data/$f.before-0.1.70');
-    expect(init.command.at(-1)).toMatch(/node dist\/node\.mjs migrate --reset-login$/);
+    // No shell (the distroless image has none): arguments to the image's own entrypoint, node.
+    expect(init.command).toBeUndefined();
+    expect(init.args).toEqual(['dist/node.mjs', 'migrate', '--backup-as', '0.1.70', '--reset-login']);
     // Going back: the copies put back before anything runs.
-    expect(migrateScript('backend', '0.1.69', '0.1.70')).toContain('cp /data/$f.before-0.1.70 /data/$f');
+    expect(migrateArgs('0.1.69', '0.1.70')).toEqual(['dist/node.mjs', 'migrate', '--restore-from', '0.1.70', '--reset-login']);
   });
 
   it('a change of settings rolls the pods; the same settings do not', async () => {

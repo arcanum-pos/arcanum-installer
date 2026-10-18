@@ -114,7 +114,8 @@ async function updateInstaller(ctx: StepContext): Promise<StepOutcome> {
   const id = await docker.create(helper, {
     Image: image,
     User: '0',
-    Cmd: ['node', 'dist/node.mjs', 'replace-installer', name, image, release.version],
+    // The image's own entrypoint is node (distroless; an Alpine one adds it).
+    Cmd: ['dist/node.mjs', 'replace-installer', name, image, release.version],
     Env: ctx.env.DOCKER_HOST ? [`DOCKER_HOST=${ctx.env.DOCKER_HOST}`] : [],
     Labels: { [`${LABEL}.managed-by`]: 'tresjr-installer', [`${LABEL}.job`]: 'update-installer' },
     HostConfig: { ...(socket ? { Binds: [`${socket}:/var/run/docker.sock`] } : {}), NetworkMode: docker.network },

@@ -6,7 +6,7 @@
 // stopped. Only the bff is published on the machine (PUBLISH_BFF). Pure —
 // tested in test/docker.test.ts.
 import type { InstallContext, WorkerDescriptor } from '../contract';
-import { migrateScript, objectName, PORT, shortName, workerEnv, type KubeContext } from '../kubernetes/manifests';
+import { migrateArgs, objectName, PORT, shortName, workerEnv, type KubeContext } from '../kubernetes/manifests';
 
 export const LABEL = 'be.tresjr';
 
@@ -76,7 +76,7 @@ export async function containerSpec(
         Image: image,
         Env: envList,
         Labels: { ...labels, [`${LABEL}.job`]: 'migrate' },
-        Cmd: ['sh', '-c', migrateScript(short, instance.version, instance.restoreFrom)],
+        Cmd: migrateArgs(instance.version, instance.restoreFrom),
         HostConfig: { ...host, RestartPolicy: { Name: 'no' } },
         NetworkingConfig: { EndpointsConfig: { [network]: {} } },
       }

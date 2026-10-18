@@ -73,16 +73,17 @@ async function digest(env: Record<string, string>): Promise<string> {
   return [...hash.slice(0, 8)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// The backend's init container: copy the database files (the old pod has
-// stopped), or put an earlier copy back; then migrate.
-export function migrateScript(short: string, version: string, restoreFrom?: string): string {
-  const files = `${short}.db ${short}.db-wal ${short}.db-shm`;
-  const restore = restoreFrom
-    ? `if [ -f /data/${short}.db.before-${restoreFrom} ]; then for f in ${files}; do rm -f /data/$f; [ -f /data/$f.before-${restoreFrom} ] && cp /data/$f.before-${restoreFrom} /data/$f; done; fi; `
-    : `for f in ${files}; do [ -f /data/$f ] && cp /data/$f /data/$f.before-${version}; done; `;
+// The backend's init container (and its one-off container with Docker): its
+// database files copied aside (the old one has stopped), or an earlier copy
+// put back; then migrate — all in the backend itself (node-main.ts), as
+// arguments to the image's own entrypoint: the distroless image has no
+// shell. (An image from before it, Alpine, starts `dist/node.mjs` with node
+// all the same; the installer is always the release's own version, so it
+// never asks an old image for what it can't do.)
+export function migrateArgs(version: string, restoreFrom?: string): string[] {
   // --reset-login: the default login provider re-seeds from the current
   // settings (the Cloudflare target's login:reset step).
-  return `${restore}node dist/node.mjs migrate --reset-login`;
+  return ['dist/node.mjs', 'migrate', ...(restoreFrom ? ['--restore-from', restoreFrom] : ['--backup-as', version]), '--reset-login'];
 }
 
 // `extraEnv`: what the installer adds itself (the bff's INSTALLER_URL).
@@ -132,7 +133,7 @@ export async function workerManifests(descriptor: WorkerDescriptor, ctx: Install
           automountServiceAccountToken: false,
           securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: { type: 'RuntimeDefault' } },
           ...(migrates
-            ? { initContainers: [{ ...container, name: 'migrate', command: ['sh', '-c', migrateScript(short, kube.version, kube.restoreFrom)], ports: undefined, readinessProbe: undefined, livenessProbe: undefined }] }
+            ? { initContainers: [{ ...container, name: 'migrate', args: migrateArgs(kube.version, kube.restoreFrom), ports: undefined, readinessProbe: undefined, livenessProbe: undefined }] }
             : {}),
           containers: [container],
           ...(data ? { volumes: [{ name: 'data', persistentVolumeClaim: { claimName: `${name}-data` } }] } : {}),

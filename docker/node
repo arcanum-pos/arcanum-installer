@@ -1,0 +1,10 @@
+// Started as `node dist/node.mjs …` by an installer from before the
+// distroless image (its own update with Docker: docker/steps.ts): node is
+// the image's entrypoint, so here "node" is this file. It runs the script
+// it was given, with the rest of the arguments.
+const { resolve } = require('node:path');
+process.argv.splice(1, 1);
+import(resolve(process.argv[1])).catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

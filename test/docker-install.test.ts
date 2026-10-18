@@ -177,7 +177,7 @@ describe('installing with Docker', () => {
     expect((await call('POST', '/api/step', { id: 'installer:self' })).body.status).toBe('retry');
     expect((await call('POST', '/api/step', { id: 'installer:self' })).body.status).toBe('done');
     const helper = engine.get('tresjr-installer-update')!;
-    expect(helper.Config).toMatchObject({ Image: image('installer', SELF_UPDATE_VERSION), User: '0', Cmd: ['node', 'dist/node.mjs', 'replace-installer', 'tresjr-installer', image('installer', SELF_UPDATE_VERSION), SELF_UPDATE_VERSION] });
+    expect(helper.Config).toMatchObject({ Image: image('installer', SELF_UPDATE_VERSION), User: '0', Cmd: ['dist/node.mjs', 'replace-installer', 'tresjr-installer', image('installer', SELF_UPDATE_VERSION), SELF_UPDATE_VERSION] });
     expect(helper.HostConfig.Binds).toEqual(['/var/run/docker.sock:/var/run/docker.sock']);
     expect(helper.State.Running).toBe(true);
   });
@@ -226,6 +226,15 @@ describe('the container spec', () => {
     expect((await containerSpec(descriptor, ctx, { ...k, image: (s: string) => `img/${s}:2` }, 'tresjr')).digest).not.toBe(a.digest);
     expect(a.volume).toBeUndefined();
     expect(a.migrate).toBeUndefined();
+  });
+
+  it("the backend's one-off migrate container: no shell (distroless) — arguments to the image's node, its files copied aside first", async () => {
+    const descriptor = { name: 'arcanum-backend', bindings: [{ type: 'd1', name: 'DB' }], env: {} } as any;
+    const k = { instance: 'tresjr', image: (s: string) => `img/${s}:0.1.70`, version: '0.1.70' };
+    const spec = await containerSpec(descriptor, { secrets: {}, vars: {} } as any, k, 'tresjr');
+    expect(spec.migrate).toMatchObject({ Image: 'img/backend:0.1.70', Cmd: ['dist/node.mjs', 'migrate', '--backup-as', '0.1.70', '--reset-login'] });
+    const back = await containerSpec(descriptor, { secrets: {}, vars: {} } as any, { ...k, restoreFrom: '0.1.71' }, 'tresjr');
+    expect(back.migrate?.Cmd).toEqual(['dist/node.mjs', 'migrate', '--restore-from', '0.1.71', '--reset-login']);
   });
 });
 
