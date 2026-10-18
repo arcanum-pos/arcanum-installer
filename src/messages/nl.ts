@@ -325,6 +325,8 @@ const nl = {
     loginReset: 'Aanmelding instellen',
     loginUris: (domain: string) => `${domain} bij de aanmelding registreren`,
     verify: 'Controleren of alles werkt',
+    composeWrite: 'compose.yaml schrijven',
+    composeApply: 'Toepassen met compose',
     // A release that doesn't fit (blueprintFrom).
     releaseMissing: (file: string) => `Release mist ${file}`,
     serviceNotYet: (name: string, service: string) => `${name} verwijst naar ${service}, dat nog niet geïnstalleerd is`,
@@ -365,6 +367,10 @@ const nl = {
     notSetUp: (name: string) => `Database ${name} is nog niet ingericht (geen migraties gevonden) — voer "Database ${name} inrichten" opnieuw uit`,
     migrationsMissing: (name: string, recorded: number, total: number) => `Database ${name} heeft ${recorded} van de ${total} migraties — voer "Database ${name} inrichten" opnieuw uit`,
     verified: (workers: number) => `${workers} Workers, publiek adres en databases in orde`,
+    composeWritten: (command: string) => `compose.yaml geschreven — voer nu \`${command}\` uit in je tresjr-map`,
+    composeRun: (command: string) => `wacht tot je \`${command}\` uitvoert in je tresjr-map`,
+    composeStarting: (name: string) => `${name} start op`,
+    composeApplied: 'alle containers draaien deze versie en instellingen',
   },
 
   // Testing a login provider's clients (idp-check.ts).

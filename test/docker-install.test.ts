@@ -81,7 +81,7 @@ const image = (w: string, version = NEXT_VERSION) => `ghcr.io/arcanum-pos/tresjr
 describe('installing with Docker', () => {
   it('the steps: no Cloudflare in sight; the public address and where the bff is published', async () => {
     const status = (await call('GET', '/api/status')).body;
-    expect(status.docker).toEqual({ publicUrl: null, publish: '127.0.0.1:8000' });
+    expect(status.docker).toEqual({ publicUrl: null, publish: '127.0.0.1:8000', compose: false, command: null });
     expect(status.kubernetes).toBeNull();
     expect(status.cloudflare).toBeNull();
     await configure();

@@ -312,6 +312,8 @@ export default {
     loginReset: 'Configurer la connexion',
     loginUris: (domain: string) => `Enregistrer ${domain} pour la connexion`,
     verify: 'Vérifier que tout fonctionne',
+    composeWrite: 'Écrire compose.yaml',
+    composeApply: 'Appliquer avec compose',
     releaseMissing: (file: string) => `Il manque ${file} dans la version`,
     serviceNotYet: (name: string, service: string) => `${name} renvoie à ${service}, qui n’est pas encore installé`,
     publicWorkers: 'La version n’a aucun Worker public (ou plus d’un)',
@@ -350,6 +352,10 @@ export default {
     notSetUp: (name: string) => `La base de données ${name} n’est pas encore configurée (aucune migration trouvée) — relancez « Configurer la base de données ${name} »`,
     migrationsMissing: (name: string, recorded: number, total: number) => `La base de données ${name} a ${recorded} des ${total} migrations — relancez « Configurer la base de données ${name} »`,
     verified: (workers: number) => `${workers} Workers, adresse publique et bases de données en ordre`,
+    composeWritten: (command: string) => `compose.yaml écrit — lancez maintenant \`${command}\` dans votre dossier tresjr`,
+    composeRun: (command: string) => `en attente : lancez \`${command}\` dans votre dossier tresjr`,
+    composeStarting: (name: string) => `${name} démarre`,
+    composeApplied: 'tous les conteneurs tournent avec cette version et ces réglages',
   },
 
   checks: {

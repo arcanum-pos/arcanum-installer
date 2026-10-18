@@ -79,7 +79,7 @@ describe('a Worker on Kubernetes', () => {
     const [init] = deployment.spec.template.spec.initContainers;
     expect(init.image).toBe('ghcr.io/arcanum-pos/tresjr-backend:0.1.70');
     // No shell (the distroless image has none): arguments to the image's own entrypoint, node.
-    expect(init.command).toBeUndefined();
+    expect(init.command).toEqual(['/nodejs/bin/node']);
     expect(init.args).toEqual(['dist/node.mjs', 'migrate', '--backup-as', '0.1.70', '--reset-login']);
     // Going back: the copies put back before anything runs.
     expect(migrateArgs('0.1.69', '0.1.70')).toEqual(['dist/node.mjs', 'migrate', '--restore-from', '0.1.70', '--reset-login']);

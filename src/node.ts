@@ -18,11 +18,16 @@
 //   PUBLISH_BFF           where the bff is published on the machine (default 127.0.0.1:8000)
 //   DATA_DIR              its state and key (default /data); INSTALLER_STATE_KEY made there once if not given
 //   PORT                  to listen on (default 8080)
+// Or compose mode (INSTALLER_TARGET=compose, docker/compose-file.ts): no
+// socket — the compose folder mounted at /project (COMPOSE_DIR), which it
+// writes; COMPOSE_COMMAND what the owner runs there (default `docker compose up -d`).
 import { serve } from '@hono/node-server';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { Docker } from './docker/client';
 import { FileKV } from './node/file-kv';
 import { dockerTransport } from './node/docker-transport';
+import { composeFolder } from './node/compose-folder';
+import { INSTALLER_ENV_KEYS } from './docker/compose-file';
 import worker from './index';
 import type { Env } from './env';
 import { Kube } from './kubernetes/client';
@@ -59,8 +64,20 @@ export function dockerEnv(environment: NodeJS.ProcessEnv, docker?: Docker): Env 
   };
 }
 
+// Compose mode: as with Docker, without the engine — the folder instead.
+export function composeEnv(environment: NodeJS.ProcessEnv): Env {
+  const { DOCKER: _none, DOCKER_HOST: _host, ...env } = dockerEnv(environment, {} as Docker);
+  return {
+    ...env,
+    COMPOSE: composeFolder(environment.COMPOSE_DIR || '/project'),
+    COMPOSE_COMMAND: environment.COMPOSE_COMMAND,
+    INSTALLER_ENV: Object.fromEntries(INSTALLER_ENV_KEYS.filter((k) => environment[k]).map((k) => [k, environment[k] as string])),
+  };
+}
+
 export function nodeEnv(environment: NodeJS.ProcessEnv, kube?: Kube): Env {
   if (environment.INSTALLER_TARGET === 'docker') return dockerEnv(environment);
+  if (environment.INSTALLER_TARGET === 'compose') return composeEnv(environment);
   if (!environment.INSTALLER_STATE_KEY) throw new Error('INSTALLER_STATE_KEY is required');
   const cluster =
     kube ??

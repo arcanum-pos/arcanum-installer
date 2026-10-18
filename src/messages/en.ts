@@ -312,6 +312,8 @@ export default {
     loginReset: 'Set up sign-in',
     loginUris: (domain: string) => `Register ${domain} for sign-in`,
     verify: 'Check that everything works',
+    composeWrite: 'Write compose.yaml',
+    composeApply: 'Apply with compose',
     releaseMissing: (file: string) => `Release is missing ${file}`,
     serviceNotYet: (name: string, service: string) => `${name} refers to ${service}, which is not installed yet`,
     publicWorkers: 'Release has no (or more than one) public Worker',
@@ -350,6 +352,10 @@ export default {
     notSetUp: (name: string) => `Database ${name} has not been set up yet (no migrations found) — run "Set up database ${name}" again`,
     migrationsMissing: (name: string, recorded: number, total: number) => `Database ${name} has ${recorded} of the ${total} migrations — run "Set up database ${name}" again`,
     verified: (workers: number) => `${workers} Workers, public address and databases in order`,
+    composeWritten: (command: string) => `compose.yaml written — now run \`${command}\` in your tresjr folder`,
+    composeRun: (command: string) => `waiting: run \`${command}\` in your tresjr folder`,
+    composeStarting: (name: string) => `${name} is starting`,
+    composeApplied: 'every container runs this version and these settings',
   },
 
   checks: {

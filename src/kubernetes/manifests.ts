@@ -80,6 +80,11 @@ async function digest(env: Record<string, string>): Promise<string> {
 // shell. (An image from before it, Alpine, starts `dist/node.mjs` with node
 // all the same; the installer is always the release's own version, so it
 // never asks an old image for what it can't do.)
+// The distroless images' node. Set explicitly (with force, it's the
+// installer's field): a command someone left on the init container by hand
+// (an earlier `sh -c`) would otherwise stay and win over the arguments.
+export const NODE = '/nodejs/bin/node';
+
 export function migrateArgs(version: string, restoreFrom?: string): string[] {
   // --reset-login: the default login provider re-seeds from the current
   // settings (the Cloudflare target's login:reset step).
@@ -133,7 +138,7 @@ export async function workerManifests(descriptor: WorkerDescriptor, ctx: Install
           automountServiceAccountToken: false,
           securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: { type: 'RuntimeDefault' } },
           ...(migrates
-            ? { initContainers: [{ ...container, name: 'migrate', args: migrateArgs(kube.version, kube.restoreFrom), ports: undefined, readinessProbe: undefined, livenessProbe: undefined }] }
+            ? { initContainers: [{ ...container, name: 'migrate', command: [NODE], args: migrateArgs(kube.version, kube.restoreFrom), ports: undefined, readinessProbe: undefined, livenessProbe: undefined }] }
             : {}),
           containers: [container],
           ...(data ? { volumes: [{ name: 'data', persistentVolumeClaim: { claimName: `${name}-data` } }] } : {}),

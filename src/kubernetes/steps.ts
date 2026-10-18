@@ -17,6 +17,7 @@ import { generateSecret } from '../crypto';
 import type { Messages } from '../i18n';
 import { fetchReleaseJson } from '../releases';
 import { runDockerStep } from '../docker/steps';
+import { runComposeStep } from '../docker/compose-steps';
 import { deployedName, INSTALLER_KEY_SECRET, publicUrl, sealValue, selfHosted, unsealValue, type Blueprint, type InstallerState } from '../state';
 import { bffSupportsInstaller, installContext, makeSecrets, secretsOf, type StepContext, type StepDef, type StepOutcome } from '../steps';
 import type { Kube } from './client';
@@ -34,6 +35,14 @@ export const needsKubeClientUris = (state: InstallerState) => !!state.bootstrap?
 export function planKubernetesSteps(blueprint: Blueprint, state: InstallerState, t: Messages): StepDef[] {
   const s = t.steps;
   const steps: StepDef[] = [];
+  // Compose mode: compose.yaml written, then applied by its owner (docker/compose-steps.ts).
+  if (state.docker?.compose) {
+    steps.push({ id: 'secrets', title: s.secrets }, { id: 'compose:write', title: s.composeWrite }, { id: 'compose:apply', title: s.composeApply });
+    const bff = blueprint.workers.find((w) => w.public_entry);
+    if (bff && needsKubeClientUris(state)) steps.push({ id: 'login:uris', title: s.loginUris(new URL(selfHosted(state)!.publicUrl!).host) });
+    steps.push({ id: 'verify', title: s.verify });
+    return steps;
+  }
   if (blueprint.installer) steps.push({ id: 'installer:self', title: s.selfUpdate });
   steps.push({ id: 'secrets', title: s.secrets });
   for (const w of blueprint.workers) {
@@ -101,6 +110,7 @@ export async function runKubernetesStep(id: string, ctx: StepContext): Promise<S
   const { state } = ctx;
   const release = state.release!;
   const s = ctx.t.steps;
+  if (id.startsWith('compose:')) return runComposeStep(id, ctx);
   if (state.docker && (id === 'installer:self' || id.startsWith('worker:'))) return runDockerStep(id, ctx);
 
   if (id === 'installer:self') {

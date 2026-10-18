@@ -17,6 +17,7 @@ import { addClientUris } from './auth-client';
 import { MESSAGES, messageOf, textsFor, type Messages } from './i18n';
 import { applyWorker } from './kubernetes/steps';
 import { DEFAULT_PUBLISH_BFF, putUpContainer } from './docker/steps';
+import { DEFAULT_COMPOSE_COMMAND } from './docker/compose-steps';
 import { buildMailConfig, cloudflareSending, MAIL_SERVICES, mailSummary, OLD_SMTP_SECRETS, sendsFrom, type MailConfig } from './mail';
 import { buildSmsConfig, checkTwilio, normalizePhone, sendTestSms, smsSummary, type SmsConfig } from './sms';
 
@@ -130,6 +131,11 @@ async function cloudflareSendingOf(env: Env, state: InstallerState, sessionId: s
 // with it (kubernetes/steps.ts applyWorker) — or its container is made anew
 // with it (docker/steps.ts putUpContainer).
 async function applyOnKubernetes(env: Env, state: InstallerState): Promise<'applied' | 'later'> {
+  // Compose mode: the next Installeren writes compose.yaml anew and asks for `compose up -d`.
+  if (state.docker?.compose) {
+    for (const step of ['compose:write', 'compose:apply', 'verify']) delete state.steps[step];
+    return 'later';
+  }
   if (!(state.docker ? env.DOCKER : env.KUBE) || !state.installed || !state.release) {
     delete state.steps['worker:arcanum-backend'];
     return 'later';
@@ -219,7 +225,7 @@ export async function status(env: Env, state: InstallerState, sessionId: string,
     // Self-hosted on Kubernetes: where it installs, and the address the self-hoster routes.
     kubernetes: state.kubernetes ? { namespace: state.kubernetes.namespace, publicUrl: state.kubernetes.publicUrl ?? null } : null,
     // With Docker / Podman: the address too, and where the bff is published on the machine.
-    docker: state.docker ? { publicUrl: state.docker.publicUrl ?? null, publish: env.PUBLISH_BFF || DEFAULT_PUBLISH_BFF } : null,
+    docker: state.docker ? { publicUrl: state.docker.publicUrl ?? null, publish: env.PUBLISH_BFF || DEFAULT_PUBLISH_BFF, compose: !!state.docker.compose, command: state.docker.compose ? env.COMPOSE_COMMAND || DEFAULT_COMPOSE_COMMAND : null } : null,
     login: state.login
       ? {
           issuer: state.login.issuer,
@@ -491,7 +497,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
       const origin = url.origin;
       if (hosted.publicUrl !== origin) {
         hosted.publicUrl = origin;
-        for (const step of ['worker:arcanum-backend', 'worker:arcanum-bff', 'login:uris', 'verify']) delete state.steps[step];
+        for (const step of ['worker:arcanum-backend', 'worker:arcanum-bff', 'compose:write', 'compose:apply', 'login:uris', 'verify']) delete state.steps[step];
       }
       await saveState(env, state);
       return json(await status(env, state, sessionId, access, t));
@@ -508,7 +514,7 @@ export async function handleApi(request: Request, env: Env, path: string): Promi
         else delete state.customDomain;
         // Already installed: re-deploy with the new address (the bff step
         // attaches the domain; login:uris registers it at the login provider).
-        for (const step of ['worker:arcanum-backend', 'worker:arcanum-bff', 'login:uris', 'verify']) delete state.steps[step];
+        for (const step of ['worker:arcanum-backend', 'worker:arcanum-bff', 'compose:write', 'compose:apply', 'login:uris', 'verify']) delete state.steps[step];
       }
       await saveState(env, state);
       return json(await status(env, state, sessionId, access, t));

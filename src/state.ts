@@ -94,7 +94,9 @@ export interface InstallerState {
   kubernetes?: { namespace: string; publicUrl?: string; storageClassName?: string };
   // Or with Docker / Podman (compose, docker/steps.ts): the installer is a
   // container next to the ones it makes, on the same network.
-  docker?: { publicUrl?: string };
+  // `compose`: compose mode (docker/compose-file.ts) — it writes compose.yaml
+  // instead of making the containers.
+  docker?: { publicUrl?: string; compose?: boolean; fingerprint?: string };
   login?: {
     issuer: string;
     clientId: string;
@@ -175,8 +177,8 @@ function onKubernetes(env: Env, state: InstallerState): InstallerState {
     state.kubernetes = { namespace: env.KUBE.namespace };
     state.instanceName ??= 'tresjr';
   }
-  if (env.DOCKER && !state.cloudflare && !state.docker) {
-    state.docker = {};
+  if ((env.DOCKER || env.COMPOSE) && !state.cloudflare && !state.docker) {
+    state.docker = env.COMPOSE ? { compose: true } : {};
     state.instanceName ??= 'tresjr';
   }
   return state;

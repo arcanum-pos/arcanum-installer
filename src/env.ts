@@ -33,9 +33,20 @@ export interface Env {
   PUBLISH_BFF?: string;
   // The engine over tcp instead of the socket (passed on to the self-update helper).
   DOCKER_HOST?: string;
+  // Compose mode instead (docker/compose-file.ts): no engine socket — the
+  // folder compose.yaml is in, which the installer writes; what to tell the
+  // owner to run there (default `docker compose up -d`); and its own
+  // environment to pass on to its next container.
+  COMPOSE?: ComposeFolder;
+  COMPOSE_COMMAND?: string;
+  INSTALLER_ENV?: Record<string, string>;
   // Where the images come from: `<prefix><worker>:<version>` (default
   // ghcr.io/arcanum-pos/tresjr-), and a tag to use instead of the version
   // (a test cluster with images built on the spot).
   IMAGE_PREFIX?: string;
   IMAGE_TAG?: string;
+}
+
+export interface ComposeFolder {
+  write(files: Record<string, string>): Promise<void>;
 }

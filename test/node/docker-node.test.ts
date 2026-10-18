@@ -7,9 +7,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Docker } from '../../src/docker/client';
-import { dockerEnv } from '../../src/node';
+import { composeEnv, dockerEnv } from '../../src/node';
 import { dockerTransport } from '../../src/node/docker-transport';
 import { FileKV } from '../../src/node/file-kv';
+import { composeFolder } from '../../src/node/compose-folder';
 
 const dirs: string[] = [];
 const tempDir = () => {
@@ -85,5 +86,24 @@ describe('the engine over its socket', () => {
     } finally {
       server.close();
     }
+  });
+});
+
+// Compose mode: no socket — the folder compose.yaml is in.
+describe('compose mode', () => {
+  it('writes into the folder as a whole file, readable by its owner only', async () => {
+    const dir = tempDir();
+    await composeFolder(dir).write({ 'compose.yaml': 'name: tresjr\n' });
+    expect(readFileSync(join(dir, 'compose.yaml'), 'utf8')).toBe('name: tresjr\n');
+    expect(statSync(join(dir, 'compose.yaml')).mode & 0o777).toBe(0o600);
+    await composeFolder(dir).write({ 'compose.yaml': 'name: tresjr # anew\n' });
+    expect(readFileSync(join(dir, 'compose.yaml'), 'utf8')).toBe('name: tresjr # anew\n');
+  });
+
+  it('its environment: no engine, the folder, and what it passes on to its next container', () => {
+    const env = composeEnv({ DATA_DIR: tempDir(), COMPOSE_DIR: tempDir(), INSTALLER_TARGET: 'compose', BOOTSTRAP_CONFIG: '{}', COMPOSE_COMMAND: 'nerdctl compose up -d', HOME: '/root' });
+    expect(env.DOCKER).toBeUndefined();
+    expect(env.COMPOSE).toBeDefined();
+    expect(env.INSTALLER_ENV).toEqual({ INSTALLER_TARGET: 'compose', BOOTSTRAP_CONFIG: '{}', COMPOSE_COMMAND: 'nerdctl compose up -d', DATA_DIR: expect.any(String) });
   });
 });

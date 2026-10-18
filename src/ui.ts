@@ -932,10 +932,11 @@ async function runAll() {
       progress(at);
       for (let attempt = 0; ; attempt++) {
         const li = $('[data-id="' + CSS.escape(step.id) + '"]'); if (li) li.className = 'running';
-        const r = await api('api/step', { id: step.id });
+        // Compose mode: running compose up -d restarts this installer too — keep asking.
+        const r = await api('api/step', { id: step.id }).catch((e) => { if (status.docker && status.docker.compose && !e.data) return { status: 'retry', detail: '…' }; throw e; });
         if (r.status === 'done') break;
         // Self-hosted: a first download of the images can take a few minutes.
-        if (r.status === 'retry' && attempt < (status.kubernetes ? 60 : status.docker ? 120 : 20)) { progress(at + ' — ' + r.detail + M.retryIn); if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
+        if (r.status === 'retry' && attempt < (status.kubernetes ? 60 : status.docker ? (status.docker.compose ? 300 : 120) : 20)) { progress(at + ' — ' + r.detail + M.retryIn); if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
         await refresh(); throw new Error(fmt(M.stepFailed, { title: step.title, detail: r.detail }));
       }
       // The new installer takes over from the next request: give Cloudflare a moment.
