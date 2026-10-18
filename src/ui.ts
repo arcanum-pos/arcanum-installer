@@ -85,6 +85,10 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   button:active { transform: translateY(1px); }
   button.secondary { background: var(--background); color: var(--foreground); border-color: var(--border); }
   button.secondary:hover { background: var(--muted); }
+  .compose-run { border: 2px solid var(--primary); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; display: grid; gap: 8px; }
+  .compose-run p { margin: 0; }
+  .compose-run .row { align-items: center; }
+  .compose-run code { font-size: 15px; padding: 8px 10px; background: var(--muted); border-radius: 6px; }
   button:disabled { opacity: .5; pointer-events: none; }
   a.button { display: inline-flex; align-items: center; justify-self: start; height: 2rem; padding: 0 10px; border-radius: var(--radius); background: var(--primary); color: var(--primary-foreground); font-weight: 500; text-decoration: none; margin-top: 8px; }
   a.button:hover { background: color-mix(in oklch, var(--primary) 80%, transparent); }
@@ -294,6 +298,11 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
       <div data-quick-version style="display:grid;gap:6px"><label for="quick-version">${p.version}</label><select id="quick-version"></select></div>
       <div class="row"><button data-run>${p.install}</button></div>
       <p class="soft hidden" data-progress></p>
+      <div class="compose-run hidden" data-compose-run role="status">
+        <strong>${p.composeRunTitle}</strong>
+        <p>${p.composeRunText}</p>
+        <div class="row"><code data-compose-command></code><button type="button" class="secondary" data-copy-command>${p.copy}</button></div>
+      </div>
       <p class="error" data-error></p>
       <details data-steps-box>
         <summary class="soft">${p.stepsDetails}</summary>
@@ -373,6 +382,19 @@ let status = null;
 const M = ${texts};
 const LANG = document.documentElement.lang;
 const fmt = (text, values) => text.replace(/[{]([a-zA-Z]+)[}]/g, (_, name) => String(values[name]));
+// Compose mode: the box saying what to run, while the installer waits for it.
+function composeWaiting(on) {
+  const box = $('[data-compose-run]');
+  if (!box) return;
+  box.classList.toggle('hidden', !on);
+  if (on && status && status.docker) $('[data-compose-command]', box).textContent = status.docker.command;
+}
+document.addEventListener('click', (e) => {
+  const button = e.target.closest && e.target.closest('[data-copy-command]');
+  if (!button) return;
+  const text = $('[data-compose-command]').textContent;
+  (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => { button.textContent = M.composeCopied; }, () => {});
+});
 
 // The language: ?lang= or the browser's (the server's choice), unless one was
 // picked before in this browser (NL · FR · EN) — then back with that one.
@@ -469,7 +491,9 @@ function render() {
   if (s.login) $('[data-login-current]').textContent = new URL(s.login.issuer).host;
   $('[data-quick-url]').textContent = s.address ? s.address.publicUrl : '';
   $('[data-quick-account-label]').textContent = s.docker ? M.dockerAccountLabel : kube ? M.kubeAccountLabel : M.cloudflareAccountLabel;
-  $('[data-quick-account]').textContent = s.docker ? M.dockerAccountValue : kube ? kube.namespace : s.cloudflare ? s.cloudflare.accountName : '';
+  $('[data-quick-account]').textContent = s.docker ? (s.docker.compose ? fmt(M.composeAccountValue, { command: s.docker.command }) : M.dockerAccountValue) : kube ? kube.namespace : s.cloudflare ? s.cloudflare.accountName : '';
+  // Compose mode: written, not applied yet — the owner's turn (after a reload too).
+  composeWaiting(!!(s.docker && s.docker.compose && s.steps.some((x) => x.id === 'compose:write' && x.status === 'done') && s.steps.some((x) => x.id === 'compose:apply' && x.status !== 'done')));
   $('[data-quick-admins]').textContent = s.admins || '';
   if (s.login) {
     if (s.login.deviceClientId) $('[data-device-client]').open = true;
@@ -934,6 +958,7 @@ async function runAll() {
         const li = $('[data-id="' + CSS.escape(step.id) + '"]'); if (li) li.className = 'running';
         // Compose mode: running compose up -d restarts this installer too — keep asking.
         const r = await api('api/step', { id: step.id }).catch((e) => { if (status.docker && status.docker.compose && !e.data) return { status: 'retry', detail: '…' }; throw e; });
+        if (step.id === 'compose:apply') composeWaiting(r.status !== 'done');
         if (r.status === 'done') break;
         // Self-hosted: a first download of the images can take a few minutes.
         if (r.status === 'retry' && attempt < (status.kubernetes ? 60 : status.docker ? (status.docker.compose ? 300 : 120) : 20)) { progress(at + ' — ' + r.detail + M.retryIn); if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
