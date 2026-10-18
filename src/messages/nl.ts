@@ -250,6 +250,7 @@ const nl = {
     chooseAccount: 'Kies het account en bevestig opnieuw.',
     noVersion: 'Geen versie beschikbaar — probeer straks opnieuw.',
     retryIn: ' (opnieuw over 6 s)',
+    installerRestarting: 'De installer start opnieuw met de nieuwe versie…',
     progress: 'Stap {n} van {total}: {title}…',
     stepFailed: '{title}: {detail}',
     // The installer's own address (Geavanceerd → Toegang tot de installer).

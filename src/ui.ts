@@ -413,7 +413,7 @@ async function api(path, body) {
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && path !== 'api/login') { show(false); throw new Error(M.notSignedIn); }
   if (res.status === 403 && data.forbidden) { denied(data.error); throw new Error(data.error); }
-  if (!res.ok) throw Object.assign(new Error(data.error || ('HTTP ' + res.status)), { data });
+  if (!res.ok) throw Object.assign(new Error(data.error || ('HTTP ' + res.status)), { data, status: res.status });
   return data;
 }
 
@@ -858,6 +858,23 @@ document.addEventListener('input', (ev) => { if (ev.target.id === 'issuer') goog
 
 async function refresh() { status = await api('api/status'); render(); }
 
+// A self-hosted installer that's restarting (its own update): no answer, or a
+// gateway's 502/503/504 — not an error, it's back in a moment.
+function restarting(e) {
+  return !!(status && (status.kubernetes || status.docker)) && (!e.data || [502, 503, 504].includes(e.status));
+}
+
+// The status again — waiting (up to two minutes) while the installer restarts.
+async function refreshWhenBack() {
+  for (let attempt = 0; ; attempt++) {
+    try { return await refresh(); } catch (e) {
+      if (!restarting(e) || attempt >= 40) throw e;
+      progress(M.installerRestarting);
+      await new Promise(res => setTimeout(res, 3000));
+    }
+  }
+}
+
 // As releases.ts compareVersions: 0.1.24 < 0.1.25-dev.1 < 0.1.25-dev.2 < 0.1.25.
 function compareVersions(a, b) {
   const split = (v) => [v.split('-')[0], v.split('-').slice(1).join('-')];
@@ -956,8 +973,10 @@ async function runAll() {
       progress(at);
       for (let attempt = 0; ; attempt++) {
         const li = $('[data-id="' + CSS.escape(step.id) + '"]'); if (li) li.className = 'running';
-        // Compose mode: running compose up -d restarts this installer too — keep asking.
-        const r = await api('api/step', { id: step.id }).catch((e) => { if (status.docker && status.docker.compose && !e.data) return { status: 'retry', detail: '…' }; throw e; });
+        // Self-hosted: the installer itself restarts on an update (its own
+        // step, or compose up -d) — what's in front of it answers 502 or drops
+        // the connection meanwhile: keep asking.
+        const r = await api('api/step', { id: step.id }).catch((e) => { if (restarting(e)) return { status: 'retry', detail: '…' }; throw e; });
         if (step.id === 'compose:apply') composeWaiting(r.status !== 'done');
         if (r.status === 'done') break;
         // Self-hosted: a first download of the images can take a few minutes.
@@ -966,7 +985,7 @@ async function runAll() {
       }
       // The new installer takes over from the next request: give Cloudflare a moment.
       if (step.id === 'installer:self') await new Promise(res => setTimeout(res, 3000));
-      await refresh();
+      await refreshWhenBack();
     }
   } catch (e) { err.textContent = e.message; if (e.data && e.data.needsToken) $('#token').focus(); }
   finally { running = false; progress(''); await refresh().catch(() => {}); }

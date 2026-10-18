@@ -236,6 +236,7 @@ export default {
     chooseAccount: 'Choisissez le compte et confirmez à nouveau.',
     noVersion: 'Aucune version disponible — réessayez plus tard.',
     retryIn: ' (nouvel essai dans 6 s)',
+    installerRestarting: 'L’installateur redémarre avec la nouvelle version…',
     progress: 'Étape {n} sur {total} : {title}…',
     stepFailed: '{title} : {detail}',
     // The installer's own address (Geavanceerd → Toegang tot de installer).
