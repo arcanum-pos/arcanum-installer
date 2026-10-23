@@ -17,7 +17,8 @@ for (const lang of ['nl', 'fr', 'en']) {
   const { default: messages } = await import(new URL(`../src/messages/${lang}.ts`, import.meta.url));
   const html = render(lang, messages.page, JSON.stringify(messages.script).replace(/</g, '\\u003c'), current);
   const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-  if (scripts.length !== 1) throw new Error(`${lang}: expected one <script> in the page, found ${scripts.length}`);
+  // Two: light/dark in the <head> (before the page is drawn — no flash), and the page's own.
+  if (scripts.length !== 2) throw new Error(`${lang}: expected two <script>s in the page, found ${scripts.length}`);
   for (const script of scripts) {
     try {
       new Function(script); // parse only, never run
