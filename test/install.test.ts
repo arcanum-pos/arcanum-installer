@@ -837,6 +837,9 @@ describe("behind Arcanum (the installer's own address)", () => {
     expect(html).toContain("'/login?returnTo=' + encodeURIComponent('/installer/?naar=console')");
     // Decided when it's clicked, from the state right then (not whatever the page loaded earlier).
     expect(html).toContain("$('[data-open]').addEventListener('click', toConsole);");
+    // In this tab, also behind Arcanum: no new tab every time.
+    expect(html).toContain('<a class="button big" data-open>');
+    expect(html).not.toContain("a.target = '_blank'");
     // The back link top right goes the same way.
     expect(html).toContain("$('[data-back]').addEventListener('click', toConsole);");
     expect(html).toContain('data-back');

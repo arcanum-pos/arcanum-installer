@@ -374,7 +374,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
 
     <section id="s-done" class="card hidden">
       <h2>${p.done}</h2>
-      <p><a class="button big" data-open target="_blank" rel="noopener">${p.openArcanum}</a></p>
+      <p><a class="button big" data-open>${p.openArcanum}</a></p>
       <p>${p.runsAt}</p>
       <p data-live class="soft">${p.checkingLive}</p>
       <p>${p.doneNext}</p>
@@ -819,14 +819,15 @@ $('[data-public-close]').addEventListener('click', () => publicAction('api/publi
 // "Open je Arcanum": the console. On the installer's own address, while
 // that's still to be closed, by way of the installer behind Arcanum (sign
 // in, close, on to the console) — decided when it's clicked, from the
-// state right then, and in this tab: this page stops working here.
+// state right then. Always in this tab: on the own address this page stops
+// working; behind Arcanum the console is the same site (a new tab would only
+// pile up tabs going back and forth).
 const passByUrl = (url) => url + '/login?returnTo=' + encodeURIComponent('/installer/?naar=console');
 const passesBy = (p) => !!(p && p.closable && p.directEnabled !== false);
 function openLink() {
   const a = $('[data-open]'); const url = status && status.address ? status.address.publicUrl : '';
   const own = !viaArcanum();
   a.href = own && passesBy(publicAccess) ? passByUrl(url) : url + '/console';
-  if (own) a.removeAttribute('target'); else a.target = '_blank';
   // Top right, once there's an Arcanum: back to its console, in this tab.
   const back = $('[data-back]');
   back.classList.toggle('hidden', !url);
