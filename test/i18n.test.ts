@@ -51,6 +51,17 @@ async function page(url: string, acceptLanguage?: string) {
 }
 
 describe('the setup page', () => {
+  it("follows the console's light/dark choice (the same address behind Arcanum), else the system's", async () => {
+    const { html } = await page('https://installer.test/');
+    // Read before the page is drawn, and again when the console changes it in another tab.
+    expect(html.indexOf("localStorage.getItem('arcanum-admin-theme')")).toBeGreaterThan(-1);
+    expect(html.indexOf("localStorage.getItem('arcanum-admin-theme')")).toBeLessThan(html.indexOf('<style>'));
+    expect(html).toContain("addEventListener('storage'");
+    expect(html).toContain(':root[data-theme="dark"] {');
+    // The system's only when nothing was chosen.
+    expect(html).toContain('@media (prefers-color-scheme: dark) { :root:not([data-theme]) {');
+  });
+
   it("is served in the browser's language, Dutch by default", async () => {
     const nl = await page('https://installer.test/');
     expect(nl.language).toBe('nl');

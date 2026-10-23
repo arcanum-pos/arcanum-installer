@@ -21,6 +21,20 @@ const current = (lang: Locale, l: Locale) => (lang === l ? ' aria-current="true"
 const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ `<!doctype html>
 <html lang="${lang}">
 <head>
+<script>
+// Light or dark as chosen in the console (Instellingen → Weergave): the same
+// address behind Arcanum, so the same choice — "system" (or none): the system's.
+(function () {
+  var apply = function () {
+    var t = null;
+    try { t = localStorage.getItem('arcanum-admin-theme'); } catch (e) {}
+    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    else document.documentElement.removeAttribute('data-theme');
+  };
+  apply();
+  addEventListener('storage', function (e) { if (e.key === 'arcanum-admin-theme') apply(); });
+})();
+</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
@@ -38,12 +52,21 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
     --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --ring: oklch(0.708 0 0); --radius: 0.625rem; --success: oklch(0.55 0.13 150);
     color-scheme: light;
   }
-  @media (prefers-color-scheme: dark) { :root {
+  /* Dark: the console's choice (Instellingen → Weergave, data-theme set from
+     arcanum-admin-theme below) — or, without one, the system's. */
+  :root[data-theme="dark"] {
     --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0); --card: oklch(0.205 0 0); --primary: oklch(0.922 0 0); --primary-foreground: oklch(0.205 0 0);
     --secondary: oklch(0.269 0 0); --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0); --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%); --ring: oklch(0.556 0 0); --success: oklch(0.72 0.14 150);
     color-scheme: dark;
-  } .brand img { filter: invert(1); } }
+  }
+  :root[data-theme="dark"] .brand img, :root[data-theme="dark"] footer img { filter: invert(1); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme]) {
+    --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0); --card: oklch(0.205 0 0); --primary: oklch(0.922 0 0); --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0); --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0); --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%); --ring: oklch(0.556 0 0); --success: oklch(0.72 0.14 150);
+    color-scheme: dark;
+  } :root:not([data-theme]) .brand img { filter: invert(1); } }
   * { box-sizing: border-box; border-color: var(--border); }
   html { font-family: "Geist Variable", ui-sans-serif, system-ui, sans-serif; }
   body { margin: 0; min-height: 100svh; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; padding: 32px 16px 24px; display: flex; flex-direction: column; }
@@ -119,7 +142,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   /* Footer — like the console's. */
   footer { display: flex; align-items: center; justify-content: center; gap: 8px; border-top: 1px solid var(--border); margin-top: 32px; padding-top: 12px; font-size: 12px; color: var(--muted-foreground); flex-wrap: wrap; }
   footer img { width: 20px; height: 20px; object-fit: contain; }
-  @media (prefers-color-scheme: dark) { footer img { filter: invert(1); } }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme]) footer img { filter: invert(1); } }
   footer a { color: var(--muted-foreground); text-decoration: none; }
   footer a:hover { color: var(--foreground); text-decoration: underline; }
   ul.checks { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 2px; }
