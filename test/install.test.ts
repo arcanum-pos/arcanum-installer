@@ -836,7 +836,10 @@ describe("behind Arcanum (the installer's own address)", () => {
     const html = await (await SELF.fetch('https://installer.test/')).text();
     expect(html).toContain("'/login?returnTo=' + encodeURIComponent('/installer/?naar=console')");
     // Decided when it's clicked, from the state right then (not whatever the page loaded earlier).
-    expect(html).toContain("$('[data-open]').addEventListener('click', async (ev) => {");
+    expect(html).toContain("$('[data-open]').addEventListener('click', toConsole);");
+    // The back link top right goes the same way.
+    expect(html).toContain("$('[data-back]').addEventListener('click', toConsole);");
+    expect(html).toContain('data-back');
     expect(html).toContain("try { p = await api('api/public-access'); } catch {}");
     // "Open je Arcanum" closes it even when it was switched back on by hand.
     expect(html).toContain("const passesBy = (p) => !!(p && p.closable && p.directEnabled !== false);");

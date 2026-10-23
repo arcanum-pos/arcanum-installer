@@ -102,6 +102,7 @@ export default {
     undo: 'Rétablir',
     advanced: 'Avancé',
     advancedIntro: 'Pas nécessaire pour une installation normale : un domaine personnalisé, votre propre fournisseur de connexion, le jeton Cloudflare, les administrateurs et l’accès à l’installateur.',
+    backToConsole: 'Retour à la console',
     openArcanum: 'Ouvrir votre Arcanum',
     runsAt: 'Arcanum tourne sur <a data-url target="_blank" rel="noopener"></a>.',
     checkingLive: 'Vérification de l’accessibilité…',

@@ -102,6 +102,7 @@ export default {
     undo: 'Undo',
     advanced: 'Advanced',
     advancedIntro: 'Not needed for a normal installation: a custom domain, a login provider of your own, the Cloudflare token, the administrators and access to the installer.',
+    backToConsole: 'Back to the console',
     openArcanum: 'Open your Arcanum',
     runsAt: 'Arcanum runs at <a data-url target="_blank" rel="noopener"></a>.',
     checkingLive: 'Checking it can be reached…',

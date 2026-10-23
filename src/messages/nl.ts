@@ -113,6 +113,7 @@ const nl = {
     undo: 'Terugzetten',
     advanced: 'Geavanceerd',
     advancedIntro: 'Niet nodig voor een gewone installatie: een eigen domein, een eigen login-provider, het Cloudflare-token, de beheerders en de toegang tot de installer.',
+    backToConsole: 'Terug naar de console',
     openArcanum: 'Open je Arcanum',
     runsAt: 'Arcanum draait op <a data-url target="_blank" rel="noopener"></a>.',
     checkingLive: 'Bereikbaarheid controleren…',

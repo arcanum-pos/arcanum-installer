@@ -79,7 +79,11 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   .brand span { font-family: "Montserrat", ui-sans-serif, sans-serif; font-weight: 700; letter-spacing: -0.025em; }
   header h1 { font-size: 1rem; font-weight: 600; margin: 4px 0 0; }
   /* The language picker: NL · FR · EN, top right. */
-  .langs { justify-self: end; display: flex; gap: 6px; font-size: 12px; margin-top: -16px; color: var(--muted-foreground); }
+  /* Top right: back to the console (once installed), the language picker. */
+  .topbar { justify-self: end; display: flex; align-items: center; gap: 16px; margin-top: -16px; font-size: 12px; }
+  .topbar .back { color: var(--muted-foreground); text-decoration: none; }
+  .topbar .back:hover { color: var(--foreground); text-decoration: underline; }
+  .langs { display: flex; gap: 6px; color: var(--muted-foreground); }
   .langs a { color: var(--muted-foreground); text-decoration: none; }
   .langs a:hover { color: var(--foreground); }
   .langs a[aria-current] { color: var(--foreground); font-weight: 600; }
@@ -161,7 +165,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
 <body>
 <main>
   <header>
-    <nav class="langs" aria-label="${p.language}"><a href="?lang=nl" hreflang="nl" lang="nl" data-lang="nl" title="Nederlands"${current(lang, 'nl')}>NL</a><span aria-hidden="true">·</span><a href="?lang=fr" hreflang="fr" lang="fr" data-lang="fr" title="Français"${current(lang, 'fr')}>FR</a><span aria-hidden="true">·</span><a href="?lang=en" hreflang="en" lang="en" data-lang="en" title="English"${current(lang, 'en')}>EN</a></nav>
+    <div class="topbar"><a class="back hidden" data-back href="#">← ${p.backToConsole}</a><nav class="langs" aria-label="${p.language}"><a href="?lang=nl" hreflang="nl" lang="nl" data-lang="nl" title="Nederlands"${current(lang, 'nl')}>NL</a><span aria-hidden="true">·</span><a href="?lang=fr" hreflang="fr" lang="fr" data-lang="fr" title="Français"${current(lang, 'fr')}>FR</a><span aria-hidden="true">·</span><a href="?lang=en" hreflang="en" lang="en" data-lang="en" title="English"${current(lang, 'en')}>EN</a></nav></div>
     <div class="brand"><img src="assets/kabouter.png" alt=""><span>arcanum</span></div>
     <h1>${p.heading}</h1>
     <p class="soft" data-intro>${p.intro}</p>
@@ -823,15 +827,21 @@ function openLink() {
   const own = !viaArcanum();
   a.href = own && passesBy(publicAccess) ? passByUrl(url) : url + '/console';
   if (own) a.removeAttribute('target'); else a.target = '_blank';
+  // Top right, once there's an Arcanum: back to its console, in this tab.
+  const back = $('[data-back]');
+  back.classList.toggle('hidden', !url);
+  if (url) back.href = viaArcanum() ? '../console' : a.href;
 }
-$('[data-open]').addEventListener('click', async (ev) => {
+async function toConsole(ev) {
   if (viaArcanum() || !status || !status.address) return;
   ev.preventDefault();
   const url = status.address.publicUrl;
   let p = publicAccess;
   try { p = await api('api/public-access'); } catch {}
   location.href = passesBy(p) ? passByUrl(url) : url + '/console';
-});
+}
+$('[data-open]').addEventListener('click', toConsole);
+$('[data-back]').addEventListener('click', toConsole);
 
 // Arrived from "Open je Arcanum" (through Arcanum): close the own address,
 // then on to the console — whatever happens, the console is where this goes.
