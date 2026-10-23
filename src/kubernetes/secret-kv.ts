@@ -58,7 +58,7 @@ export class KubeSecretKV {
       });
       if (!conflict) return;
     }
-    throw new Error(`The installer's state (${this.name}) kept changing underneath — try again`);
+    throw new Error(`The installer's state (${this.name}) kept changing underneath - try again`);
   }
 
   async put(key: string, value: string, options: { expirationTtl?: number } = {}): Promise<void> {

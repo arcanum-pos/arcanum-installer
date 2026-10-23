@@ -80,7 +80,7 @@ describe('own-instance settings', () => {
   });
   const envOf = (d: WorkerDescriptor) => (uploadMetadata(d, ctx).bindings as { name: string; text?: string }[]).filter((b) => b.name === 'ORG_CREATION');
 
-  it("always makes the backend 'single' — whatever the descriptor says, or when it says nothing", () => {
+  it("always makes the backend 'single' - whatever the descriptor says, or when it says nothing", () => {
     const expected = [{ type: 'plain_text', name: 'ORG_CREATION', text: 'single' }];
     expect(envOf(descriptor('arcanum-backend', {}))).toEqual(expected);
     expect(envOf(descriptor('arcanum-backend', { ORG_CREATION: { kind: 'var', source: 'fixed', value: 'internal' } }))).toEqual(expected);

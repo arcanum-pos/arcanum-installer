@@ -293,7 +293,7 @@ describe('the one-screen install', () => {
     expect(fakes.issuer.selfCalls).toHaveLength(0);
   });
 
-  it('a custom domain (Geavanceerd): attached to the bff, then added to the client with its own credentials — keeping the workers.dev addresses', async () => {
+  it('a custom domain (Geavanceerd): attached to the bff, then added to the client with its own credentials - keeping the workers.dev addresses', async () => {
     await handoff();
     await call('POST', '/api/address', { customDomain: 'arcanum.scouts-elewijt.be' });
     await call('POST', '/api/release', { version: '0.1.1' });
@@ -396,7 +396,7 @@ describe('the one-screen install', () => {
 });
 
 describe('the kind of installation and its channel (only from the bootstrapper)', () => {
-  it('without them: one organization, stable releases — ORG_CREATION=single, no development builds offered', async () => {
+  it('without them: one organization, stable releases - ORG_CREATION=single, no development builds offered', async () => {
     await handoff();
     const status = (await call('GET', '/api/status')).body;
     expect(status.instance).toEqual({ kind: 'single', channel: 'stable' });

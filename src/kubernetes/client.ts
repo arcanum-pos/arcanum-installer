@@ -101,7 +101,7 @@ export class Kube {
     for (const pod of res.body?.items ?? []) {
       for (const c of [...(pod.status?.initContainerStatuses ?? []), ...(pod.status?.containerStatuses ?? [])]) {
         const waiting = c.state?.waiting;
-        if (waiting && waiting.reason !== 'ContainerCreating' && waiting.reason !== 'PodInitializing') problems.push(`${c.name}: ${waiting.reason}${waiting.message ? ` — ${String(waiting.message).slice(0, 200)}` : ''}`);
+        if (waiting && waiting.reason !== 'ContainerCreating' && waiting.reason !== 'PodInitializing') problems.push(`${c.name}: ${waiting.reason}${waiting.message ? ` - ${String(waiting.message).slice(0, 200)}` : ''}`);
         const ended = c.lastState?.terminated;
         if (ended && ended.exitCode !== 0 && c.restartCount > 0) problems.push(`${c.name}: stopped (${ended.reason ?? 'exit ' + ended.exitCode})`);
       }

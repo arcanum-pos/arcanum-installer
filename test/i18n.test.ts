@@ -146,11 +146,11 @@ describe('the API', () => {
     await configure();
     fakes.releases.tampered.add('arcanum-backend.json');
     const fr = await call('fr', 'POST', '/api/step', { id: 'secrets' });
-    expect(fr.body).toMatchObject({ status: 'failed', detail: 'arcanum-backend.json ne correspond pas à la somme de contrôle du manifeste — téléchargement interrompu' });
+    expect(fr.body).toMatchObject({ status: 'failed', detail: 'arcanum-backend.json ne correspond pas à la somme de contrôle du manifeste - téléchargement interrompu' });
     const en = await call('en', 'POST', '/api/step', { id: 'secrets' });
-    expect(en.body.detail).toBe('arcanum-backend.json does not match the checksum in the manifest — download aborted');
+    expect(en.body.detail).toBe('arcanum-backend.json does not match the checksum in the manifest - download aborted');
     // Dutch stays exactly as it was.
-    expect((await call(null, 'POST', '/api/step', { id: 'secrets' })).body.detail).toBe('arcanum-backend.json komt niet overeen met de controlesom in het manifest — download afgebroken');
+    expect((await call(null, 'POST', '/api/step', { id: 'secrets' })).body.detail).toBe('arcanum-backend.json komt niet overeen met de controlesom in het manifest - download afgebroken');
   });
 
   it("answers Arcanum's forwarded requests in the browser's language too", async () => {

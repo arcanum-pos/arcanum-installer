@@ -45,7 +45,7 @@ async function post(url: string, params: Record<string, string>): Promise<{ stat
   }
 }
 
-const describe = (body: Record<string, unknown> | null) => (body?.error_description ? `${body.error} — ${body.error_description}` : String(body?.error ?? ''));
+const describe = (body: Record<string, unknown> | null) => (body?.error_description ? `${body.error} - ${body.error_description}` : String(body?.error ?? ''));
 
 function unexpected(t: Messages, name: string, what: string, r: { status: number; body: Record<string, unknown> | null }): ClientCheck {
   const detail = r.status === 0 ? t.checks.noConnection : `HTTP ${r.status}${r.body?.error ? `, ${describe(r.body)}` : ''}`;

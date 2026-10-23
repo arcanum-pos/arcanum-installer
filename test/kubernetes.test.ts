@@ -74,7 +74,7 @@ describe('a Worker on Kubernetes', () => {
     expect(deployment.spec.template.spec.initContainers).toBeUndefined();
   });
 
-  it('the backend migrates first, in an init container of the new version — after copying its files', async () => {
+  it('the backend migrates first, in an init container of the new version - after copying its files', async () => {
     const [deployment] = byKind(await workerManifests(workers['arcanum-backend'], ctx, kube), 'Deployment');
     const [init] = deployment.spec.template.spec.initContainers;
     expect(init.image).toBe('ghcr.io/arcanum-pos/tresjr-backend:0.1.70');

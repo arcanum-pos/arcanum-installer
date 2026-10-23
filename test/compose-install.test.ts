@@ -82,7 +82,7 @@ async function step(id: string) {
 }
 
 describe('installing in compose mode', () => {
-  it('the steps: compose.yaml written, then applied by its owner — no container steps', async () => {
+  it('the steps: compose.yaml written, then applied by its owner - no container steps', async () => {
     const status = (await call('GET', '/api/status')).body;
     expect(status.docker).toEqual({ publicUrl: null, publish: '127.0.0.1:8000', compose: true, command: 'nerdctl compose up -d' });
     await configure();

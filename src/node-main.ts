@@ -12,7 +12,7 @@ if (command === 'replace-installer') {
   replaceInstaller(new Docker(dockerTransport(process.env), ''), name, image, release).then(
     () => console.log(`${name}: now ${image}`),
     (err: Error) => {
-      console.error(`${name}: not updated — ${err.message}`);
+      console.error(`${name}: not updated - ${err.message}`);
       process.exit(1);
     }
   );

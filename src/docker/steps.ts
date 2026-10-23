@@ -70,7 +70,7 @@ export async function putUpContainer(ctx: StepContext, name: string): Promise<St
     // Stopped by hand: start it again. Crashing: say why.
     if (!state.Restarting && state.Status !== 'dead') await docker.start(current.Id);
     const log = lastLine(await docker.logs(current.Id));
-    return { status: 'retry', detail: `${spec.name}: ${state.Restarting ? 'restarting' : state.Status}${state.ExitCode ? ` (exit ${state.ExitCode})` : ''}${log ? ` — ${log}` : ''}` };
+    return { status: 'retry', detail: `${spec.name}: ${state.Restarting ? 'restarting' : state.Status}${state.ExitCode ? ` (exit ${state.ExitCode})` : ''}${log ? ` - ${log}` : ''}` };
   }
 
   const waiting = await ensureImage(docker, spec.image);

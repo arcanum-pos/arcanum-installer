@@ -201,7 +201,7 @@ describe('the handoff for a Kubernetes installation', () => {
 });
 
 describe("the installer's state in a Secret", () => {
-  it('get, put with an expiry, delete — and a write that lost a race tries again', async () => {
+  it('get, put with an expiry, delete - and a write that lost a race tries again', async () => {
     const kv = new KubeSecretKV(api.kube(), 'tresjr-installer-state');
     expect(await kv.get('state')).toBeNull();
     await kv.put('state', JSON.stringify({ v: 1 }));

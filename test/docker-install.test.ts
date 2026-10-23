@@ -184,7 +184,7 @@ describe('installing with Docker', () => {
 });
 
 describe("the installer's own update (replace-installer, in the helper)", () => {
-  it('the same container — settings, socket, ports, network, compose labels — of the new image', async () => {
+  it('the same container - settings, socket, ports, network, compose labels - of the new image', async () => {
     const docker = engine.docker('');
     engine.images.add('ghcr.io/arcanum-pos/tresjr-installer:0.2.0');
     await replaceInstaller(docker, 'tresjr-installer', 'ghcr.io/arcanum-pos/tresjr-installer:0.2.0', '0.2.0', 0);
@@ -228,7 +228,7 @@ describe('the container spec', () => {
     expect(a.migrate).toBeUndefined();
   });
 
-  it("the backend's one-off migrate container: no shell (distroless) — arguments to the image's node, its files copied aside first", async () => {
+  it("the backend's one-off migrate container: no shell (distroless) - arguments to the image's node, its files copied aside first", async () => {
     const descriptor = { name: 'arcanum-backend', bindings: [{ type: 'd1', name: 'DB' }], env: {} } as any;
     const k = { instance: 'tresjr', image: (s: string) => `img/${s}:0.1.70`, version: '0.1.70' };
     const spec = await containerSpec(descriptor, { secrets: {}, vars: {} } as any, k, 'tresjr');

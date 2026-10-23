@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 describe('the state in a file', () => {
-  it('get as text or JSON, put with an expiry, delete — kept across a restart', async () => {
+  it('get as text or JSON, put with an expiry, delete - kept across a restart', async () => {
     const dir = tempDir();
     const kv = new FileKV(join(dir, 'state.json'));
     await kv.put('state', JSON.stringify({ v: 1 }));

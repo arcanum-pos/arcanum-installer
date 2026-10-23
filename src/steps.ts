@@ -404,7 +404,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     // Cloudflare keeps a Worker's secrets that an upload doesn't mention: an
     // optional one this installer set before but no longer does (Google's
     // separate browser client and scopes after moving to another provider,
-    // say) has to go explicitly — or it would still be used. Only the ones
+    // say) has to go explicitly - or it would still be used. Only the ones
     // the installer manages itself: never what an admin set by hand
     // (DEFAULT_SMTP_*, BOOTSTRAP_API_KEY…).
     const sent = new Set((metadata.bindings as { name: string }[]).map((b) => b.name));
@@ -432,7 +432,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
   if (id === 'login:reset') {
     // The backend seeds the default login provider from DEFAULT_IDP_* once,
     // at the first login. Clearing that seeded row makes it re-seed from the
-    // current settings — a no-op on a fresh install, and how a changed login
+    // current settings - a no-op on a fresh install, and how a changed login
     // provider (e.g. Google's scopes) takes effect on an existing one. It's
     // only the platform-default row: org-specific providers are untouched.
     await cf.queryD1(accountId, state.resources.d1['arcanum-backend'], "DELETE FROM identity_providers WHERE org_id = 'default'");
@@ -442,7 +442,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
   if (id === 'verify') {
     // Through the Cloudflare API only: a Worker can't fetch another Worker
     // of the same account via its workers.dev URL (Cloudflare error 1042,
-    // seen as a 404) — the setup page checks it's live from the browser.
+    // seen as a 404) - the setup page checks it's live from the browser.
     const missing: string[] = [];
     for (const w of release.blueprint.workers) if (!(await cf.scriptExists(accountId, deployedName(state, w.name)))) missing.push(deployedName(state, w.name));
     if (missing.length) throw new Error(s.stillMissing(missing.join(', ')));

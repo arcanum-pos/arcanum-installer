@@ -167,7 +167,7 @@ describe('the direct switch', () => {
 describe('stage and test sign-in', () => {
   beforeEach(install);
 
-  it('stages the new provider after the same checks as step 2 — nothing is applied', async () => {
+  it('stages the new provider after the same checks as step 2 - nothing is applied', async () => {
     const wrong = await stage({ ...NEW_PROVIDER, clientSecret: 'fout' });
     expect(wrong.status).toBe(400);
     expect(wrong.body.error).toMatch(/secret/i);
@@ -309,7 +309,7 @@ describe('apply', () => {
     for (const params of backendDb().params) expect(params.length).toBeLessThanOrEqual(6);
   });
 
-  it('refuses when the tester has no membership in Arcanum — and changes nothing', async () => {
+  it('refuses when the tester has no membership in Arcanum - and changes nothing', async () => {
     await db().prepare("DELETE FROM memberships WHERE id = 'm1'").run();
     const before = await rows();
     await stageAndTest();
@@ -463,7 +463,7 @@ describe("the installer's own address during a change", () => {
 describe('back to login.kaboutersoft.be ("Terug naar …")', () => {
   beforeEach(install);
 
-  it("after a move to another provider, one click stages this installation's own client again — callbacks registered, tested, applied — and the installer signs in with it again", async () => {
+  it("after a move to another provider, one click stages this installation's own client again - callbacks registered, tested, applied - and the installer signs in with it again", async () => {
     await stageAndTest();
     expect((await call('POST', '/api/login-change/apply', {})).status).toBe(200);
     const away = (await call('GET', '/api/status')).body;

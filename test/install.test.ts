@@ -436,7 +436,7 @@ describe('login provider options', () => {
     expect(fakes.cf.d1.size).toBe(d1);
   });
 
-  it("a setting that's no longer set leaves the Worker too — Cloudflare keeps secrets an upload doesn't mention", async () => {
+  it("a setting that's no longer set leaves the Worker too - Cloudflare keeps secrets an upload doesn't mention", async () => {
     await configure();
     await call('POST', '/api/login-provider', { issuer: 'https://login.test', clientId: 'arcanum-client', scopes: 'openid profile email' });
     expect((await runAll()).failed).toBeNull();
@@ -477,7 +477,7 @@ describe('login provider options', () => {
 });
 
 describe("the bff's own login provider settings", () => {
-  it('a release whose bff declares DEFAULT_IDP_* gets the same values as the backend — the secret only as a Worker secret', async () => {
+  it('a release whose bff declares DEFAULT_IDP_* gets the same values as the backend - the secret only as a Worker secret', async () => {
     await configure();
     expect((await runAll()).failed).toBeNull();
     expect(binding('arcanum-bff', 'DEFAULT_IDP_CLIENT_SECRET')).toBeUndefined(); // 0.1.1's bff doesn't declare them
@@ -589,7 +589,7 @@ describe('resilience', () => {
     expect(binding('arcanum-backend', 'DB').id).toBe('d1-existing');
   });
 
-  it("verifies through the Cloudflare API — never by fetching its own workers.dev address (Cloudflare blocks that, error 1042)", async () => {
+  it("verifies through the Cloudflare API - never by fetching its own workers.dev address (Cloudflare blocks that, error 1042)", async () => {
     await configure();
     const run = await runAll();
     expect(run.failed, run.detail).toBeNull();
@@ -653,7 +653,7 @@ describe('secrets', () => {
     for (const value of [TOKEN, CLIENT_SECRET, ...generated.filter((v: string) => v.length > 20)]) expect(all).not.toContain(value);
   });
 
-  it('without "onthouden", keeps the token only for the session — a new session must paste it again', async () => {
+  it('without "onthouden", keeps the token only for the session - a new session must paste it again', async () => {
     await configure({ remember: false });
     await call('POST', '/api/steps/secrets', {});
     await call('POST', '/api/logout', {});
@@ -726,7 +726,7 @@ describe("behind Arcanum (the installer's own address)", () => {
     expect((await runAll({ origin: DIRECT })).failed).toBeNull();
   }
 
-  it("isn't linked while the bff can't forward the installer — nothing to close then", async () => {
+  it("isn't linked while the bff can't forward the installer - nothing to close then", async () => {
     await configure();
     expect((await runAll()).failed).toBeNull();
     expect(binding('arcanum-bff', 'ARCANUM_INSTALLER_SERVICE')).toBeUndefined();
@@ -753,7 +753,7 @@ describe("behind Arcanum (the installer's own address)", () => {
     expect(installerKey()).toBe(key);
   });
 
-  it('lets admins in through Arcanum — and nobody else', async () => {
+  it('lets admins in through Arcanum - and nobody else', async () => {
     await installAndUpdate();
     const key = installerKey();
     const ok = await call('GET', '/api/status', undefined, false, viaArcanum(key));
@@ -914,7 +914,7 @@ describe('the installation admins', () => {
 describe('the installation’s mail', () => {
   const BREVO = { provider: 'brevo', apiKey: 'xkeysib-secret-1', fromAddress: 'noreply@scouts.test' };
 
-  it('before installing: saved, given to the backend with the install — never shown back', async () => {
+  it('before installing: saved, given to the backend with the install - never shown back', async () => {
     await configure();
     const saved = await call('POST', '/api/mail', BREVO);
     expect(saved.status).toBe(200);
@@ -1036,7 +1036,7 @@ describe('the installation’s SMS', () => {
   const SID = 'AC' + '1'.repeat(32);
   const TWILIO = { accountSid: SID, authToken: 'twilio-token', sender: 'KABOUTERS', countries: '+32, 31', dailyCap: '150' };
 
-  it('checked with Twilio, saved, given to the backend with the install — the token never shown back', async () => {
+  it('checked with Twilio, saved, given to the backend with the install - the token never shown back', async () => {
     await configure();
     const wrong = await call('POST', '/api/sms', { ...TWILIO, authToken: 'nope' });
     expect(wrong.status).toBe(400);

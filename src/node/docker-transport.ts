@@ -8,7 +8,7 @@ import type { DockerResponse, DockerTransport } from '../docker/client';
 // on containerd), which has none: the installer can't manage containers there.
 export function noEngine(socketPath: string, code: string): Error {
   return new Error(
-    `No container engine at ${socketPath} (${code}). The installer needs the Docker or Podman API socket — nerdctl has none: with Rancher Desktop, choose the container engine "dockerd (moby)"; with Podman, start podman.socket and set DOCKER_SOCKET (see the compose page).`
+    `No container engine at ${socketPath} (${code}). The installer needs the Docker or Podman API socket - nerdctl has none: with Rancher Desktop, choose the container engine "dockerd (moby)"; with Podman, start podman.socket and set DOCKER_SOCKET (see the compose page).`
   );
 }
 

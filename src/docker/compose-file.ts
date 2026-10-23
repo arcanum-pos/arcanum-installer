@@ -97,7 +97,7 @@ export function composeYaml(specs: ContainerSpec[], installer: ComposeInstaller,
   const services = specs.map((spec) => serviceYaml(spec, { ...envMap(spec.config.Env as string[]), ...(extraEnv[spec.name] ?? {}) }));
   const volumes = specs.filter((s) => s.volume).map((s) => `  ${q(s.volume!)}:\n    name: ${q(s.volume!)}`);
   return [
-    '# tresjr with compose — written by its installer (Instellingen there):',
+    '# tresjr with compose - written by its installer (Instellingen there):',
     '# every container, and the installer itself. Run `compose up -d` in this',
     '# folder after the installer asks you to. Your own additions go in',
     '# compose.override.yaml: this file is written anew.',

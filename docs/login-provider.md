@@ -13,9 +13,9 @@ anything.
 
 ## The two ways to sign in
 
-- **In the browser** — the console, and a kassa where someone types their
+- **In the browser** - the console, and a kassa where someone types their
   password (the OAuth *authorization code* flow).
-- **With a QR code** — the sign-in screen of a kassa or customer display
+- **With a QR code** - the sign-in screen of a kassa or customer display
   shows a QR code; you scan it with your phone and sign in there (the OAuth
   *device code* flow). Nobody types a password into a shared device.
 
@@ -26,8 +26,8 @@ client** for the QR sign-in.
 
 | Field | What to fill in |
 |---|---|
-| **Issuer-URL** | The provider's issuer, e.g. `https://accounts.google.com`. Arcanum reads `<issuer>/.well-known/openid-configuration` from it — it must offer the device code flow too (a `device_authorization_endpoint`). |
-| **Client ID / Client secret** | The client for signing in **in the browser** — and for the QR sign-in too, unless you fill in a separate one. |
+| **Issuer-URL** | The provider's issuer, e.g. `https://accounts.google.com`. Arcanum reads `<issuer>/.well-known/openid-configuration` from it - it must offer the device code flow too (a `device_authorization_endpoint`). |
+| **Client ID / Client secret** | The client for signing in **in the browser** - and for the QR sign-in too, unless you fill in a separate one. |
 | **Scopes** (optional) | Empty = `openid profile email offline_access`. Google refuses `offline_access`: there it becomes `openid profile email` by itself. |
 | **Separate client for the QR sign-in** (optional, folded away) | Only if your provider needs a separate client for the device code flow (Google). Empty = the client above does it. |
 
@@ -37,7 +37,7 @@ shows them with your installation's own address):
 - **Callback / redirect URI:** `https://<your address>/callback`
 - **Sign-out / post-logout redirect URI:** `https://<your address>`
 
-People are recognised by the e-mail address the provider gives — it must be
+People are recognised by the e-mail address the provider gives - it must be
 **verified** by the provider (an invite only activates for a verified
 address).
 
@@ -98,5 +98,5 @@ client. If the installer's test refuses it, its message says why.
 Once Arcanum is installed, every member is tied to the provider (and
 client) they first signed in with. Another provider or client therefore goes
 through **Aanmelding wijzigen**: you set it up, test it with a real sign-in,
-and only then apply it — nobody gets locked out, and it can be undone for 7
+and only then apply it - nobody gets locked out, and it can be undone for 7
 days. A new secret or other scopes for the same client save directly.

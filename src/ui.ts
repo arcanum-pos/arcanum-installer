@@ -23,7 +23,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
 <head>
 <script>
 // Light or dark as chosen in the console (Instellingen → Weergave): the same
-// address behind Arcanum, so the same choice — "system" (or none): the system's.
+// address behind Arcanum, so the same choice - "system" (or none): the system's.
 (function () {
   var apply = function () {
     var t = null;
@@ -53,7 +53,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
     color-scheme: light;
   }
   /* Dark: the console's choice (Instellingen → Weergave, data-theme set from
-     arcanum-admin-theme below) — or, without one, the system's. */
+     arcanum-admin-theme below) - or, without one, the system's. */
   :root[data-theme="dark"] {
     --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0); --card: oklch(0.205 0 0); --primary: oklch(0.922 0 0); --primary-foreground: oklch(0.205 0 0);
     --secondary: oklch(0.269 0 0); --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0); --destructive: oklch(0.704 0.191 22.216);
@@ -72,7 +72,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   body { margin: 0; min-height: 100svh; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; padding: 32px 16px 24px; display: flex; flex-direction: column; }
   main { width: 100%; max-width: 42rem; margin: 0 auto; display: grid; gap: 16px; flex: 1; align-content: start; }
   a { color: var(--foreground); text-underline-offset: 4px; }
-  /* Header — like KioskShell: brand mark, then the page title. */
+  /* Header - like KioskShell: brand mark, then the page title. */
   header { display: grid; justify-items: center; gap: 6px; text-align: center; margin-bottom: 8px; }
   .brand { display: flex; align-items: center; gap: 8px; font-size: 1.5rem; }
   .brand img { width: 1em; height: 1em; object-fit: contain; }
@@ -90,14 +90,14 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   .soft { color: var(--muted-foreground); }
   p { margin: 4px 0; }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; background: var(--muted); border-radius: calc(var(--radius) * 0.6); padding: 1px 6px; word-break: break-all; }
-  /* Card — rounded-xl, ring-1 ring-foreground/10, 16px spacing. */
+  /* Card - rounded-xl, ring-1 ring-foreground/10, 16px spacing. */
   .card { background: var(--card); border-radius: calc(var(--radius) * 1.4); box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent); padding: 16px; display: grid; gap: 8px; }
   .card h2 { font-size: 1rem; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 8px; }
   .done > h2::after { content: "${p.done}"; font-size: 0.75rem; font-weight: 500; color: var(--success); border: 1px solid color-mix(in oklch, var(--success) 40%, transparent); border-radius: 999px; padding: 0 8px; line-height: 1.4rem; }
   form { display: grid; gap: 6px; }
   label { font-weight: 500; margin-top: 6px; }
   label.check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
-  /* Input — h-8, rounded-lg, border-input. */
+  /* Input - h-8, rounded-lg, border-input. */
   input[type=text], input[type=password], input[type=url], input[type=number], input[type=email], input[type=tel], select { height: 2rem; width: 100%; border: 1px solid var(--input); border-radius: var(--radius); background: transparent; color: var(--foreground); padding: 0 10px; font: inherit; outline: none; transition: border-color .15s, box-shadow .15s; }
   /* A file to pick (Google's service account JSON). */
   input[type=file] { font: inherit; font-size: 13px; color: var(--muted-foreground); }
@@ -106,7 +106,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   input::placeholder { color: var(--muted-foreground); }
   input:focus-visible, select:focus-visible, button:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent); }
   input[type=checkbox] { accent-color: var(--primary); width: 16px; height: 16px; }
-  /* Button — default and outline variants. */
+  /* Button - default and outline variants. */
   button { justify-self: start; height: 2rem; padding: 0 10px; border-radius: var(--radius); border: 1px solid transparent; background: var(--primary); color: var(--primary-foreground); font: inherit; font-weight: 500; cursor: pointer; margin-top: 8px; transition: background .15s; }
   button:hover { background: color-mix(in oklch, var(--primary) 80%, transparent); }
   button:active { transform: translateY(1px); }
@@ -143,7 +143,7 @@ const render = (lang: Locale, p: Messages['page'], texts: string) => /* html */ 
   .failed .icon::before { content: "✕"; color: var(--destructive); font-weight: 700; }
   ol.steps .detail { color: var(--muted-foreground); }
   ol.steps li.failed .detail { color: var(--destructive); }
-  /* Footer — like the console's. */
+  /* Footer - like the console's. */
   footer { display: flex; align-items: center; justify-content: center; gap: 8px; border-top: 1px solid var(--border); margin-top: 32px; padding-top: 12px; font-size: 12px; color: var(--muted-foreground); flex-wrap: wrap; }
   footer img { width: 20px; height: 20px; object-fit: contain; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme]) footer img { filter: invert(1); } }
@@ -424,7 +424,7 @@ document.addEventListener('click', (e) => {
 });
 
 // The language: ?lang= or the browser's (the server's choice), unless one was
-// picked before in this browser (NL · FR · EN) — then back with that one.
+// picked before in this browser (NL · FR · EN) - then back with that one.
 const LOCALE_KEY = 'arcanum-installer-locale';
 const pageParams = new URLSearchParams(location.search);
 let picked = null; try { picked = localStorage.getItem(LOCALE_KEY); } catch {}
@@ -490,7 +490,7 @@ $('[data-run]').classList.add('big');
 function render() {
   const s = status;
   // Which release this installer itself came from (INSTALLER_RELEASE): after
-  // an update it shows the new one — the proof it updated itself.
+  // an update it shows the new one - the proof it updated itself.
   // The kind of installation and its channel, when not the default (set by the bootstrapper).
   const kind = s.instance && s.instance.kind === 'admins' ? M.kindAdmins : s.instance && s.instance.kind === 'internal' ? M.kindDemo : '';
   const channel = s.instance && s.instance.channel === 'dev' ? M.channelDev : '';
@@ -519,7 +519,7 @@ function render() {
   $('[data-quick-url]').textContent = s.address ? s.address.publicUrl : '';
   $('[data-quick-account-label]').textContent = s.docker ? M.dockerAccountLabel : kube ? M.kubeAccountLabel : M.cloudflareAccountLabel;
   $('[data-quick-account]').textContent = s.docker ? (s.docker.compose ? fmt(M.composeAccountValue, { command: s.docker.command }) : M.dockerAccountValue) : kube ? kube.namespace : s.cloudflare ? s.cloudflare.accountName : '';
-  // Compose mode: written, not applied yet — the owner's turn (after a reload too).
+  // Compose mode: written, not applied yet - the owner's turn (after a reload too).
   composeWaiting(!!(s.docker && s.docker.compose && s.steps.some((x) => x.id === 'compose:write' && x.status === 'done') && s.steps.some((x) => x.id === 'compose:apply' && x.status !== 'done')));
   $('[data-quick-admins]').textContent = s.admins || '';
   if (s.login) {
@@ -535,7 +535,7 @@ function render() {
   for (const step of s.steps) {
     const li = document.createElement('li'); li.className = step.status; li.dataset.id = step.id;
     li.innerHTML = '<span class="icon"></span><span><span class="title"></span> <span class="detail"></span></span>';
-    $('.title', li).textContent = step.title; $('.detail', li).textContent = step.detail ? '— ' + step.detail : '';
+    $('.title', li).textContent = step.title; $('.detail', li).textContent = step.detail ? '- ' + step.detail : '';
     list.append(li);
   }
   // The version is chosen right here, when Installeren is clicked.
@@ -575,7 +575,7 @@ function render() {
 }
 
 // Geavanceerd → E-mail (mail.ts): the fields follow the chosen service;
-// a key or password is never shown — left empty, the saved one is kept.
+// a key or password is never shown - left empty, the saved one is kept.
 // The services and their fields come with the status (mail.ts MAIL_SERVICES).
 let mailFieldsFor = null;
 function mailFields(provider, s) {
@@ -616,7 +616,7 @@ function serviceAccountPicker(id, name, saved) {
 }
 
 // Cloudflare Email Service: offered only when this account has a domain
-// onboarded for sending (api/mail/cloudflare, asked once per page) — or
+// onboarded for sending (api/mail/cloudflare, asked once per page) - or
 // when it's what's saved. Otherwise a line says what's missing.
 let cfSending = null, cfAsked = false;
 function cfDomains() { return (cfSending && cfSending.domains) || []; }
@@ -661,11 +661,11 @@ $('[data-mail-test]').addEventListener('click', async (e) => {
     const res = await fetch('../api/organizations/mail-test', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(to ? { to } : {}) });
     const r = await res.json().catch(() => ({}));
     note.textContent = res.ok && r.ok ? fmt(M.mailTestOk, { to: r.to || '' }) : fmt(M.mailTestFailed, { code: r.code || res.status, detail: r.detail || r.error || '' });
-  } catch (err) { note.textContent = fmt(M.mailTestFailed, { code: '—', detail: err.message }); }
+  } catch (err) { note.textContent = fmt(M.mailTestFailed, { code: '-', detail: err.message }); }
   finally { e.target.disabled = false; }
 });
 
-// Geavanceerd → Sms (sms.ts): Twilio's settings; the token never shown —
+// Geavanceerd → Sms (sms.ts): Twilio's settings; the token never shown -
 // left empty, the saved one is kept. A test SMS goes straight to Twilio.
 let smsFilled = false;
 function renderSms(s) {
@@ -714,7 +714,7 @@ function peopleList(el, title, people) {
   if (!people || !people.length) return;
   const p = document.createElement('p'); p.textContent = fmt(M.people, { title, count: people.length }); el.append(p);
   const ul = document.createElement('ul'); ul.className = 'people';
-  for (const x of people) { const li = document.createElement('li'); li.textContent = x.email + ' — ' + x.org + ' (' + x.role + ')'; ul.append(li); }
+  for (const x of people) { const li = document.createElement('li'); li.textContent = x.email + ' - ' + x.org + ' (' + x.role + ')'; ul.append(li); }
   el.append(ul);
 }
 const orgsOf = (people) => people.map((x) => x.org + ' (' + x.role + ')').join(', ');
@@ -731,7 +731,7 @@ function renderChange(c) {
   $('[data-change-applied]').classList.toggle('hidden', !c.applied);
   if (c.staged) {
     $('[data-change-to]').textContent = c.staged.issuer; $('[data-change-client]').textContent = c.staged.clientId;
-    $('[data-change-from]').textContent = c.current ? c.current.issuer : '—'; $('[data-change-browser-client]').textContent = c.staged.browserClientId;
+    $('[data-change-from]').textContent = c.current ? c.current.issuer : '-'; $('[data-change-browser-client]').textContent = c.staged.browserClientId;
     const ul = $('[data-change-callbacks]'); ul.innerHTML = '';
     for (const u of c.callbackUrls) { const li = document.createElement('li'); const code = document.createElement('code'); code.textContent = u; li.append(code); ul.append(li); }
     const t = c.test;
@@ -781,7 +781,7 @@ $('[data-change-undo]').addEventListener('click', () => changeAction('api/login-
 $('[data-change-cancel]').addEventListener('click', () => changeAction('api/login-change/cancel'));
 
 // The installer's own address. Linked to Arcanum when the bff is deployed;
-// its own address goes off with the first visit through Arcanum — which is
+// its own address goes off with the first visit through Arcanum - which is
 // where "Open je Arcanum" passes by (?naar=console), on its way to the
 // console. Geavanceerd can switch it back on, and off again (through Arcanum).
 let publicAccess = null;
@@ -818,7 +818,7 @@ $('[data-public-close]').addEventListener('click', () => publicAction('api/publi
 
 // "Open je Arcanum": the console. On the installer's own address, while
 // that's still to be closed, by way of the installer behind Arcanum (sign
-// in, close, on to the console) — decided when it's clicked, from the
+// in, close, on to the console) - decided when it's clicked, from the
 // state right then. Always in this tab: on the own address this page stops
 // working; behind Arcanum the console is the same site (a new tab would only
 // pile up tabs going back and forth).
@@ -845,7 +845,7 @@ $('[data-open]').addEventListener('click', toConsole);
 $('[data-back]').addEventListener('click', toConsole);
 
 // Arrived from "Open je Arcanum" (through Arcanum): close the own address,
-// then on to the console — whatever happens, the console is where this goes.
+// then on to the console - whatever happens, the console is where this goes.
 async function moveAndOpenConsole() {
   $('#moving').classList.remove('hidden');
   try {
@@ -893,12 +893,12 @@ document.addEventListener('input', (ev) => { if (ev.target.id === 'issuer') goog
 async function refresh() { status = await api('api/status'); render(); }
 
 // A self-hosted installer that's restarting (its own update): no answer, or a
-// gateway's 502/503/504 — not an error, it's back in a moment.
+// gateway's 502/503/504 - not an error, it's back in a moment.
 function restarting(e) {
   return !!(status && (status.kubernetes || status.docker)) && (!e.data || [502, 503, 504].includes(e.status));
 }
 
-// The status again — waiting (up to two minutes) while the installer restarts.
+// The status again - waiting (up to two minutes) while the installer restarts.
 async function refreshWhenBack() {
   for (let attempt = 0; ; attempt++) {
     try { return await refresh(); } catch (e) {
@@ -1008,13 +1008,13 @@ async function runAll() {
       for (let attempt = 0; ; attempt++) {
         const li = $('[data-id="' + CSS.escape(step.id) + '"]'); if (li) li.className = 'running';
         // Self-hosted: the installer itself restarts on an update (its own
-        // step, or compose up -d) — what's in front of it answers 502 or drops
+        // step, or compose up -d) - what's in front of it answers 502 or drops
         // the connection meanwhile: keep asking.
         const r = await api('api/step', { id: step.id }).catch((e) => { if (restarting(e)) return { status: 'retry', detail: '…' }; throw e; });
         if (step.id === 'compose:apply') composeWaiting(r.status !== 'done');
         if (r.status === 'done') break;
         // Self-hosted: a first download of the images can take a few minutes.
-        if (r.status === 'retry' && attempt < (status.kubernetes ? 60 : status.docker ? (status.docker.compose ? 300 : 120) : 20)) { progress(at + ' — ' + r.detail + M.retryIn); if (li) { li.className = 'retry'; $('.detail', li).textContent = '— ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
+        if (r.status === 'retry' && attempt < (status.kubernetes ? 60 : status.docker ? (status.docker.compose ? 300 : 120) : 20)) { progress(at + ' - ' + r.detail + M.retryIn); if (li) { li.className = 'retry'; $('.detail', li).textContent = '- ' + r.detail + M.retryIn; } await new Promise(res => setTimeout(res, 6000)); continue; }
         await refresh(); throw new Error(fmt(M.stepFailed, { title: step.title, detail: r.detail }));
       }
       // The new installer takes over from the next request: give Cloudflare a moment.
