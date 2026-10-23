@@ -90,9 +90,11 @@ export const bffSupportsInstaller = (descriptor: WorkerDescriptor) => 'INSTALLER
 // The optional secrets this installer sets itself (from its own settings),
 // and so also removes once they no longer apply.
 // Secrets a Worker got from an older release and no longer needs, removed
-// on its next upload (an upload keeps what it doesn't mention). The
-// backend only needs the login provider's issuer since MAIL.md decision 6:
-// its client id and secret belong to the bff alone.
+// on its next upload (an upload keeps what it doesn't mention) — unless the
+// release gives them again. The backend needs no sign-in settings of its
+// own (MAIL.md decision 6); its client id and secret came back with
+// restricted clients (only to tell arcanum-auth who's invited), so a release
+// that declares them keeps them.
 export const RETIRED_SECRETS: Record<string, string[]> = {
   'arcanum-backend': [
     'DEFAULT_IDP_CLIENT_ID',
