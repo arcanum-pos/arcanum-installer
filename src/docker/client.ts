@@ -33,13 +33,16 @@ export function splitImage(ref: string): { name: string; tag: string } {
 // A container's log stream without a TTY: frames of [stream, 0, 0, 0, size×4, bytes].
 export function demuxLogs(bytes: Uint8Array): string {
   if (bytes.length < 8 || bytes[1] !== 0 || bytes[2] !== 0 || bytes[3] !== 0 || bytes[0] > 2) return new TextDecoder().decode(bytes);
+  // One decoder across frames: a character's bytes may straddle two of them.
+  // Sizes unsigned: one of 2 GB or more must not step back (a loop forever).
+  const decoder = new TextDecoder();
   let out = '';
   for (let i = 0; i + 8 <= bytes.length; ) {
-    const size = (bytes[i + 4] << 24) | (bytes[i + 5] << 16) | (bytes[i + 6] << 8) | bytes[i + 7];
-    out += new TextDecoder().decode(bytes.slice(i + 8, i + 8 + size));
+    const size = ((bytes[i + 4] << 24) | (bytes[i + 5] << 16) | (bytes[i + 6] << 8) | bytes[i + 7]) >>> 0;
+    out += decoder.decode(bytes.slice(i + 8, i + 8 + size), { stream: true });
     i += 8 + size;
   }
-  return out;
+  return out + decoder.decode();
 }
 
 export class Docker {
