@@ -1,5 +1,7 @@
 # arcanum-installer
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/arcanum-pos/arcanum-installer/badge)](https://scorecard.dev/viewer/?uri=github.com/arcanum-pos/arcanum-installer)
+
 Installs [Arcanum](https://github.com/arcanum-pos) — kassa, customer
 display, admin portal — on **your own** Cloudflare account, so your data
 lives there and nowhere else. It deploys the five Arcanum Workers from a
