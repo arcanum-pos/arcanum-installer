@@ -6,7 +6,7 @@
 # to the engine through its socket. Everything else it does itself.
 # The bundle is plain JavaScript: built once, on the build machine's own
 # platform; only the image below is per architecture (amd64, arm64).
-FROM --platform=$BUILDPLATFORM node:24-alpine AS build
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS build
 WORKDIR /src
 # An empty /data for the image below (it has no mkdir).
 RUN mkdir -p /data
@@ -19,7 +19,7 @@ RUN npm run build:node
 # shell, no package manager: less to patch). Node is its entrypoint. As uid
 # 1000, like the Alpine image before (the installer runs it so; existing data
 # volumes belong to it).
-FROM gcr.io/distroless/nodejs24-debian13
+FROM gcr.io/distroless/nodejs24-debian13@sha256:51eee69b25037942014428da85f5b436a4d88f283e545981d03f25b7db72469a
 LABEL org.opencontainers.image.source="https://github.com/arcanum-pos/arcanum-installer" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later" \
       org.opencontainers.image.description="tresjr installer — installs and updates tresjr on Kubernetes or with Docker / Podman"

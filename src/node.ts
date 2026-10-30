@@ -22,7 +22,7 @@
 // socket — the compose folder mounted at /project (COMPOSE_DIR), which it
 // writes; COMPOSE_COMMAND what the owner runs there (default `docker compose up -d`).
 import { serve } from '@hono/node-server';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { Docker } from './docker/client';
 import { FileKV } from './node/file-kv';
 import { dockerTransport } from './node/docker-transport';
@@ -40,9 +40,13 @@ export const DEFAULT_RELEASES_INDEX = 'https://raw.githubusercontent.com/arcanum
 function stateKeyOf(environment: NodeJS.ProcessEnv, dataDir: string): string {
   if (environment.INSTALLER_STATE_KEY) return environment.INSTALLER_STATE_KEY;
   const file = `${dataDir}/installer-state.key`;
-  if (!existsSync(file)) {
-    mkdirSync(dataDir, { recursive: true });
+  mkdirSync(dataDir, { recursive: true });
+  try {
+    // 'wx': only when there's none yet - never over an existing key, even
+    // when two starts race for it.
     writeFileSync(file, btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(48)))), { mode: 0o600, flag: 'wx' });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
   }
   return readFileSync(file, 'utf8').trim();
 }
