@@ -55,6 +55,7 @@ export class FakeCloudflare {
   assets = new Set<string>(); // uploaded hashes
   sessions = new Map<string, { needed: Set<string>; completion: string }>();
   completionJwts = new Set<string>();
+  consumedJwts = new Set<string>(); // like Cloudflare: a completion token is good for one upload
   failures: { match: RegExp; message: string }[] = [];
   // Secrets removed one by one (DELETE …/secrets/:name).
   secretDeletes: { script: string; name: string }[] = [];
@@ -306,7 +307,12 @@ export class FakeCloudflare {
       this.migrationTags.set(name, metadata.migrations.new_tag);
     }
     this.doClasses.set(name, classes);
+    if (metadata.assets && this.consumedJwts.has(metadata.assets.jwt)) return fail(400, 'Completion token has already been consumed', 100312);
     if (metadata.assets && !this.completionJwts.has(metadata.assets.jwt)) return fail(400, 'Invalid assets completion token', 10401);
+    if (metadata.assets) {
+      this.completionJwts.delete(metadata.assets.jwt);
+      this.consumedJwts.add(metadata.assets.jwt);
+    }
     // Like Cloudflare: a secret the new upload doesn't mention stays on the Worker.
     const sent = new Set((metadata.bindings ?? []).map((b: any) => b.name));
     const kept = (this.scripts.get(name)?.metadata.bindings ?? []).filter((b: any) => b.type === 'secret_text' && !sent.has(b.name));

@@ -364,6 +364,7 @@ const nl = {
     files: (count: number) => `${count} bestanden`,
     notInRelease: (name: string) => `${name} hoort niet bij deze release`,
     assetsIncomplete: 'De schermen zijn nog niet volledig geüpload',
+    assetsAgain: 'Niet alle schermbestanden staan nog bij Cloudflare - start de installatie opnieuw om ze te uploaden',
     domainFailed: (domain: string, error: string) => `Het domein ${domain} kon niet gekoppeld worden: ${error}. `,
     domainDenied: 'Geef het token ook rechten op die zone (Zone: Read en Workers Routes: Edit) en probeer opnieuw.',
     domainZone: 'Het domein moet in een zone van dit Cloudflare-account staan.',

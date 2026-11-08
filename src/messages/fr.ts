@@ -348,6 +348,7 @@ export default {
     files: (count: number) => `${count} fichiers`,
     notInRelease: (name: string) => `${name} ne fait pas partie de cette version`,
     assetsIncomplete: 'Les écrans ne sont pas encore entièrement envoyés',
+    assetsAgain: 'Certains fichiers des écrans manquent chez Cloudflare - relancez l’installation pour les envoyer',
     domainFailed: (domain: string, error: string) => `Le domaine ${domain} n’a pas pu être associé : ${error}. `,
     domainDenied: 'Donnez aussi au jeton des permissions sur cette zone (Zone: Read et Workers Routes: Edit) et réessayez.',
     domainZone: 'Le domaine doit se trouver dans une zone de ce compte Cloudflare.',

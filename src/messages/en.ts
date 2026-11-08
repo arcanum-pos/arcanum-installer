@@ -348,6 +348,7 @@ export default {
     files: (count: number) => `${count} files`,
     notInRelease: (name: string) => `${name} is not part of this release`,
     assetsIncomplete: 'The screens have not been fully uploaded yet',
+    assetsAgain: 'Some screen files are no longer on Cloudflare - run the installation again to upload them',
     domainFailed: (domain: string, error: string) => `The domain ${domain} could not be linked: ${error}. `,
     domainDenied: 'Give the token rights on that zone too (Zone: Read and Workers Routes: Edit) and try again.',
     domainZone: 'The domain has to be in a zone of this Cloudflare account.',

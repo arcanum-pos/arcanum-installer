@@ -153,6 +153,38 @@ export interface StepContext {
 export type StepOutcome = { status: 'done' | 'retry'; detail?: string };
 
 const ASSET_SESSION_MAX_AGE_MS = 50 * 60 * 1000; // upload JWTs are valid for an hour
+// Cloudflare: "Completion token has already been consumed".
+const COMPLETION_CONSUMED = 100312;
+
+const assetSessionStale = (assets: NonNullable<InstallerState['assets']>) => Date.now() - Date.parse(assets.startedAt) > ASSET_SESSION_MAX_AGE_MS;
+
+// A new upload session for the release's screens: which files Cloudflare
+// still needs. None: its token is already the completion token.
+async function startAssetSession(ctx: StepContext): Promise<string[]> {
+  const { state, cf } = ctx;
+  const release = state.release!;
+  const assetWorker = release.blueprint.workers.find((w) => w.assets)!;
+  const manifest = await fetchReleaseJson<{ files: Record<string, { hash: string; size: number }> }>(release.manifestUrl, release.manifest, release.blueprint.assetManifest!);
+  const paths = Object.keys(manifest.files);
+  state.probePath = paths.find((p) => /^\/assets\/kabouter[^/]*\.png$/.test(p)) ?? paths.find((p) => /^\/assets\/.*\.(png|svg)$/.test(p));
+  const session = await cf.assetsUploadSession(
+    state.cloudflare!.accountId,
+    deployedName(state, assetWorker.name),
+    Object.fromEntries(Object.entries(manifest.files).map(([path, f]) => [path, { hash: f.hash, size: f.size }]))
+  );
+  const needed = (session.buckets ?? []).flat();
+  state.assets = { jwt: session.jwt, needed, startedAt: new Date().toISOString(), ...(needed.length === 0 ? { completionJwt: session.jwt } : {}) };
+  return needed;
+}
+
+// A fresh completion token for files uploaded before. Should Cloudflare
+// miss some after all, the upload steps run again on the next try.
+async function renewCompletion(ctx: StepContext): Promise<string> {
+  const needed = await startAssetSession(ctx);
+  if (needed.length === 0) return ctx.state.assets!.completionJwt!;
+  for (const id of Object.keys(ctx.state.steps)) if (id.startsWith('assets:')) delete ctx.state.steps[id];
+  throw new Error(ctx.t.steps.assetsAgain);
+}
 
 export async function secretsOf(ctx: StepContext): Promise<Record<string, string>> {
   return ctx.state.secrets ? JSON.parse(await unsealValue(ctx.env, ctx.state, ctx.state.secrets)) : {};
@@ -340,17 +372,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
   }
 
   if (id === 'assets:session') {
-    const assetWorker = release.blueprint.workers.find((w) => w.assets)!;
-    const manifest = await fetchReleaseJson<{ files: Record<string, { hash: string; size: number }> }>(release.manifestUrl, release.manifest, release.blueprint.assetManifest!);
-    const paths = Object.keys(manifest.files);
-    state.probePath = paths.find((p) => /^\/assets\/kabouter[^/]*\.png$/.test(p)) ?? paths.find((p) => /^\/assets\/.*\.(png|svg)$/.test(p));
-    const session = await cf.assetsUploadSession(
-      accountId,
-      deployedName(state, assetWorker.name),
-      Object.fromEntries(Object.entries(manifest.files).map(([path, f]) => [path, { hash: f.hash, size: f.size }]))
-    );
-    const needed = (session.buckets ?? []).flat();
-    state.assets = { jwt: session.jwt, needed, startedAt: new Date().toISOString(), ...(needed.length === 0 ? { completionJwt: session.jwt } : {}) };
+    const needed = await startAssetSession(ctx);
     return { status: 'done', detail: needed.length === 0 ? s.allFilesThere : s.filesToUpload(needed.length) };
   }
 
@@ -358,7 +380,7 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     const chunk = id.slice(7);
     const assets = state.assets;
     if (!assets) throw new Error(s.prepareFirst);
-    if (Date.now() - Date.parse(assets.startedAt) > ASSET_SESSION_MAX_AGE_MS) throw new Error(s.uploadExpired);
+    if (assetSessionStale(assets)) throw new Error(s.uploadExpired);
     if (assets.completionJwt || assets.needed.length === 0) return { status: 'done', detail: s.nothingLeft };
     const manifest = await fetchReleaseJson<{ files: Record<string, { hash: string; contentType: string; chunk: string }> }>(release.manifestUrl, release.manifest, release.blueprint.assetManifest!);
     const inChunk = new Map(Object.values(manifest.files).filter((f) => f.chunk === chunk).map((f) => [f.hash, f.contentType]));
@@ -393,6 +415,11 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     }
     // Behind Arcanum: the bff forwards /installer/* to this installer.
     const linkInstaller = worker.public_entry && !!state.behindArcanum && bffSupportsInstaller(descriptor);
+    // A completion token is good for one upload (Cloudflare 100312 after
+    // that, or after an hour): this step run again - something after the
+    // upload failed, or the upload went through without us hearing back -
+    // asks for a new one.
+    if (worker.assets && state.assets?.completionJwt && (state.assets.used || assetSessionStale(state.assets))) await renewCompletion(ctx);
     const context = await installContext(ctx, name, secrets, linkInstaller, {
       currentMigrationTag: descriptor.durable_object_migrations.length ? await cf.getMigrationTag(accountId, script) : null,
       assetsJwt: worker.assets ? state.assets?.completionJwt : undefined,
@@ -400,7 +427,14 @@ export async function runStep(id: string, ctx: StepContext): Promise<StepOutcome
     if (worker.assets && !context.assetsJwt) throw new Error(s.assetsIncomplete);
     const metadata = uploadMetadata(descriptor, context);
     if (linkInstaller) (metadata.bindings as unknown[]).push({ type: 'service', name: 'ARCANUM_INSTALLER_SERVICE', service: state.behindArcanum!.script });
-    await cf.uploadScript(accountId, script, metadata, descriptor.modules ?? []);
+    try {
+      await cf.uploadScript(accountId, script, metadata, descriptor.modules ?? []);
+    } catch (err) {
+      if (!(worker.assets && err instanceof CloudflareError && err.code === COMPLETION_CONSUMED)) throw err;
+      (metadata.assets as { jwt: string }).jwt = await renewCompletion(ctx);
+      await cf.uploadScript(accountId, script, metadata, descriptor.modules ?? []);
+    }
+    if (worker.assets) state.assets!.used = true;
     // Cloudflare keeps a Worker's secrets that an upload doesn't mention: an
     // optional one this installer set before but no longer does (Google's
     // separate browser client and scopes after moving to another provider,

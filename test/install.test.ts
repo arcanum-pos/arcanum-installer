@@ -344,7 +344,7 @@ describe('fresh install', () => {
     await runAll();
     expect([...fakes.cf.assets].sort()).toEqual(['a'.repeat(32), 'b'.repeat(32), 'c'.repeat(32), 'd'.repeat(32)]);
     const assets = fakes.cf.scripts.get('arcanum-frontends')!.metadata.assets;
-    expect(fakes.cf.completionJwts.has(assets.jwt)).toBe(true);
+    expect(fakes.cf.consumedJwts.has(assets.jwt)).toBe(true);
   });
 
   it('uploads the module code as ES modules', async () => {
@@ -579,6 +579,48 @@ describe('resilience', () => {
     const second = await runAll();
     expect(second.failed).toBeNull();
     expect((await call('GET', '/api/status')).body.installed.version).toBe('0.1.1');
+  });
+
+  // Cloudflare 100312 "Completion token has already been consumed": the
+  // frontends were uploaded, something after it in the step failed, and the
+  // page continues from that step only.
+  it('frontends step run again after its upload went through: a new completion token, not the used one', async () => {
+    await configure();
+    fakes.cf.failOnce(/^POST \/accounts\/acc-1\/workers\/scripts\/arcanum-frontends\/subdomain$/, 'Workers API is druk');
+    const first = await runAll();
+    expect(first.failed).toBe('worker:arcanum-frontends');
+    const again = await call('POST', '/api/step', { id: 'worker:arcanum-frontends' });
+    expect(again.body.status, again.body.detail).toBe('done');
+    expect(fakes.cf.consumedJwts.size).toBe(2);
+    // And again after a full install.
+    expect((await call('POST', '/api/step', { id: 'worker:arcanum-frontends' })).body.status).toBe('done');
+  });
+
+  it('a completion token used without the installer knowing (the answer got lost): renewed on 100312', async () => {
+    await configure();
+    await runAll();
+    const status = (await call('GET', '/api/status')).body;
+    // The state as an installer before this fix left it: token kept, not marked used.
+    const state = await env.INSTALLER_STATE.get<any>('state', 'json');
+    delete state.assets.used;
+    await env.INSTALLER_STATE.put('state', JSON.stringify(state));
+    expect(status.steps.find((s: any) => s.id === 'worker:arcanum-frontends').status).toBe('done');
+    const again = await call('POST', '/api/step', { id: 'worker:arcanum-frontends' });
+    expect(again.body.status, again.body.detail).toBe('done');
+  });
+
+  it('files gone from Cloudflare meanwhile: the upload steps run again on the next try', async () => {
+    await configure();
+    await runAll();
+    fakes.cf.assets.delete('c'.repeat(32));
+    const again = await call('POST', '/api/step', { id: 'worker:arcanum-frontends' });
+    expect(again.body).toMatchObject({ status: 'failed' });
+    expect(again.body.detail).toMatch(/upload/i);
+    const status = (await call('GET', '/api/status')).body;
+    expect(status.steps.filter((s: any) => s.id.startsWith('assets:')).every((s: any) => s.status === 'todo')).toBe(true);
+    const rerun = await runAll();
+    expect(rerun.failed, rerun.detail).toBeNull();
+    expect(fakes.cf.assets.has('c'.repeat(32))).toBe(true);
   });
 
   it('adopts a database that already exists with the same name instead of failing', async () => {
