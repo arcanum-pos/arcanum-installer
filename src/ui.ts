@@ -892,18 +892,24 @@ document.addEventListener('input', (ev) => { if (ev.target.id === 'issuer') goog
 
 async function refresh() { status = await api('api/status'); render(); }
 
-// A self-hosted installer that's restarting (its own update): no answer, or a
-// gateway's 502/503/504 - not an error, it's back in a moment.
+// The installer out for a moment, not a failed step - every step is safe to
+// run again. Self-hosted: restarting (its own update): no answer, or a
+// gateway's 502/503/504. Cloudflare: the call cut off (the CPU limit, or the
+// installer or the bff being replaced during the update): no answer, or the
+// bff's 502 "Installer unavailable" / Cloudflare's 503. A step that failed
+// on its own answers 200 with its error and is never retried here.
 function restarting(e) {
-  return !!(status && (status.kubernetes || status.docker)) && (!e.data || [502, 503, 504].includes(e.status));
+  if (status && (status.kubernetes || status.docker)) return !e.data || [502, 503, 504].includes(e.status);
+  return e instanceof TypeError || [502, 503, 504].includes(e.status);
 }
+const selfHostedNow = () => !!(status && (status.kubernetes || status.docker));
 
 // The status again - waiting (up to two minutes) while the installer restarts.
 async function refreshWhenBack() {
   for (let attempt = 0; ; attempt++) {
     try { return await refresh(); } catch (e) {
       if (!restarting(e) || attempt >= 40) throw e;
-      progress(M.installerRestarting);
+      progress(selfHostedNow() ? M.installerRestarting : M.unreachable[0].toUpperCase() + M.unreachable.slice(1) + '…');
       await new Promise(res => setTimeout(res, 3000));
     }
   }
@@ -1010,7 +1016,7 @@ async function runAll() {
         // Self-hosted: the installer itself restarts on an update (its own
         // step, or compose up -d) - what's in front of it answers 502 or drops
         // the connection meanwhile: keep asking.
-        const r = await api('api/step', { id: step.id }).catch((e) => { if (restarting(e)) return { status: 'retry', detail: '…' }; throw e; });
+        const r = await api('api/step', { id: step.id }).catch((e) => { if (restarting(e)) return { status: 'retry', detail: selfHostedNow() ? '…' : M.unreachable }; throw e; });
         if (step.id === 'compose:apply') composeWaiting(r.status !== 'done');
         if (r.status === 'done') break;
         // Self-hosted: a first download of the images can take a few minutes.

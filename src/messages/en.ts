@@ -238,6 +238,7 @@ export default {
     noVersion: 'No version available - try again later.',
     retryIn: ' (again in 6 s)',
     installerRestarting: 'The installer is restarting with the new version…',
+    unreachable: 'the installer is briefly unreachable',
     progress: 'Step {n} of {total}: {title}…',
     stepFailed: '{title}: {detail}',
     // The installer's own address (Geavanceerd → Toegang tot de installer).

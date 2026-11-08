@@ -252,6 +252,7 @@ const nl = {
     noVersion: 'Geen versie beschikbaar - probeer straks opnieuw.',
     retryIn: ' (opnieuw over 6 s)',
     installerRestarting: 'De installer start opnieuw met de nieuwe versie…',
+    unreachable: 'de installer is even niet bereikbaar',
     progress: 'Stap {n} van {total}: {title}…',
     stepFailed: '{title}: {detail}',
     // The installer's own address (Geavanceerd → Toegang tot de installer).

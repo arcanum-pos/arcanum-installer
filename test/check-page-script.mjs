@@ -28,5 +28,23 @@ for (const lang of ['nl', 'fr', 'en']) {
     }
   }
   if (!html.includes(`<html lang="${lang}">`)) throw new Error(`${lang}: no <html lang="${lang}">`);
+  // Which failures the page retries by itself (a step's own error never).
+  const rule = scripts[1].match(/function restarting\(e\) \{[\s\S]*?\n\}/)[0];
+  const restarting = (platform, e) => new Function('status', `${rule}; return restarting`)(platform)(e);
+  const http = (status, data = {}) => Object.assign(new Error('x'), { status, data });
+  const cases = [
+    [{}, http(502, { error: 'Installer unavailable' }), true], // the bff: the installer cut off
+    [{}, http(503), true], // Cloudflare: the Worker over its limits
+    [{}, new TypeError('Failed to fetch'), true], // no answer at all
+    [{}, http(409, { error: 'token' }), false],
+    [{}, http(500, { error: 'bug' }), false],
+    [{}, new Error('Niet aangemeld'), false], // 401: signed out, not retried
+    [{ kubernetes: {} }, new Error('no answer'), true],
+    [{ docker: {} }, http(504), true],
+    [{ docker: {} }, http(409, { error: 'x' }), false],
+  ];
+  for (const [platform, e, expected] of cases) {
+    if (restarting(platform, e) !== expected) throw new Error(`${lang}: restarting(${JSON.stringify(platform)}, ${e.status ?? e.name}) should be ${expected}`);
+  }
 }
 console.log('setup page: the script parses in nl, fr and en');
