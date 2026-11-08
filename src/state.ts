@@ -210,8 +210,20 @@ export function normalizeLogin(login: LoginSettings): LoginSettings {
   return { ...rest, clientId: authCodeClientId, clientSecret: authCodeClientSecret, deviceClientId: clientId, deviceClientSecret: clientSecret };
 }
 
-export async function saveState(env: Env, state: InstallerState): Promise<void> {
-  await env.INSTALLER_STATE.put(KEY, JSON.stringify(state));
+// KV takes one write per second per key: steps that finish quickly one after
+// the other (nothing left to upload, say) hit "KV PUT failed: 429 Too Many
+// Requests". Wait and write again, instead of failing the request (behind
+// Arcanum the page then only sees the bff's "Installer unavailable").
+export async function saveState(env: Env, state: InstallerState, wait = (ms: number) => new Promise((r) => setTimeout(r, ms))): Promise<void> {
+  const value = JSON.stringify(state);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await env.INSTALLER_STATE.put(KEY, value);
+    } catch (err) {
+      if (attempt >= 5 || !/\b429\b/.test(String((err as Error)?.message))) throw err;
+      await wait(1100 * attempt);
+    }
+  }
 }
 
 // The root of every key the installer derives (sealing, session cookies):
